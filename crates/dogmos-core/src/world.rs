@@ -1825,14 +1825,19 @@ impl DogmosWorld {
 		}
 
 		for mutation in mutations {
-			let mixture = self
-				.mixtures
-				.get_mut(mutation.handle.slot as usize)
-				.and_then(|slot| slot.mixture.as_mut())
-				.expect("mixture state batch was validated before mutation");
-			if mixture.immutable {
+			let slot = &mut self.mixtures[mutation.handle.slot as usize];
+			if slot
+				.mixture
+				.as_ref()
+				.expect("mixture state batch was validated before mutation")
+				.immutable
+			{
 				continue;
 			}
+			let mixture = slot
+				.mixture
+				.as_mut()
+				.expect("mixture state batch was validated before mutation");
 			mixture.temperature = mutation.temperature;
 			mixture.volume = mutation.volume;
 			mixture.gases = mutation.gases;
@@ -5322,14 +5327,17 @@ impl DogmosWorld {
 		handle: MixtureHandle,
 		mutation: impl FnOnce(&mut MixtureRecord) -> bool,
 	) -> Result<bool, WorldError> {
-		let mixture = self.require_handle_mut(handle)?;
-		if mixture.revision == u32::MAX {
+		let mut candidate = self.require_handle(handle)?.clone();
+		if candidate.revision == u32::MAX {
 			return Err(WorldError::RevisionExhausted(handle));
 		}
-		let changed = mutation(mixture);
+		// Mutable access invalidates a pending publication. Evaluate the fixed-size record
+		// first so ignored writes leave that publication and its captured inputs intact.
+		let changed = mutation(&mut candidate);
 		if changed {
-			canonicalize_gases(&mut mixture.gases);
-			mixture.revision += 1;
+			canonicalize_gases(&mut candidate.gases);
+			candidate.revision += 1;
+			*self.require_handle_mut(handle)? = candidate;
 		}
 		Ok(changed)
 	}
