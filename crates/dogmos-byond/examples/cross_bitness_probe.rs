@@ -12,12 +12,13 @@ use dogmos_byond::{
 };
 use dogmos_process_metrics::sample_current_process;
 use dogmos_protocol::{
-	encode_lifecycle_batch, BuildIdentity, CallbackBatchRequest, CallbackScope, CapacityLimits,
-	FrontierCommitRequest, HandshakePayload, LifecycleAction, LifecycleMutation,
-	MixtureCommandRequest, MixtureCommandResponse, MixtureSnapshot, MixtureSnapshotRequest,
-	OperationKind, ScalarValue, ServiceTelemetry, SimulationStageResponse, WireHandle,
-	CALLBACK_BATCH_HEADER_LEN, CALLBACK_EVENT_LEN, DOGMOS_ABI_VERSION, DOGMOS_PROTOCOL_VERSION,
-	MAX_CONTROL_PAYLOAD, MAX_GAS_SLOTS, MIXTURE_COMMAND_RESPONSE_LEN, MIXTURE_SNAPSHOT_LEN,
+	encode_lifecycle_batch, BuildIdentity, CallbackBatchHeader, CallbackBatchRequest,
+	CallbackEvent, CallbackEventKind, CallbackScope, CapacityLimits, FrontierCommitRequest,
+	HandshakePayload, LifecycleAction, LifecycleMutation, MixtureCommandRequest,
+	MixtureCommandResponse, MixtureSnapshot, MixtureSnapshotRequest, OperationKind, ScalarValue,
+	ServiceTelemetry, SimulationStageResponse, WireHandle, CALLBACK_BATCH_HEADER_LEN,
+	CALLBACK_EVENT_LEN, DOGMOS_ABI_VERSION, DOGMOS_PROTOCOL_VERSION, MAX_CONTROL_PAYLOAD,
+	MAX_GAS_SLOTS, MIXTURE_COMMAND_RESPONSE_LEN, MIXTURE_SNAPSHOT_LEN,
 	SERVICE_PROCESS_ALL_AVAILABLE, SERVICE_TELEMETRY_LEN, SIMULATION_STAGE_RESPONSE_LEN,
 };
 use std::{
@@ -381,8 +382,14 @@ fn main() -> Result<(), Box<dyn Error>> {
 		&reaction_stage_request,
 		&mut stage_response,
 	)?;
-	if SimulationStageResponse::decode(&stage_response)?.callback_events != 1 {
-		return Err("cross-bitness DM reaction did not issue one continuation".into());
+	let reaction_stage = SimulationStageResponse::decode(&stage_response)?;
+	// Diffusion left 18.875 and 2.625 moles in the two frontier mixtures. Both exceed
+	// the DM reaction's one-mole requirement and must receive separate continuations.
+	if reaction_stage.callback_events != 2 || reaction_stage.pending {
+		return Err(format!(
+			"cross-bitness reaction frontier coverage changed: {reaction_stage:?}"
+		)
+		.into());
 	}
 	let mut callback_response = [0_u8; CALLBACK_BATCH_HEADER_LEN + CALLBACK_EVENT_LEN];
 	client.round_trip_into(
@@ -397,6 +404,20 @@ fn main() -> Result<(), Box<dyn Error>> {
 	)?;
 	let callback_fields =
 		decode_production_callback_batch(&callback_response, 1, CallbackScope::General, 0)?;
+	let first_header =
+		CallbackBatchHeader::decode(&callback_response[..CALLBACK_BATCH_HEADER_LEN])?;
+	let first_event = CallbackEvent::decode(&callback_response[CALLBACK_BATCH_HEADER_LEN..])?;
+	if first_header.returned != 1
+		|| first_header.remaining != 1
+		|| first_event.kind != CallbackEventKind::RunDmReaction
+		|| first_event.subject != first_mixture
+		|| first_event.target
+			!= (WireHandle {
+				slot: 10,
+				generation: 1,
+			}) {
+		return Err("cross-bitness first frontier callback or remaining count changed".into());
+	}
 	let continuation_fields = &callback_fields[38..48];
 	let mut continuation_adjust_fields = continuation_fields.to_vec();
 	continuation_adjust_fields.extend([0.0, 1.0, 0.0, -0.125]);
@@ -419,11 +440,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 		&mut command_response,
 	)?;
 
+	let mut telemetry_response = [0_u8; SERVICE_TELEMETRY_LEN];
 	client.round_trip_into(
-		OperationKind::SimulationStage,
-		&reaction_stage_request,
-		&mut stage_response,
+		OperationKind::ServiceTelemetry,
+		&[],
+		&mut telemetry_response,
 	)?;
+	let after_resume = ServiceTelemetry::decode(&telemetry_response)?;
+	if after_resume.continuation_depth != 1 || after_resume.callback_depth != 1 {
+		return Err("resuming the first frontier target disturbed the second target".into());
+	}
 	client.round_trip_into(
 		OperationKind::CallbackBatch,
 		&CallbackBatchRequest {
@@ -436,6 +462,22 @@ fn main() -> Result<(), Box<dyn Error>> {
 	)?;
 	let cancelled_fields =
 		decode_production_callback_batch(&callback_response, 1, CallbackScope::General, 0)?;
+	let second_header =
+		CallbackBatchHeader::decode(&callback_response[..CALLBACK_BATCH_HEADER_LEN])?;
+	let second_event = CallbackEvent::decode(&callback_response[CALLBACK_BATCH_HEADER_LEN..])?;
+	if second_header.returned != 1
+		|| second_header.remaining != 0
+		|| second_event.kind != CallbackEventKind::RunDmReaction
+		|| second_event.subject != second_mixture
+		|| second_event.target
+			!= (WireHandle {
+				slot: 11,
+				generation: 1,
+			}) || second_event.scope_sequence != first_event.scope_sequence + 1
+		|| second_event.continuation == first_event.continuation
+	{
+		return Err("cross-bitness second frontier callback ownership or order changed".into());
+	}
 	let cancelled = decode_production_continuation_token(&cancelled_fields[38..48])?;
 	assert_eq!(
 		client.round_trip_into(
@@ -444,6 +486,28 @@ fn main() -> Result<(), Box<dyn Error>> {
 			&mut command_response,
 		)?,
 		0
+	);
+	client.round_trip_into(
+		OperationKind::ServiceTelemetry,
+		&[],
+		&mut telemetry_response,
+	)?;
+	let after_cancel = ServiceTelemetry::decode(&telemetry_response)?;
+	if after_cancel.continuation_depth != 0 || after_cancel.callback_depth != 0 {
+		return Err("cross-bitness frontier resume/cancel leaked pending work".into());
+	}
+	for (handle, expected_moles) in [(first_mixture, 18.75), (second_mixture, 2.625)] {
+		client.round_trip_into(
+			OperationKind::MixtureSnapshot,
+			&MixtureSnapshotRequest { handle }.encode(),
+			&mut snapshot,
+		)?;
+		if MixtureSnapshot::decode(&snapshot)?.gases[0] != ScalarValue(expected_moles) {
+			return Err("cross-bitness frontier resume/cancel changed unrelated gas state".into());
+		}
+	}
+	println!(
+		"reaction frontier: two ordered callbacks, independent resume/cancel, no pending work"
 	);
 	if !matches!(
 		DogmosClient::connect(&endpoint, handshake, Duration::from_secs(1)),
