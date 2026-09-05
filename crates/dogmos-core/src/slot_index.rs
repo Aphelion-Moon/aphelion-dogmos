@@ -22,59 +22,50 @@ impl SlotKey for MixtureHandle {
 	}
 }
 
-/// Reusable generation-checked lookup storage. An epoch change clears membership without scanning slots.
+/// Reusable generation-checked lookup with records stored only for occupied slots.
 pub(crate) struct SlotIndex<K, V> {
-	entries: Vec<Option<(u64, K, V)>>,
-	epoch: u64,
-	touched: Vec<usize>,
+	slots: Vec<usize>,
+	values: Vec<(K, V)>,
 }
 
 impl<K: SlotKey, V> SlotIndex<K, V> {
 	pub(crate) fn new() -> Self {
 		Self {
-			entries: Vec::new(),
-			touched: Vec::new(),
-			epoch: 1,
+			slots: Vec::new(),
+			values: Vec::new(),
 		}
 	}
 	pub(crate) fn clear(&mut self) {
-		self.touched.clear();
-		if let Some(epoch) = self.epoch.checked_add(1) {
-			self.epoch = epoch;
-		} else {
-			self.entries.clear();
-			self.epoch = 1;
-		}
+		self.values.clear();
+	}
+	fn entry_index(&self, slot: usize) -> Option<usize> {
+		let index = *self.slots.get(slot)?;
+		let (stored, _) = self.values.get(index)?;
+		(stored.slot() == slot).then_some(index)
 	}
 	pub(crate) fn insert(&mut self, key: K, value: V) -> Option<V> {
 		let slot = key.slot();
-		if slot >= self.entries.len() {
-			self.entries.resize_with(slot + 1, || None);
+		if let Some(index) = self.entry_index(slot) {
+			let (old, previous) = std::mem::replace(&mut self.values[index], (key, value));
+			return (old == key).then_some(previous);
 		}
-		let previous = self.entries[slot].replace((self.epoch, key, value));
-		if previous
-			.as_ref()
-			.is_none_or(|(epoch, _, _)| *epoch != self.epoch)
-		{
-			self.touched.push(slot);
+		if slot >= self.slots.len() {
+			self.slots.resize(slot + 1, usize::MAX);
 		}
-		previous
-			.and_then(|(epoch, old, value)| (epoch == self.epoch && old == key).then_some(value))
+		self.slots[slot] = self.values.len();
+		self.values.push((key, value));
+		None
 	}
 	pub(crate) fn get(&self, key: &K) -> Option<&V> {
-		self.entries
-			.get(key.slot())?
-			.as_ref()
-			.and_then(|(epoch, stored, value)| {
-				(*epoch == self.epoch && stored == key).then_some(value)
-			})
+		let (stored, value) = &self.values[self.entry_index(key.slot())?];
+		(stored == key).then_some(value)
 	}
 	pub(crate) fn contains_key(&self, key: &K) -> bool {
 		self.get(key).is_some()
 	}
 	pub(crate) fn capacity_bytes(&self) -> usize {
-		self.entries.capacity() * std::mem::size_of::<Option<(u64, K, V)>>()
-			+ self.touched.capacity() * std::mem::size_of::<usize>()
+		self.slots.capacity() * std::mem::size_of::<usize>()
+			+ self.values.capacity() * std::mem::size_of::<(K, V)>()
 	}
 }
 
@@ -130,7 +121,13 @@ mod tests {
 			generation: 2,
 			..old
 		};
-		index.insert(old, 4);
+		assert_eq!(index.insert(old, 3), None);
+		assert_eq!(index.insert(old, 4), Some(3));
+		let mut set = SlotSet::new();
+		assert!(set.insert(old));
+		assert!(!set.insert(old));
+		assert!(set.insert(new));
+		assert!(!set.contains(&old));
 		index.insert(new, 7);
 		assert_eq!(index.get(&old), None);
 		assert_eq!(index.get(&new), Some(&7));
@@ -140,5 +137,53 @@ mod tests {
 		index.insert(old, 9);
 		assert_eq!(index.capacity_bytes(), capacity);
 		assert_eq!(index.get(&old), Some(&9));
+	}
+	#[test]
+	fn clear_does_not_alias_reused_dense_positions() {
+		let mut index = SlotIndex::new();
+		index.insert(100_u32, 1);
+		index.clear();
+		index.insert(200, 2);
+		assert_eq!(index.get(&100), None);
+		assert_eq!(index.insert(100, 3), None);
+		assert_eq!(index.get(&200), Some(&2));
+		assert_eq!(index.get(&100), Some(&3));
+	}
+
+	#[test]
+	fn sparse_large_records_do_not_allocate_a_record_per_slot() {
+		let mut index = SlotIndex::new();
+		index.insert(10_000_u32, [7_u8; 512]);
+		assert_eq!(index.get(&10_000), Some(&[7; 512]));
+		assert!(index.capacity_bytes() < 200_000);
+	}
+
+	#[test]
+	fn operations_match_an_independent_slot_map() {
+		let mut index = SlotIndex::new();
+		let mut reference = std::collections::BTreeMap::new();
+		for step in 0..500_u32 {
+			if step % 37 == 0 {
+				index.clear();
+				reference.clear();
+			}
+			let key = MixtureHandle {
+				slot: (step * 17) % 23,
+				generation: step % 3,
+			};
+			let expected = reference
+				.insert(key.slot, (key, step))
+				.and_then(|(old, value)| (old == key).then_some(value));
+			assert_eq!(index.insert(key, step), expected);
+			for slot in 0..23 {
+				for generation in 0..3 {
+					let query = MixtureHandle { slot, generation };
+					let expected = reference
+						.get(&slot)
+						.and_then(|(key, value)| (*key == query).then_some(value));
+					assert_eq!(index.get(&query), expected);
+				}
+			}
+		}
 	}
 }

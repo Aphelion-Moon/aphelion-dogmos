@@ -184,7 +184,6 @@ impl ComponentKernel {
 		let mut found = vec![false; nodes.len()];
 		let mut queue: Vec<usize> = Vec::new();
 		let mut accepted: Vec<usize> = Vec::new();
-		let mut mutable_mixtures: BTreeSet<MixtureHandle> = BTreeSet::new();
 		let mut work_items = 0_u32;
 		for initial_position in 0..nodes.len() {
 			cooperate().await;
@@ -244,17 +243,19 @@ impl ComponentKernel {
 			let mut mixed_gases = [0.0; MAX_GAS_SLOTS];
 			let mut total_capacity = 0.0;
 			let mut total_energy = 0.0;
-			mutable_mixtures.clear();
 			for &position in &accepted {
 				cooperate().await;
 				let handle = nodes[position].2;
 				let mixture = self.require_handle(handle)?;
-				if transaction.contains(handle) || !mutable_mixtures.insert(handle) {
+				if transaction.contains(handle) {
 					return Err(WorldError::DuplicateMutableTurfMixture(handle));
 				}
 				if mixture.revision == u32::MAX {
 					return Err(WorldError::RevisionExhausted(handle));
 				}
+				transaction
+					.touch(handle, mixture.revision, mixture)
+					.map_err(transaction_world_error)?;
 				for (total, amount) in mixed_gases.iter_mut().zip(mixture.gases) {
 					*total += amount;
 				}
@@ -274,10 +275,9 @@ impl ComponentKernel {
 			for &position in &accepted {
 				cooperate().await;
 				let handle = nodes[position].2;
-				let mixture = self.require_handle(handle)?;
 				let candidate = transaction
-					.touch(handle, mixture.revision, mixture)
-					.map_err(transaction_world_error)?;
+					.candidate_mut(handle)
+					.expect("accepted mixture was reserved before averaging");
 				candidate.gases = mixed_gases;
 				candidate.temperature = mixed_temperature;
 				work_items = work_items
@@ -344,7 +344,6 @@ impl ComponentKernel {
 			let mut maximum_moles = 0.0_f32;
 			let mut mixtures_by_turf = BTreeMap::new();
 			let mut immutable_turfs = BTreeSet::new();
-			let mut mutable_mixtures = BTreeSet::new();
 			for turf_slot in &component {
 				cooperate().await;
 				let turf_handle = self.current_turf_handle(*turf_slot)?;
@@ -356,9 +355,6 @@ impl ComponentKernel {
 				if mixture.immutable {
 					immutable_turfs.insert(*turf_slot);
 					continue;
-				}
-				if !mutable_mixtures.insert(mixture_handle) {
-					return Err(WorldError::DuplicateMutableTurfMixture(mixture_handle));
 				}
 				if transaction.contains(mixture_handle) {
 					return Err(WorldError::DuplicateMutableTurfMixture(mixture_handle));

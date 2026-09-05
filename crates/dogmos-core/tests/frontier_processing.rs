@@ -2175,3 +2175,61 @@ fn heat_publication_and_cancellation_preserve_both_temperatures() {
 	}
 	assert!(completed);
 }
+
+#[test]
+fn component_stages_reject_shared_mixtures_before_publishing() {
+	for stage in [WorldStage::Equalize, WorldStage::ExcitedGroups] {
+		let turfs = [turf(0, 1), turf(1, 1)];
+		let shared = mixture(0);
+		let mut world = DogmosWorld::new(1024 * 1024);
+		world.install_gases(vec![oxygen()]).unwrap();
+		world
+			.apply_lifecycle(&[LifecycleMutation {
+				action: LifecycleAction::Register,
+				handle: shared,
+			}])
+			.unwrap();
+		let mut gases = [0.0; MAX_GAS_SLOTS];
+		gases[0] = 100.0;
+		world
+			.apply_mixture_state(&[MixtureStateMutation {
+				handle: shared,
+				expected_revision: 0,
+				temperature: 300.0,
+				volume: 2500.0,
+				gases,
+			}])
+			.unwrap();
+		world
+			.apply_turf_lifecycle(&turfs.map(|handle| TurfLifecycleMutation::Register {
+				handle,
+				mixture: Some(shared),
+			}))
+			.unwrap();
+		world
+			.apply_turf_adjacency(&[TurfAdjacencyMutation {
+				left: turfs[0],
+				right: turfs[1],
+				connected: true,
+			}])
+			.unwrap();
+		world.add_frontier(1, &turfs).unwrap();
+		let before = world.snapshot(shared).unwrap();
+		let request = StageChunkRequest {
+			stage,
+			frontier_epoch: 1,
+			stage_epoch: 1,
+			work_limit: 1,
+			seconds_per_tick: 0.5,
+		};
+		let error = (0..128)
+			.find_map(|_| {
+				world
+					.process_stage_chunk_cancellable(request, || false)
+					.err()
+			})
+			.expect("connected duplicate must fail within the bounded stage");
+		assert_eq!(error, WorldError::DuplicateMutableTurfMixture(shared));
+		assert_eq!(world.snapshot(shared).unwrap(), before);
+	}
+}
