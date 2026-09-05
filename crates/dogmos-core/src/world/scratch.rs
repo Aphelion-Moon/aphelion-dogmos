@@ -55,7 +55,6 @@ impl StageReactionState {
 			seen_mixtures: SlotSet::new(),
 			staged: BTreeMap::new(),
 			staged_events: Vec::new(),
-			pending: None,
 			next_target: 0,
 		}
 	}
@@ -67,7 +66,6 @@ impl StageReactionState {
 		self.seen_mixtures.clear();
 		self.staged.clear();
 		self.staged_events.clear();
-		self.pending = None;
 		self.next_target = 0;
 	}
 }

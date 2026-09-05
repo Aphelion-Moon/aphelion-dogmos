@@ -75,6 +75,11 @@ const PRODUCTION_MAX_MIXTURE_ADJUSTMENTS: usize =
 	(BENCHMARK_CONTROL_PAYLOAD - MIXTURE_ADJUST_MULTIPLE_HEADER_LEN) / MIXTURE_ADJUSTMENT_LEN;
 const PRODUCTION_MIXTURE_STATE_FIELDS: usize = 6 + MAX_GAS_SLOTS;
 const PRODUCTION_PIPENET_RESPONSE_FIELDS: usize = 2 + 10 + MAX_GAS_SLOTS;
+// The production session negotiates 64 KiB, below the protocol codec's theoretical ceiling.
+const PRODUCTION_MAX_PIPENET_RECONCILE_MIXTURES: usize =
+	(BENCHMARK_CONTROL_PAYLOAD - 4) / PIPENET_RECONCILE_SNAPSHOT_LEN;
+const PRODUCTION_MAX_MIXTURE_SNAPSHOT_BATCH: usize =
+	(BENCHMARK_CONTROL_PAYLOAD - 4) / MIXTURE_SNAPSHOT_RECORD_LEN;
 const PRODUCTION_MAX_MIXTURE_STATE_MUTATIONS: usize =
 	(BENCHMARK_CONTROL_PAYLOAD - 4) / MIXTURE_STATE_MUTATION_LEN;
 const PRODUCTION_TURF_LIFECYCLE_FIELDS: usize = 6;
@@ -910,7 +915,7 @@ fn dogmos_pipenet_reconcile(entries: ByondValue) -> eyre::Result<ByondValue> {
 	let values = bounded_number_list(
 		entries,
 		"pipenet reconcile",
-		MAX_PIPENET_RECONCILE_MIXTURES * 2,
+		PRODUCTION_MAX_PIPENET_RECONCILE_MIXTURES * 2,
 	)?;
 	let operation_count = values.len() / 2;
 	let request = encode_production_pipenet_reconcile(&values)?;
@@ -932,9 +937,9 @@ pub fn encode_production_pipenet_reconcile(values: &[f32]) -> eyre::Result<Vec<u
 		));
 	}
 	let operation_count = values.len() / 2;
-	if operation_count > MAX_PIPENET_RECONCILE_MIXTURES {
+	if operation_count > PRODUCTION_MAX_PIPENET_RECONCILE_MIXTURES {
 		return Err(eyre::eyre!(
-			"pipenet reconcile contains {operation_count} mixtures, maximum {MAX_PIPENET_RECONCILE_MIXTURES}"
+			"pipenet reconcile contains {operation_count} mixtures, maximum {PRODUCTION_MAX_PIPENET_RECONCILE_MIXTURES}"
 		));
 	}
 	let handles = handles_from_slot_generation_pairs(values, "pipenet reconcile")?;
@@ -987,7 +992,7 @@ fn dogmos_mixture_snapshot_batch(entries: ByondValue) -> eyre::Result<ByondValue
 	let values = bounded_number_list(
 		entries,
 		"mixture snapshot batch",
-		MAX_MIXTURE_SNAPSHOT_BATCH * 2,
+		PRODUCTION_MAX_MIXTURE_SNAPSHOT_BATCH * 2,
 	)?;
 	let operation_count = values.len() / 2;
 	let request = encode_production_mixture_snapshot_batch(&values)?;
@@ -1009,9 +1014,9 @@ pub fn encode_production_mixture_snapshot_batch(values: &[f32]) -> eyre::Result<
 		));
 	}
 	let operation_count = values.len() / 2;
-	if operation_count > MAX_MIXTURE_SNAPSHOT_BATCH {
+	if operation_count > PRODUCTION_MAX_MIXTURE_SNAPSHOT_BATCH {
 		return Err(eyre::eyre!(
-			"mixture snapshot batch contains {operation_count} mixtures, maximum {MAX_MIXTURE_SNAPSHOT_BATCH}"
+			"mixture snapshot batch contains {operation_count} mixtures, maximum {PRODUCTION_MAX_MIXTURE_SNAPSHOT_BATCH}"
 		));
 	}
 	let handles = handles_from_slot_generation_pairs(values, "mixture snapshot batch")?;
@@ -3423,6 +3428,36 @@ mod tests {
 			[handle(7, 11), handle(13, 17), handle(7, 11)]
 		);
 		assert!(encode_production_pipenet_reconcile(&[7.0]).is_err());
+	}
+
+	#[test]
+	fn production_compact_snapshot_requests_fit_the_session_response_window() {
+		let pairs: Vec<_> = (1..=382).flat_map(|slot| [slot as f32, 1.0]).collect();
+		assert_eq!(
+			super::encode_production_mixture_snapshot_batch(&pairs[..762])
+				.unwrap()
+				.len(),
+			3052
+		);
+		assert!(
+			super::encode_production_mixture_snapshot_batch(&pairs).is_err(),
+			"382 compact records exceed the production 65536-byte response window"
+		);
+	}
+
+	#[test]
+	fn production_compact_pipenet_requests_fit_the_session_response_window() {
+		let pairs: Vec<_> = (1..=382).flat_map(|slot| [slot as f32, 1.0]).collect();
+		assert_eq!(
+			encode_production_pipenet_reconcile(&pairs[..762])
+				.unwrap()
+				.len(),
+			3052
+		);
+		assert!(
+			encode_production_pipenet_reconcile(&pairs).is_err(),
+			"382 compact records exceed the production 65536-byte response window"
+		);
 	}
 
 	#[test]

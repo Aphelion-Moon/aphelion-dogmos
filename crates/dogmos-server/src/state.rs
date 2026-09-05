@@ -167,6 +167,8 @@ struct PendingContinuation {
 	turf: Option<WireHandle>,
 	mixture: WireHandle,
 	transaction_id: u64,
+	/// False after its sole callback has been delivered to the caller.
+	queued: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -652,6 +654,11 @@ impl ServiceState {
 					.encode()
 					.map_err(|error| StateError::State(error.to_string()))?,
 			);
+			if let Some(token) = callback.event.continuation {
+				if let Some(continuation) = self.pending_continuations.get_mut(&token.id) {
+					continuation.queued = false;
+				}
+			}
 			drained_tally[callback_kind_index(callback.event.kind)] += 1;
 		}
 		let remaining = queue.len() as u32;
@@ -1642,7 +1649,7 @@ impl ServiceState {
 			.resume_reaction_with_event_limit(continuation.core_token, event_limit)
 			.map_err(map_world_error)?;
 		self.pending_continuations.remove(&token.id);
-		self.remove_queued_continuation(token.id);
+		self.remove_queued_continuation(token.id, continuation);
 		self.enqueue_world_events_at(event_limit, now_ticks, scope, continuation.transaction_id)?;
 		if continuation.transaction_id != 0 {
 			self.finish_reaction_transaction(continuation.transaction_id, true)?;
@@ -1672,7 +1679,7 @@ impl ServiceState {
 			)
 			.map_err(map_world_error)?;
 		self.pending_continuations.remove(&token.id);
-		self.remove_queued_continuation(token.id);
+		self.remove_queued_continuation(token.id, continuation);
 		self.enqueue_world_events_at(event_limit, now_ticks, scope, continuation.transaction_id)?;
 		if continuation.transaction_id != 0 {
 			self.finish_reaction_transaction(continuation.transaction_id, !progress.pending)?;
@@ -1704,7 +1711,7 @@ impl ServiceState {
 			.cancel_reaction(continuation.core_token)
 			.map_err(map_world_error)?;
 		self.pending_continuations.remove(&token.id);
-		self.remove_queued_continuation(token.id);
+		self.remove_queued_continuation(token.id, continuation);
 		if continuation.transaction_id != 0 {
 			self.remove_reaction_transaction(continuation.transaction_id);
 		}
@@ -1735,7 +1742,7 @@ impl ServiceState {
 		}
 		if now_ticks >= continuation.deadline_ticks {
 			self.pending_continuations.remove(&token.id);
-			self.remove_queued_continuation(token.id);
+			self.remove_queued_continuation(token.id, continuation);
 			if continuation.transaction_id != 0 {
 				self.remove_reaction_transaction(continuation.transaction_id);
 			}
@@ -1970,6 +1977,7 @@ impl ServiceState {
 							turf: turf.map(wire_handle_from_turf),
 							mixture: wire_handle(mixture),
 							transaction_id,
+							queued: true,
 						},
 					));
 					Some(token)
@@ -2062,22 +2070,32 @@ impl ServiceState {
 		Ok(self.commit_prepared_callback_batch(batch, now_ticks))
 	}
 
-	fn remove_queued_continuation(&mut self, continuation_id: u64) {
-		self.general_callbacks.retain(|callback| {
+	fn remove_queued_continuation(
+		&mut self,
+		continuation_id: u64,
+		continuation: PendingContinuation,
+	) {
+		if !continuation.queued {
+			return;
+		}
+		let queue = if continuation.transaction_id == 0 {
+			&mut self.general_callbacks
+		} else if let Some(queue) = self
+			.reaction_callbacks
+			.get_mut(&continuation.transaction_id)
+		{
+			&mut queue.callbacks
+		} else {
+			return;
+		};
+		let before = queue.len();
+		queue.retain(|callback| {
 			callback
 				.event
 				.continuation
 				.is_none_or(|token| token.id != continuation_id)
 		});
-		for queue in self.reaction_callbacks.values_mut() {
-			queue.callbacks.retain(|callback| {
-				callback
-					.event
-					.continuation
-					.is_none_or(|token| token.id != continuation_id)
-			});
-		}
-		self.recount_pending_callbacks();
+		self.pending_callback_count -= (before - queue.len()) as u32;
 	}
 
 	fn remove_orphaned_continuation_callbacks(&mut self) {
@@ -2702,9 +2720,18 @@ mod tests {
 	}
 
 	fn dm_reaction_state() -> (ServiceState, WireHandle, WireHandle) {
+		dm_reaction_state_with_capacities(8, 1, 1)
+	}
+
+	fn dm_reaction_state_with_capacities(
+		callbacks: u32,
+		continuations: u32,
+		transactions: u32,
+	) -> (ServiceState, WireHandle, WireHandle) {
 		let mixture = handle(0, 1);
 		let holder = handle(41, 9);
-		let mut state = ServiceState::new_for_world(1024 * 1024, 8, 1, 1, 7);
+		let mut state =
+			ServiceState::new_for_world(1024 * 1024, callbacks, continuations, transactions, 7);
 		state
 			.install_gases(vec![GasMetadataRegistration {
 				id: 0,
@@ -2740,6 +2767,151 @@ mod tests {
 			}])
 			.unwrap();
 		(state, mixture, holder)
+	}
+
+	#[test]
+	fn continuation_completion_preserves_unrelated_queues_before_and_after_delivery() {
+		for general in [false, true] {
+			for delivered in [false, true] {
+				for operation in ["resume", "resume_result", "cancel", "expire"] {
+					let (mut state, mixture, holder) = dm_reaction_state_with_capacities(64, 4, 4);
+					let transaction = if general {
+						state
+							.world
+							.react_mixture_with_event_limit(
+								core_handle(mixture),
+								core_gameplay_handle(holder),
+								None,
+								64,
+							)
+							.unwrap();
+						state
+							.enqueue_world_events_at(64, 10, CallbackScope::General, 0)
+							.unwrap();
+						0
+					} else {
+						let result = state
+							.apply_mixture_command(MixtureCommandRequest::React {
+								handle: mixture,
+								target: holder,
+								reaction_profile_threshold_ms: None,
+							})
+							.unwrap();
+						let MixtureCommandResponse::ReactionProgress { transaction_id, .. } =
+							result
+						else {
+							panic!("unexpected response")
+						};
+						transaction_id
+					};
+					let target_queue = if general {
+						&state.general_callbacks
+					} else {
+						&state.reaction_callbacks[&transaction].callbacks
+					};
+					let token = target_queue.front().unwrap().event.continuation.unwrap();
+					let mut unrelated = Vec::new();
+					for slot in 1..=2 {
+						let mixture = handle(slot, 1);
+						state
+							.apply_lifecycle(&[LifecycleMutation {
+								action: LifecycleAction::Register,
+								handle: mixture,
+							}])
+							.unwrap();
+						let result = state
+							.apply_mixture_command(MixtureCommandRequest::React {
+								handle: mixture,
+								target: holder,
+								reaction_profile_threshold_ms: None,
+							})
+							.unwrap();
+						let MixtureCommandResponse::ReactionProgress { transaction_id, .. } =
+							result
+						else {
+							panic!("unexpected response")
+						};
+						unrelated.push((
+							transaction_id,
+							state.reaction_callbacks[&transaction_id]
+								.callbacks
+								.front()
+								.unwrap()
+								.event,
+						));
+					}
+					state.enqueue_diagnostic_callbacks(2).unwrap();
+					let diagnostics: Vec<_> = state
+						.general_callbacks
+						.iter()
+						.filter(|callback| callback.event.kind == CallbackEventKind::Diagnostic)
+						.map(|callback| callback.event)
+						.collect();
+					if delivered {
+						let mut output = [0_u8; CALLBACK_BATCH_HEADER_LEN + CALLBACK_EVENT_LEN];
+						state
+							.drain_callbacks_at(
+								callback_scope(transaction),
+								transaction,
+								1,
+								&mut output,
+								10,
+							)
+							.unwrap();
+						assert_eq!(
+							CallbackEvent::decode(&output[CALLBACK_BATCH_HEADER_LEN..])
+								.unwrap()
+								.continuation,
+							Some(token)
+						);
+					}
+					match operation {
+						"resume" => {
+							state.resume_continuation_at(token, 11).unwrap();
+						}
+						"resume_result" => {
+							state
+								.resume_continuation_with_result_at(token, 0, 11)
+								.unwrap();
+						}
+						"cancel" => state.cancel_continuation_at(token, 11).unwrap(),
+						"expire" => assert_eq!(
+							state.resume_continuation_with_result_at(
+								token,
+								0,
+								token.deadline_ticks
+							),
+							Err(StateError::ContinuationExpired(token))
+						),
+						_ => unreachable!(),
+					}
+					assert_eq!(
+						state.pending_callback_count, 4,
+						"{general}/{delivered}/{operation}"
+					);
+					assert_eq!(state.pending_continuation_count(), 2);
+					assert_eq!(state.world.pending_reaction_continuations(), 2);
+					assert_eq!(
+						state
+							.general_callbacks
+							.iter()
+							.map(|callback| callback.event)
+							.collect::<Vec<_>>(),
+						diagnostics
+					);
+					for (transaction, event) in unrelated {
+						assert_eq!(
+							state.reaction_callbacks[&transaction]
+								.callbacks
+								.iter()
+								.map(|callback| callback.event)
+								.collect::<Vec<_>>(),
+							[event]
+						);
+					}
+				}
+			}
+		}
 	}
 
 	#[test]

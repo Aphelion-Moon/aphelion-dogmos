@@ -768,9 +768,18 @@ struct StageReactionState {
 	active_continuations: SlotSet<MixtureHandle>,
 	seen_mixtures: SlotSet<MixtureHandle>,
 	staged: BTreeMap<MixtureHandle, MixtureRecord>,
-	staged_events: Vec<WorldEvent>,
-	pending: Option<(TurfHandle, MixtureHandle, PendingDmReaction)>,
+	staged_events: Vec<StagedReactionEvent>,
 	next_target: usize,
+}
+
+enum StagedReactionEvent {
+	Ready(WorldEvent),
+	Dm {
+		turf: TurfHandle,
+		mixture: MixtureHandle,
+		pending: PendingDmReaction,
+		continuation: Option<ReactionContinuationToken>,
+	},
 }
 
 struct StageComponentState {
@@ -1213,7 +1222,7 @@ impl DogmosWorld {
 			active_vec_capacity_bytes_lower_bound +=
 				state.targets.capacity() * std::mem::size_of::<(TurfHandle, MixtureHandle)>();
 			active_vec_capacity_bytes_lower_bound +=
-				state.staged_events.capacity() * std::mem::size_of::<WorldEvent>();
+				state.staged_events.capacity() * std::mem::size_of::<StagedReactionEvent>();
 		}
 		for state in self
 			.stage_components
@@ -3055,9 +3064,7 @@ impl DogmosWorld {
 				let Some(next_target) = self
 					.stage_reactions
 					.as_ref()
-					.filter(|state| {
-						state.pending.is_none() && state.next_target < state.targets.len()
-					})
+					.filter(|state| state.next_target < state.targets.len())
 					.map(|state| state.next_target)
 				else {
 					break;
@@ -3075,13 +3082,7 @@ impl DogmosWorld {
 			let remaining_targets = self
 				.stage_reactions
 				.as_ref()
-				.map(|state| {
-					if state.pending.is_some() {
-						0
-					} else {
-						state.targets.len().saturating_sub(state.next_target)
-					}
-				})
+				.map(|state| state.targets.len().saturating_sub(state.next_target))
 				.unwrap_or_default();
 			if remaining_targets != 0 {
 				return Ok(StageChunkResult {
@@ -3773,7 +3774,9 @@ impl DogmosWorld {
 			.stage_reactions
 			.as_mut()
 			.expect("reaction stage owns reaction state");
-		state.staged_events.extend(sequence.events);
+		state
+			.staged_events
+			.extend(sequence.events.into_iter().map(StagedReactionEvent::Ready));
 		if sequence.native_updates > 0 {
 			let mut record = sequence.mixture;
 			canonicalize_gases(&mut record.gases);
@@ -3783,7 +3786,12 @@ impl DogmosWorld {
 				.stage(record, &state.publication);
 		}
 		if let Some(dm_reaction) = sequence.pending {
-			state.pending = Some((turf, mixture, dm_reaction));
+			state.staged_events.push(StagedReactionEvent::Dm {
+				turf,
+				mixture,
+				pending: dm_reaction,
+				continuation: None,
+			});
 		}
 		Ok(())
 	}
@@ -3793,11 +3801,7 @@ impl DogmosWorld {
 			.stage_reactions
 			.take()
 			.expect("reaction stage owns reaction state");
-		let requested_events = self
-			.events
-			.len()
-			.saturating_add(state.staged_events.len())
-			.saturating_add(usize::from(state.pending.is_some()));
+		let requested_events = self.events.len().saturating_add(state.staged_events.len());
 		if requested_events > event_capacity {
 			self.stage_reactions = Some(state);
 			return Err(WorldError::EventCapacityExceeded {
@@ -3805,41 +3809,60 @@ impl DogmosWorld {
 				capacity: u32::try_from(event_capacity).unwrap_or(u32::MAX),
 			});
 		}
-		let continuation_event = if let Some((turf, mixture, pending)) = state.pending.take() {
-			let token = self.allocate_continuation(ReactionContinuation {
-				turf: Some(turf),
-				mixture,
-				target: turf.into(),
-				next_reaction_index: pending.next_reaction_index,
-				reaction_profile_threshold_ms: None,
-			})?;
-			Some(WorldEvent::RunDmReaction {
-				turf: Some(turf),
-				mixture,
-				target: turf.into(),
-				reaction: pending.reaction,
-				continuation: token,
-			})
-		} else {
-			None
-		};
-		if !state.publication.publish() {
-			if let Some(WorldEvent::RunDmReaction { continuation, .. }) = continuation_event {
-				self.complete_continuation(continuation)?;
+		self.events
+			.try_reserve(state.staged_events.len())
+			.map_err(|_| world_allocation_failed())?;
+		// Reserve every continuation before publishing any numeric state or event. A DM
+		// fallback belongs to its target; it does not terminate the remaining frontier.
+		let preparation = (|| -> Result<(), WorldError> {
+			for event in &mut state.staged_events {
+				if let StagedReactionEvent::Dm {
+					turf,
+					mixture,
+					pending,
+					continuation,
+				} = event
+				{
+					*continuation = Some(self.allocate_continuation(ReactionContinuation {
+						turf: Some(*turf),
+						mixture: *mixture,
+						target: (*turf).into(),
+						next_reaction_index: pending.next_reaction_index,
+						reaction_profile_threshold_ms: None,
+					})?);
+				}
 			}
+			Ok(())
+		})();
+		if let Err(error) = preparation {
+			self.cancel_staged_reaction_continuations(&state)?;
+			return Err(error);
+		}
+		if !state.publication.publish() {
+			self.cancel_staged_reaction_continuations(&state)?;
 			return Err(WorldError::StageConflict(
 				StageConflictReason::ActiveStageMutation {
 					operation: "publish reactions after a concurrent write",
 				},
 			));
 		}
-		let callback_events = state
-			.staged_events
-			.len()
-			.saturating_add(usize::from(continuation_event.is_some()));
-		self.events.append(&mut state.staged_events);
-		if let Some(event) = continuation_event {
-			self.events.push(event);
+		let callback_events = state.staged_events.len();
+		for event in state.staged_events.drain(..) {
+			self.events.push(match event {
+				StagedReactionEvent::Ready(event) => event,
+				StagedReactionEvent::Dm {
+					turf,
+					mixture,
+					pending,
+					continuation,
+				} => WorldEvent::RunDmReaction {
+					turf: Some(turf),
+					mixture,
+					target: turf.into(),
+					reaction: pending.reaction,
+					continuation: continuation.expect("all continuations were reserved"),
+				},
+			});
 		}
 		let completed = u32::try_from(state.targets.len()).unwrap_or(u32::MAX);
 		state.clear();
@@ -3848,6 +3871,22 @@ impl DogmosWorld {
 			completed,
 			u32::try_from(callback_events).unwrap_or(u32::MAX),
 		))
+	}
+
+	fn cancel_staged_reaction_continuations(
+		&mut self,
+		state: &StageReactionState,
+	) -> Result<(), WorldError> {
+		for event in &state.staged_events {
+			if let StagedReactionEvent::Dm {
+				continuation: Some(token),
+				..
+			} = event
+			{
+				self.complete_continuation(*token)?;
+			}
+		}
+		Ok(())
 	}
 
 	fn prepare_stage_component_turf(&mut self, turf_handle: TurfHandle) {
@@ -4671,7 +4710,9 @@ impl DogmosWorld {
 				generation: entry.generation,
 			});
 		}
-		if self.pending_reaction_continuations() >= self.max_continuations {
+		// With no reusable slot, every allocated slot is occupied or generation-exhausted.
+		// Counting the entire arena here would make a multi-target batch quadratic.
+		if self.continuations.len() >= self.max_continuations as usize {
 			return Err(WorldError::ReactionContinuationCapacityExceeded);
 		}
 		let slot = u32::try_from(self.continuations.len())
