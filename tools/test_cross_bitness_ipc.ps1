@@ -30,9 +30,9 @@ $env:DOGMOS_SOURCE_REVISION = $buildIdentity.source_revision
 $env:DOGMOS_FEATURE_FINGERPRINT = $buildIdentity.feature_fingerprint
 Push-Location $repositoryRoot
 try {
-	& cargo "+$rustToolchain" build -p dogmos-server --bin dogmosd --target $serverTarget --offline
+	& cargo "+$rustToolchain" build -p dogmos-server --bin dogmosd --target $serverTarget --locked --offline
 	Assert-NativeExitCode 'x64 dogmosd build'
-	& cargo "+$rustToolchain" build -p dogmos-byond --example cross_bitness_probe --target $shimTarget --offline
+	& cargo "+$rustToolchain" build -p dogmos-byond --example cross_bitness_probe --target $shimTarget --locked --offline
 	Assert-NativeExitCode 'i686 IPC probe build'
 
 	$serverPath = Join-Path $repositoryRoot "target\$serverTarget\debug\dogmosd.exe"

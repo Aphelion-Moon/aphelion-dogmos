@@ -1389,9 +1389,9 @@ impl DogmosWorld {
 			.filter(|mutation| matches!(mutation.action, LifecycleAction::Unregister))
 			.map(|mutation| mutation.handle)
 			.collect();
-		let mut invalidated_slots = BTreeSet::new();
+		let mut invalidated_slots = BTreeMap::new();
 
-		for mutation in mutations {
+		for (mutation_index, mutation) in mutations.iter().enumerate() {
 			let slot = mutation.handle.slot as usize;
 			match mutation.action {
 				LifecycleAction::Register => {
@@ -1399,27 +1399,32 @@ impl DogmosWorld {
 						!= Some(mutation.handle.generation)
 						|| self.mixtures[slot].mixture.is_none();
 					if replace {
-						self.invalidate_continuations_for_mixture_slot(mutation.handle.slot);
 						self.mixtures[slot].generation = Some(mutation.handle.generation);
 						self.mixtures[slot].mixture = Versioned::new(Some(MixtureRecord::new()));
-						invalidated_slots.insert(mutation.handle.slot);
+						invalidated_slots
+							.entry(mutation.handle.slot)
+							.or_insert(mutation_index);
 						changed = true;
 					}
 				}
 				LifecycleAction::Unregister => {
-					self.invalidate_continuations_for_mixture_slot(mutation.handle.slot);
 					self.mixtures[slot].mixture = Versioned::default();
-					invalidated_slots.insert(mutation.handle.slot);
+					invalidated_slots
+						.entry(mutation.handle.slot)
+						.or_insert(mutation_index);
 					changed = true;
 				}
 			}
 		}
 		if !invalidated_slots.is_empty() {
+			self.invalidate_continuations(&invalidated_slots, |continuation| {
+				Some(continuation.mixture.slot)
+			});
 			#[cfg(test)]
 			{
 				self.mixture_edge_filter_passes += 1;
 			}
-			for slot in invalidated_slots {
+			for slot in invalidated_slots.into_keys() {
 				self.remove_incident_mixture_edges(slot);
 			}
 			self.graph = None;
@@ -1529,7 +1534,8 @@ impl DogmosWorld {
 				.map_err(|_| world_allocation_failed())?;
 		}
 
-		for mutation in mutations {
+		let mut invalidated_slots = BTreeMap::new();
+		for (mutation_index, mutation) in mutations.iter().enumerate() {
 			let turf_handle = match mutation {
 				TurfLifecycleMutation::Register { handle, .. }
 				| TurfLifecycleMutation::Unregister { handle } => *handle,
@@ -1544,8 +1550,10 @@ impl DogmosWorld {
 							.turf
 							.as_ref()
 							.is_none_or(|turf| turf.mixture != *mixture);
-					if invalidates_continuation {
-						self.invalidate_continuations_for_turf_slot(handle.slot);
+					if invalidates_continuation && !self.continuations.is_empty() {
+						invalidated_slots
+							.entry(handle.slot)
+							.or_insert(mutation_index);
 					}
 					if replaces_generation {
 						self.deactivate_turf_heat_slot(handle.slot);
@@ -1579,7 +1587,11 @@ impl DogmosWorld {
 					}
 				}
 				TurfLifecycleMutation::Unregister { handle } => {
-					self.invalidate_continuations_for_turf_slot(handle.slot);
+					if !self.continuations.is_empty() {
+						invalidated_slots
+							.entry(handle.slot)
+							.or_insert(mutation_index);
+					}
 					self.deactivate_turf_heat_slot(handle.slot);
 					self.turfs[handle.slot as usize].turf = Versioned::default();
 					self.remove_incident_turf_edges(handle.slot);
@@ -1587,6 +1599,9 @@ impl DogmosWorld {
 				}
 			}
 		}
+		self.invalidate_continuations(&invalidated_slots, |continuation| {
+			continuation.turf.map(|turf| turf.slot)
+		});
 		if !mutations.is_empty() {
 			self.turf_graph = None;
 		}
@@ -2966,7 +2981,20 @@ impl DogmosWorld {
 			// commit_stage_diffusion()'s return is a count of committed FDM turf mixtures, not an
 			// equalize count - it used to be misreported here as produced_equalize_seeds, which
 			// would have collided with the real count now returned by the Equalize stage below.
-			self.commit_stage_diffusion()?;
+			if self.commit_stage_diffusion()?.is_none() {
+				// DM may mutate authoritative gas between bounded stage chunks. The
+				// publication guard has kept every old candidate invisible. Recollect
+				// inputs on the next request under the SAME cursor identity; do not
+				// retry inside this request or discard the accepted gameplay write.
+				self.stage_cursor.as_mut().unwrap().next_frontier_index = 0;
+				return Ok(StageChunkResult {
+					work_items,
+					pending: true,
+					remaining_estimate: u32::try_from(self.frontier.committed().len())
+						.unwrap_or(u32::MAX),
+					..StageChunkResult::default()
+				});
+			}
 			self.stage_cursor = None;
 			return Ok(StageChunkResult {
 				work_items,
@@ -3325,7 +3353,7 @@ impl DogmosWorld {
 		Ok(())
 	}
 
-	fn commit_stage_diffusion(&mut self) -> Result<u32, WorldError> {
+	fn commit_stage_diffusion(&mut self) -> Result<Option<u32>, WorldError> {
 		let mut state = self
 			.stage_diffusion
 			.take()
@@ -3333,15 +3361,13 @@ impl DogmosWorld {
 		let work_items = u32::try_from(state.mixtures.len())
 			.map_err(|_| WorldError::State("turf count exceeds u32".into()))?;
 		if !state.publication.publish() {
-			return Err(WorldError::StageConflict(
-				StageConflictReason::ActiveStageMutation {
-					operation: "publish diffusion after a concurrent mixture write",
-				},
-			));
+			state.clear();
+			self.stage_diffusion = Some(state);
+			return Ok(None);
 		}
 		state.clear();
 		self.cached_diffusion = Some(state);
-		Ok(work_items)
+		Ok(Some(work_items))
 	}
 
 	fn prepare_stage_heat_turf(
@@ -4732,6 +4758,12 @@ impl DogmosWorld {
 		})
 	}
 
+	/// Whether this exact token still owns a suspended reaction in this world.
+	/// Lifecycle changes may invalidate it even when its owner's final handle is unchanged.
+	pub fn is_reaction_continuation_pending(&self, token: ReactionContinuationToken) -> bool {
+		self.require_continuation(token).is_ok()
+	}
+
 	fn require_continuation(
 		&self,
 		token: ReactionContinuationToken,
@@ -4778,27 +4810,52 @@ impl DogmosWorld {
 		Ok(())
 	}
 
-	fn invalidate_continuations_for_mixture_slot(&mut self, mixture_slot: u32) {
-		for (slot, entry) in self.continuations.iter_mut().enumerate() {
+	fn invalidate_continuations(
+		&mut self,
+		invalidated_slots: &BTreeMap<u32, usize>,
+		owner_slot: impl Fn(&ReactionContinuation) -> Option<u32>,
+	) {
+		if invalidated_slots.is_empty() {
+			return;
+		}
+		if invalidated_slots.len() == 1 {
+			let (&owner, _) = invalidated_slots.first_key_value().unwrap();
+			// One owner already has arena-slot order; avoid tree lookups and sorting per match.
+			for (slot, entry) in self.continuations.iter_mut().enumerate() {
+				if entry.continuation.as_ref().and_then(&owner_slot) == Some(owner) {
+					entry.continuation = None;
+					self.free_continuations.push(slot as u32);
+				}
+			}
+			return;
+		}
+		let first_free = self.free_continuations.len();
+		// The caller reserves enough free-list capacity before committing the lifecycle batch.
+		// Visit the arena once, instead of once per invalidated owner.
+		for (slot, entry) in self.continuations.iter().enumerate() {
 			if entry
 				.continuation
 				.as_ref()
-				.is_some_and(|continuation| continuation.mixture.slot == mixture_slot)
+				.and_then(&owner_slot)
+				.is_some_and(|owner| invalidated_slots.contains_key(&owner))
 			{
-				entry.continuation = None;
 				self.free_continuations.push(slot as u32);
 			}
 		}
-	}
-
-	fn invalidate_continuations_for_turf_slot(&mut self, turf_slot: u32) {
-		for (slot, entry) in self.continuations.iter_mut().enumerate() {
-			if entry.continuation.as_ref().is_some_and(|continuation| {
-				continuation.turf.is_some_and(|turf| turf.slot == turf_slot)
-			}) {
-				entry.continuation = None;
-				self.free_continuations.push(slot as u32);
-			}
+		// Preserve the old mutation-order, then arena-slot-order free list exactly. Token reuse
+		// pops from this list, so a global arena scan alone would change subsequent token IDs.
+		self.free_continuations[first_free..].sort_unstable_by_key(|&slot| {
+			let owner = owner_slot(
+				self.continuations[slot as usize]
+					.continuation
+					.as_ref()
+					.expect("only live continuations were queued"),
+			)
+			.expect("queued continuation has an invalidated owner");
+			(invalidated_slots[&owner], slot)
+		});
+		for &slot in &self.free_continuations[first_free..] {
+			self.continuations[slot as usize].continuation = None;
 		}
 	}
 

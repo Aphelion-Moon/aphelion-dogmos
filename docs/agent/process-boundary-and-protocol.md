@@ -33,11 +33,11 @@ atomically; when a batch cannot fit, return typed backpressure and do not partia
 critical events. Drain through a fixed shim buffer with monotonically increasing sequence numbers,
 bounded batch size, remaining depth, high water, and rejection telemetry. A diagnostic event kind
 may qualify the transport, but production migration requires explicit event kinds and equivalence
-tests for every existing main-thread gameplay effect. Protocol v3's exact 64-byte envelope and
-implemented event inventory are retained by protocol v4 and defined in
+tests for every existing main-thread gameplay effect. The current 64-byte event layout and
+implemented event inventory are defined in
 [Gameplay events](gameplay-events.md).
 
-Protocol v4 adds the fixed-width mixture-state batch required to seed nonzero authoritative service
+Protocol v4 introduced the fixed-width mixture-state batch required to seed nonzero authoritative service
 state. Every record carries one slot/generation handle, an expected revision, temperature, volume,
 and all 32 gas slots. The service validates the complete counted batch, rejects stale revisions,
 duplicates, invalid physical values, and reserved fields, then commits every record or none. Slot

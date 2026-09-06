@@ -57,8 +57,13 @@ impl<K: SlotKey, V> SlotIndex<K, V> {
 		None
 	}
 	pub(crate) fn get(&self, key: &K) -> Option<&V> {
-		let (stored, value) = &self.values[self.entry_index(key.slot())?];
-		(stored == key).then_some(value)
+		Some(&self.values[self.index_of(key)?].1)
+	}
+	/// Dense position for a live key, stable across inserts until `clear`.
+	/// Replacing a slot's generation preserves its position but invalidates the old key.
+	pub(crate) fn index_of(&self, key: &K) -> Option<usize> {
+		let index = self.entry_index(key.slot())?;
+		(self.values[index].0 == *key).then_some(index)
 	}
 	pub(crate) fn contains_key(&self, key: &K) -> bool {
 		self.get(key).is_some()
@@ -110,6 +115,38 @@ impl<K: SlotKey> FromIterator<K> for SlotSet<K> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	fn dense_positions_reject_stale_keys_and_remain_stable_until_clear() {
+		let mut index = SlotIndex::new();
+		let first = TurfHandle {
+			slot: 900,
+			generation: 1,
+		};
+		let second = TurfHandle {
+			slot: 7,
+			generation: 1,
+		};
+		index.insert(first, 10);
+		let first_position = index.index_of(&first).unwrap();
+		index.insert(second, 20);
+		assert_eq!(index.index_of(&first), Some(first_position));
+		let second_position = index.index_of(&second).unwrap();
+		assert_ne!(first_position, second_position);
+		assert!(first_position < 2 && second_position < 2);
+		let replacement = TurfHandle {
+			generation: 2,
+			..first
+		};
+		index.insert(replacement, 30);
+		assert_eq!(index.index_of(&first), None);
+		assert_eq!(index.index_of(&replacement), Some(first_position));
+		assert_eq!(index.index_of(&second), Some(second_position));
+		index.clear();
+		index.insert(second, 40);
+		assert_eq!(index.index_of(&replacement), None);
+		assert_eq!(index.index_of(&first), None);
+		assert_eq!(index.index_of(&second), Some(0));
+	}
 	#[test]
 	fn reuse_rejects_old_generations_and_clears_only_live_entries() {
 		let mut index = SlotIndex::new();

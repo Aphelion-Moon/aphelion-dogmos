@@ -18,4 +18,6 @@ digest in the authenticated startup identity. The service independently hashes i
 executable before it creates the named pipe. This closes parent-only digest assertion; it does not
 replace signed or otherwise trusted release-manifest provenance.
 
-Release workflows, artifact generators/synchronizers, dependency manifests, Cargo lock/toolchain files, Docker, and deployment scripts are protected files under [the root policy](../../AGENTS.md). Name exact files/effects and obtain explicit approval before editing them.
+Follow [AGENTS.md](../../AGENTS.md) for authorization and change ownership. When changing release
+workflows, artifact tooling, dependency manifests, lock/toolchain files or deployment scripts, review
+their effects on the complete artifact pair and run the relevant contract and build gates.

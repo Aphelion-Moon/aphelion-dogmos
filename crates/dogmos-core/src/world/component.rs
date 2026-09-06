@@ -143,6 +143,12 @@ impl ComponentKernel {
 				generation: 0,
 			}))
 	}
+	fn current_turf_mixture(&self, slot: u32) -> Result<MixtureHandle, WorldError> {
+		let turf_handle = self.current_turf_handle(slot)?;
+		self.require_turf_handle(turf_handle)?
+			.mixture
+			.ok_or(WorldError::TurfMissingMixture(turf_handle))
+	}
 	pub(super) async fn compute_excited_groups(
 		&self,
 		transaction: &mut IndexedTransaction<MixtureRecord>,
@@ -309,29 +315,35 @@ impl ComponentKernel {
 				values
 			})
 			.unwrap_or([0.0; MAX_GAS_SLOTS]);
-		let mut visited = BTreeSet::new();
+		// Captured turfs have stable dense positions for this computation. Tracking
+		// them here avoids allocating tree nodes without indexing sparse slots.
+		let mut visited = vec![false; turf_handles.len()];
 		let mut work_items = 0_u32;
 		for &start in turf_handles.iter() {
 			cooperate().await;
-			if self.require_turf_handle(start)?.mixture.is_none() || !visited.insert(start.slot) {
+			let start_index = self.turfs.index_of(&start).expect("captured turf");
+			if self.require_turf_handle(start)?.mixture.is_none()
+				|| std::mem::replace(&mut visited[start_index], true)
+			{
 				continue;
 			}
 			cooperate().await;
 			let mut component = vec![start.slot];
-			let mut parents = BTreeMap::<u32, u32>::new();
+			let mut parents = vec![0_usize];
 			let mut queue_index = 0;
 			while queue_index < component.len() {
 				cooperate().await;
 				let current = component[queue_index];
 				queue_index += 1;
 				for neighbor in self.topology.gas_neighbors(active_by_slot[&current]) {
-					if active_by_slot.get(&neighbor.handle.slot) != Some(&neighbor.handle)
-						|| component.len() >= self.equalize_hard_turf_limit as usize
-					{
+					let Some(neighbor_index) = self.turfs.index_of(&neighbor.handle) else {
+						continue;
+					};
+					if component.len() >= self.equalize_hard_turf_limit as usize {
 						continue;
 					}
-					if visited.insert(neighbor.handle.slot) {
-						parents.insert(neighbor.handle.slot, current);
+					if !std::mem::replace(&mut visited[neighbor_index], true) {
+						parents.push(queue_index - 1);
 						component.push(neighbor.handle.slot);
 					}
 				}
@@ -342,15 +354,10 @@ impl ComponentKernel {
 			let mut component_moles = 0.0;
 			let mut minimum_moles = f32::INFINITY;
 			let mut maximum_moles = 0.0_f32;
-			let mut mixtures_by_turf = BTreeMap::new();
 			let mut immutable_turfs = BTreeSet::new();
 			for turf_slot in &component {
 				cooperate().await;
-				let turf_handle = self.current_turf_handle(*turf_slot)?;
-				let mixture_handle = self
-					.require_turf_handle(turf_handle)?
-					.mixture
-					.ok_or(WorldError::TurfMissingMixture(turf_handle))?;
+				let mixture_handle = self.current_turf_mixture(*turf_slot)?;
 				let mixture = self.require_handle(mixture_handle)?;
 				if mixture.immutable {
 					immutable_turfs.insert(*turf_slot);
@@ -366,17 +373,15 @@ impl ComponentKernel {
 				component_moles += moles;
 				minimum_moles = minimum_moles.min(moles);
 				maximum_moles = maximum_moles.max(moles);
-				mixtures_by_turf.insert(*turf_slot, mixture_handle);
 				transaction
 					.touch(mixture_handle, mixture.revision, mixture)
 					.map_err(transaction_world_error)?;
 			}
 			if !immutable_turfs.is_empty() {
-				if maximum_moles >= 10.0 && !mixtures_by_turf.is_empty() {
+				if maximum_moles >= 10.0 && immutable_turfs.len() < component.len() {
 					self.stage_decompression_component(
 						&component,
 						&immutable_turfs,
-						&mixtures_by_turf,
 						component_moles,
 						transaction,
 						staged_events,
@@ -394,25 +399,22 @@ impl ComponentKernel {
 				continue;
 			}
 			let average_moles = component_moles / component.len() as f32;
-			let mut subtree_balance = BTreeMap::new();
+			let mut subtree_balance = Vec::with_capacity(component.len());
 			for slot in &component {
 				cooperate().await;
-				let handle = mixtures_by_turf[slot];
-				subtree_balance.insert(
-					*slot,
+				let handle = self.current_turf_mixture(*slot)?;
+				subtree_balance.push(
 					total_moles(transaction.candidate(handle).expect("component mixture"))
 						- average_moles,
 				);
 			}
 			let mut flows = Vec::<(u32, u32, f32)>::new();
-			for child in component.iter().copied().skip(1).rev() {
+			for child_index in (1..component.len()).rev() {
 				cooperate().await;
-				let parent = parents[&child];
-				let balance = subtree_balance[&child];
-				flows.push((child, parent, balance));
-				*subtree_balance
-					.get_mut(&parent)
-					.expect("component parent has a balance") += balance;
+				let parent_index = parents[child_index];
+				let balance = subtree_balance[child_index];
+				flows.push((component[child_index], component[parent_index], balance));
+				subtree_balance[parent_index] += balance;
 			}
 			for &(child, parent, balance) in flows.iter().filter(|(_, _, balance)| *balance > 0.0) {
 				cooperate().await;
@@ -420,7 +422,6 @@ impl ComponentKernel {
 					child,
 					parent,
 					balance,
-					&mixtures_by_turf,
 					&specific_heats,
 					transaction,
 					staged_events,
@@ -434,7 +435,6 @@ impl ComponentKernel {
 					parent,
 					child,
 					-balance,
-					&mixtures_by_turf,
 					&specific_heats,
 					transaction,
 					staged_events,
@@ -451,7 +451,6 @@ impl ComponentKernel {
 		&self,
 		component: &[u32],
 		immutable_turfs: &BTreeSet<u32>,
-		mixtures_by_turf: &BTreeMap<u32, MixtureHandle>,
 		component_moles: f32,
 		transaction: &mut IndexedTransaction<MixtureRecord>,
 		events: &mut Vec<WorldEvent>,
@@ -485,15 +484,27 @@ impl ComponentKernel {
 			}
 		}
 
-		let mutable_count = mixtures_by_turf.len();
+		let mutable_count = component.len() - immutable_turfs.len();
 		if mutable_count == 0 {
 			return Ok(());
 		}
 		let frontage = immutable_turfs.len().clamp(1, 4) as f32;
 		let removal_per_turf = component_moles / mutable_count as f32 * frontage / 4.0;
-		let mut local_losses = BTreeMap::<u32, f32>::new();
-		for (&turf_slot, &mixture_handle) in mixtures_by_turf {
+		struct DecompressionLoss {
+			local: f32,
+			accumulated: f32,
+		}
+		// The charged traversal fills this vector in slot order, allowing binary
+		// lookups without allocating or cloning a loss tree.
+		let mut losses = Vec::with_capacity(mutable_count);
+		// The component set preserves the old slot-sorted mutable traversal. Charge
+		// skipped immutable turfs too so a long boundary cannot monopolize a poll.
+		for &turf_slot in &component_slots {
 			cooperate().await;
+			if immutable_turfs.contains(&turf_slot) {
+				continue;
+			}
+			let mixture_handle = self.current_turf_mixture(turf_slot)?;
 			let mixture = transaction
 				.candidate_mut(mixture_handle)
 				.expect("component mixtures were touched before decompression");
@@ -507,7 +518,13 @@ impl ComponentKernel {
 				*amount -= quantized_removal(*amount, ratio);
 			}
 			let lost = before - total_moles(mixture);
-			local_losses.insert(turf_slot, lost);
+			losses.push((
+				turf_slot,
+				DecompressionLoss {
+					local: lost,
+					accumulated: lost,
+				},
+			));
 		}
 		for left in component_slots.iter().copied() {
 			cooperate().await;
@@ -531,16 +548,18 @@ impl ComponentKernel {
 			}
 		}
 
-		let mut accumulated_losses = local_losses.clone();
 		for &source_slot in queue.iter().rev() {
 			cooperate().await;
-			let Some(&source_handle) = mixtures_by_turf.get(&source_slot) else {
+			if immutable_turfs.contains(&source_slot) {
 				continue;
-			};
+			}
 			let Some(&target_slot) = parents.get(&source_slot) else {
 				continue;
 			};
-			let pressure_moles = accumulated_losses[&source_slot];
+			let source_index = losses
+				.binary_search_by_key(&source_slot, |&(slot, _)| slot)
+				.expect("mutable source has a local loss");
+			let pressure_moles = losses[source_index].1.accumulated;
 			if pressure_moles > 0.0 {
 				events.push(WorldEvent::PressureDifference {
 					source: self.current_turf_handle(source_slot)?,
@@ -549,33 +568,33 @@ impl ComponentKernel {
 				});
 			}
 			if immutable_turfs.contains(&target_slot) {
-				let moles_lost = local_losses[&source_slot];
+				let moles_lost = losses[source_index].1.local;
 				if moles_lost > 0.0 {
 					events.push(WorldEvent::DecompressionFloorRip {
 						turf: self.current_turf_handle(source_slot)?,
 						moles_lost,
 					});
 				}
-			} else if mixtures_by_turf.contains_key(&target_slot) {
-				*accumulated_losses.entry(target_slot).or_default() += pressure_moles;
+			} else if component_slots.contains(&target_slot) {
+				let target_index = losses
+					.binary_search_by_key(&target_slot, |&(slot, _)| slot)
+					.expect("mutable target has a local loss");
+				losses[target_index].1.accumulated += pressure_moles;
 			}
-			let _ = source_handle;
 		}
 		Ok(())
 	}
-	#[allow(clippy::too_many_arguments)]
 	fn stage_equalization_transfer(
 		&self,
 		source_slot: u32,
 		target_slot: u32,
 		amount: f32,
-		mixtures_by_turf: &BTreeMap<u32, MixtureHandle>,
 		specific_heats: &[f32; MAX_GAS_SLOTS],
 		transaction: &mut IndexedTransaction<MixtureRecord>,
 		events: &mut Vec<WorldEvent>,
 	) -> Result<(), WorldError> {
-		let source_handle = mixtures_by_turf[&source_slot];
-		let target_handle = mixtures_by_turf[&target_slot];
+		let source_handle = self.current_turf_mixture(source_slot)?;
+		let target_handle = self.current_turf_mixture(target_slot)?;
 		if source_handle == target_handle {
 			return Err(WorldError::DuplicateMutableTurfMixture(source_handle));
 		}

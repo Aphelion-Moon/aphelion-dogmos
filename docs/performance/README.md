@@ -34,16 +34,97 @@ cargo +1.98.0 run --release --locked -p dogmos-perf --example core_stage_allocat
 ```
 
 The probe constructs corridor, grid, and three-layer multiz fixtures at 1,000, 10,000, and 100,000
-turfs. It resets an atomic `System` allocator wrapper after each fixture is built and measures one
-complete process-turfs, turf-heat, equalize, or excited-groups stage. The CSV reports allocations,
+turfs. It measures three successive cycles of process-turfs, turf-heat, equalize, excited-groups,
+and React, resetting an atomic `System` allocator wrapper before each cycle. React uses an empty
+reaction inventory. The current CSV has 135 rows and reports allocations,
 deallocations, allocated and deallocated bytes, charged work items, a final-state and ordered-event
 transcript hash, and the active reusable-vector capacity lower bound. Allocation counts rank
 allocation-removal work; they are not wall-time acceptance evidence.
 
 `reusable_workset_bytes` is a lower bound over active vector capacities. It includes the complete
 four-field heat-edge tuple and the component transaction's slot index, bitset, and dense entries;
-it excludes maps, sets, and allocator metadata. Stage-owned state is dropped when that stage
-commits; retained event capacity can remain visible until events are drained.
+it excludes tree nodes and allocator metadata. Reusable stage buffers retain their capacity after
+a successful commit; cancellation can discard in-flight component storage. Retained event capacity
+can remain visible until events are drained.
+
+## Core stage latency probe
+
+```powershell
+cargo +1.98.0 run --release --locked --offline --target x86_64-pc-windows-msvc -p dogmos-perf --example core_stage_latency -- --output "tmp/dogmos-perf/core-latency.csv"
+```
+
+This probe uses the normal allocator and the same shared fixtures and state/event hashing as the
+allocation probe. Only calls to `process_stage_chunk_cancellable` are timed. Fixture setup, sample
+recording, percentile calculation, hashing and CSV output are outside the timed intervals. Samples
+use a preallocated buffer; exceeding 8,192 chunks fails the probe instead of running indefinitely.
+
+Each row reports summed stage-call nanoseconds and nearest-rank p50/p95/p99/max **chunk** latency,
+plus chunk count, work count and a decimal state/event hash. Allocation CSV hashes are hexadecimal;
+normalize their numeric representation before comparing. Small stages may contain one chunk, so
+all their quantiles coincide. These are synthetic native wall-time observations, subject to host
+scheduling and cache effects; they are not DreamDaemon tick or IPC acceptance results. Retain at
+least three controls and candidates with identical workload/source identities, and compare each
+row's work and hash before interpreting latency.
+
+The ordinary workspace tests execute the probe's literal percentile and two-turf diffusion checks
+through `crates/dogmos-perf/tests/core_stage_latency.rs`. See
+[the slot-storage comparison](2026-09-06-stage-latency.md) for a controlled use of this probe.
+The subsequent [equalization vector comparison](2026-09-06-equalize-vectors.md) records allocation
+savings alongside mixed scheduling and tail-latency evidence.
+
+On Windows, append `--thread-cycles` to record calling-thread CPU cycles alongside wall time:
+
+```powershell
+cargo +1.98.0 run --release --locked --offline --target x86_64-pc-windows-msvc -p dogmos-perf --example core_stage_latency -- --output "tmp/dogmos-perf/core-cycles.csv" --thread-cycles
+```
+
+The summary adds total and p50/p95/p99/max chunk cycle counts. `core-cycles.chunks.csv` contains
+paired wall/cycle samples in their original chunk order. Read a companion file only with the
+corresponding summary containing cycle values; diagnostics disabled means blank cycle fields.
+The option fails explicitly on unsupported platforms or counter errors.
+
+[`QueryThreadCycleTime`](https://learn.microsoft.com/en-us/windows/win32/api/realtimeapiset/nf-realtimeapiset-querythreadcycletime)
+counts calling-thread user/kernel CPU cycles. Do not convert them to elapsed time or compare them
+across different processors as a common time unit. Counter calls sit outside the measured wall
+interval; cycle deltas bracket the clock calls and query-boundary overhead as well as
+stage execution. This diagnostic perturbs execution and does not replace live tick-budget checks.
+The [cycle diagnostic qualification](2026-09-06-thread-cycle-validation.md) records independent raw
+sample validation, deliberate test mutations and the unresolved equalization tail-latency result.
+
+The subsequent [dense visitation comparison](2026-09-06-equalize-visited.md) removes equalization
+visited-tree allocations. Repeated native measurements show lower total equalization work and time,
+while corridor tail observations remain mixed.
+
+The [mixture lookup comparison](2026-09-06-equalize-mixture-lookups.md) removes another equalization
+tree. Allocation traffic falls, and an adjacent paired diagnostic shows lower total native stage
+time; separate-process timings conflict and tail latency remains mixed. Its coverage includes
+repeated active decompression and literal mixture-identity, immutable-gas and event-order tests.
+
+The [decompression loss-storage comparison](2026-09-06-decompression-loss-storage.md) combines local
+loss and accumulated pressure in one record, removing a whole-tree clone between cooperation points.
+
+## Continuation lifecycle probe
+
+```powershell
+cargo +1.98.0 run --release --locked --offline --target x86_64-pc-windows-msvc -p dogmos-perf --example continuation_lifecycle -- --output "tmp/dogmos-perf/continuation-lifecycle.csv"
+```
+
+This probe suspends one real DM reaction per turf, then times only a mixture/turf lifecycle batch.
+It emits 20 cases covering 1,000/10,000 continuations, one-owner/half-owner batches, unregister,
+generation replacement, reassignment and no-op registration. Outside the timed call it validates
+callbacks, snapshots, exact token reuse and survivor resumption. Compare all non-timing columns
+across at least three matched controls and candidates before interpreting elapsed nanoseconds.
+The workload assertions also execute through the ordinary perf integration tests.
+
+The [batched lifecycle comparison](2026-09-06-continuation-lifecycle.md) records large-batch gains,
+small-batch tradeoffs, service stale-callback repair and deliberate test mutations. This synthetic
+core measurement does not establish DreamDaemon tick, IPC or footprint improvements.
+
+The [subsequent IPC qualification](2026-09-06-lifecycle-ipc-qualification.md) adds 1,030 real
+i686-to-x64 lifecycle cycles, exact response checks and verified request-timeout cleanup to the
+maintained process probe. It also records the clean-release prerequisite for paired game testing.
+
+## Historical allocation results
 
 Three fresh release processes on 2026-08-30 produced byte-identical 36-row controls with SHA-256
 `9C28A0C6D019941F66237EB99B221DCF8BA9C29D2E68852829938C1B520EFE30`. At 100,000 turfs,
@@ -75,9 +156,10 @@ bytes, a 69.19-69.22% reduction, and excited-groups allocated 41,732,584-42,783,
 71.56-72.02% reduction. The full evidence and the allocation-count tradeoff are recorded in the
 transaction result document.
 
-Stage-state recycling and server translation scratch were reviewed but not implemented. Retaining
-stage vectors would pin large buffers while leaving the measured per-entry tree/set and transaction
-allocations intact. In the legal IPC control, increasing a lifecycle batch from 1 to 1,024 records
+At the August 30 checkpoint, stage-state recycling and server translation scratch were reviewed but
+not implemented. Stage-state recycling was subsequently implemented; consult the September audit
+and component-storage reports for current allocation/retention evidence. In the historical legal
+IPC control, increasing a lifecycle batch from 1 to 1,024 records
 raised p50 round-trip latency from 31.4 microseconds to 54.7 microseconds; this whole-path delta is
 small beside the 739.5 microsecond p50 1,024-turf service stage and does not justify persistent
 per-family translation buffers without more granular profile evidence.

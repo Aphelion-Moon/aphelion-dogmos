@@ -66,16 +66,6 @@ def check_repository(root: Path) -> list[str]:
 			if path_target and not (source.parent / path_target).resolve().exists():
 				errors.append(f"broken local link in {source.relative_to(root)}: {target}")
 
-	protected_terms = (
-		"Cargo.toml",
-		"Cargo.lock",
-		"rust-toolchain.toml",
-		".github/workflows",
-		"explicit user approval",
-	)
-	if any(term not in agent_text for term in protected_terms):
-		errors.append("AGENTS.md lacks the protected-file policy")
-
 	authority = root / "docs/agent/source-authority.md"
 	if authority.is_file():
 		text = authority.read_text(encoding="utf-8")

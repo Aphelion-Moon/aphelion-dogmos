@@ -138,7 +138,7 @@ fn unchanged_temperature_does_not_invalidate_diffusion() {
 }
 
 #[test]
-fn real_write_survives_diffusion_conflict() {
+fn real_write_survives_diffusion_resnapshot() {
 	let (mut world, mixture, request) = paused_diffusion();
 	assert_eq!(
 		world
@@ -149,10 +149,7 @@ fn real_write_survives_diffusion_conflict() {
 			.unwrap(),
 		CommandResult::Applied { updated: 1 }
 	);
-	assert!(matches!(
-		finish(&mut world, request),
-		Err(WorldError::StageConflict(_))
-	));
+	finish(&mut world, request).expect("accepted gameplay writes must restart stale diffusion");
 	let snapshot = world.snapshot(mixture).unwrap();
 	assert_eq!(
 		(
@@ -160,8 +157,74 @@ fn real_write_survives_diffusion_conflict() {
 			snapshot.temperature,
 			snapshot.total_moles
 		),
-		(2, 320.0, 10.0)
+		(3, 320.0, 10.0)
 	);
+}
+
+#[test]
+fn repeated_writes_keep_chunks_bounded_and_publish_after_contention_stops() {
+	let (mut world, mixture, request) = paused_diffusion();
+	for temperature in [310.0, 320.0, 330.0] {
+		world
+			.apply_command(Command::SetTemperature {
+				handle: mixture,
+				temperature,
+			})
+			.unwrap();
+		let retry = world
+			.process_stage_chunk_cancellable(request, || false)
+			.unwrap();
+		assert!(retry.pending);
+		assert!(retry.work_items <= request.work_limit);
+		assert_eq!(world.pending_stage_epoch(), Some(request.stage_epoch));
+		assert_eq!(world.snapshot(mixture).unwrap().temperature, temperature);
+		// Recollect the single input, then interrupt it again before publication.
+		assert!(
+			world
+				.process_stage_chunk_cancellable(request, || false)
+				.unwrap()
+				.pending
+		);
+	}
+	finish(&mut world, request).unwrap();
+	assert_eq!(world.snapshot(mixture).unwrap().temperature, 330.0);
+	assert_eq!(world.snapshot(mixture).unwrap().total_moles, 10.0);
+}
+
+#[test]
+fn resnapshot_retains_identity_validation_and_cancellation() {
+	for cancel in [false, true] {
+		let (mut world, mixture, request) = paused_diffusion();
+		world
+			.apply_command(Command::SetTemperature {
+				handle: mixture,
+				temperature: 320.0,
+			})
+			.unwrap();
+		assert!(
+			world
+				.process_stage_chunk_cancellable(request, || false)
+				.unwrap()
+				.pending
+		);
+		let invalid_request = StageChunkRequest {
+			stage_epoch: request.stage_epoch + 1,
+			..request
+		};
+		let result = if cancel {
+			world.process_stage_chunk_cancellable(request, || true)
+		} else {
+			world.process_stage_chunk_cancellable(invalid_request, || false)
+		};
+		if cancel {
+			assert!(matches!(result, Err(WorldError::Cancelled)));
+		} else {
+			assert!(matches!(result, Err(WorldError::StageConflict(_))));
+		}
+		assert_eq!(world.pending_stage_epoch(), None);
+		assert_eq!(world.snapshot(mixture).unwrap().temperature, 320.0);
+		assert_eq!(world.snapshot(mixture).unwrap().revision, 2);
+	}
 }
 
 #[test]

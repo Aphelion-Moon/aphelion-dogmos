@@ -7,8 +7,8 @@ use dogmos_byond::{
 	encode_production_mixture_command, encode_production_mixture_lifecycle_batch,
 	encode_production_mixture_state_batch, encode_production_process_metrics,
 	encode_production_reaction_metadata, encode_production_simulation_stage,
-	encode_production_turf_adjacency_batch, encode_production_turf_lifecycle_batch, ClientError,
-	DogmosClient,
+	encode_production_turf_adjacency_batch, encode_production_turf_lifecycle_batch,
+	BoundedDogmosClient, ClientError, DogmosClient,
 };
 use dogmos_process_metrics::sample_current_process;
 use dogmos_protocol::{
@@ -27,6 +27,9 @@ use std::{
 	process::{Child, Command, Stdio},
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
+
+#[path = "support/continuation_lifecycle.rs"]
+mod continuation_lifecycle;
 
 const LEGACY_MIXTURE_TRANSCRIPT: &str =
 	include_str!("../../dogmos-core/tests/fixtures/legacy_mixture_transcript_v1.txt");
@@ -515,7 +518,12 @@ fn main() -> Result<(), Box<dyn Error>> {
 	) {
 		return Err("dogmosd accepted a second concurrent client".into());
 	}
-	client.shutdown()?;
+	let mut client = BoundedDogmosClient::new(client)?;
+	continuation_lifecycle::verify(&mut client)?;
+	assert!(client
+		.round_trip(OperationKind::Shutdown, &[], 0, Duration::from_secs(5))?
+		.is_empty());
+	client.close(Duration::from_secs(1))?;
 	if !service.0.wait()?.success() {
 		return Err("dogmosd did not shut down cleanly".into());
 	}

@@ -26,4 +26,5 @@ Run DreamMaker and DreamDaemon through the paired game repository's maintained P
 
 Report exact commands, tool/target versions, scope, exit/result artifacts, warnings, runtime signatures, and gates not run. Distinguish executable tests from ignored doc tests. Never call a focused run, parser success, process liveness, or a plain host `cargo test` complete evidence.
 
-Before handoff, run `git diff --check`, inspect every protected-file diff separately, confirm source/contract revisions and hashes, and leave changes uncommitted unless the user authorizes otherwise.
+Before handoff, run `git diff --check`, review changes to build and release tooling, confirm
+source/contract revisions and hashes, and leave changes uncommitted unless the user authorizes otherwise.

@@ -1,21 +1,30 @@
 # Architecture and ownership
 
-## Current audited state
+## Legacy and service implementations
 
-The root `dogmos` package builds a `cdylib` loaded into 32-bit DreamDaemon. Process-global arenas, graphs, workers, scratch buffers, gas/reaction registries, and callback queues therefore share DreamDaemon's address space. DM owns datum/turf identity, subsystem scheduling, machinery, gameplay effects, logging, administration, and UI.
+The root `dogmos` package still builds the legacy in-process `cdylib`. When that DLL is used,
+its arenas, graphs, workers, scratch buffers, registries and callback queues share DreamDaemon's
+32-bit address space. It is the migration source, not the shim selected by the paired release
+workflow.
 
-This current state is the migration source, not the intended ownership boundary.
+The [release workflow](../../.github/workflows/build.yml) builds `dogmos-byond` for i686 and
+`dogmos-server` for x86_64 on Windows and Linux. The shim converts BYOND values, registers
+metadata and identity, submits typed requests, validates responses and dispatches gameplay events.
+DM owns datum/turf identity, subsystem cadence, machinery, gameplay effects, administration and UI.
 
-The service prototype now constructs a BYOND-free `dogmos_core::world::DogmosWorld`. It owns the
+The service constructs a BYOND-free `dogmos_core::world::DogmosWorld`. Core owns the
 generation-checked mixture slots, immutable numeric gas-metadata registry, adjacency map, validated
 diffusion graph, reusable input/output buffers, snapshots, and atomic stage commit. Core also owns an
 immutable reaction registry with fixed-width IDs, validated gas requirements, and a compact numeric
-priority order. `dogmos-server` translates fixed-width protocol values and owns the transport/event
-outbox; it no longer owns a duplicate mixture arena. Reaction execution and continuations, Katmos,
-turf heat, the DM registration adapter, and the complete production command surface remain in the
-legacy root crate and are not yet migrated.
+priority order. Its implemented stages include diffusion, equalization, excited groups, turf heat
+and reactions, with generation-checked reaction continuations. `dogmos-server` translates
+fixed-width protocol values and owns transport and callback delivery state; it does not own a
+duplicate mixture arena. Core simulation state and resumable work stay in the 64-bit service.
 
-## Target state
+These are source ownership facts, not a claim of complete gameplay parity or runtime qualification.
+Use the [verification matrix](verification.md) for each candidate artifact pair.
+
+## Ownership boundary
 
 | Component | Owns | Must not own |
 | --- | --- | --- |

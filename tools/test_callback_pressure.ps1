@@ -42,9 +42,9 @@ if ($Cycles -lt 100) {
 $samples = [ordered]@{}
 Push-Location $repositoryRoot
 try {
-	& cargo "+$rustToolchain" build -p dogmos-server --bin dogmosd --target $serverTarget --release --offline
+	& cargo "+$rustToolchain" build -p dogmos-server --bin dogmosd --target $serverTarget --release --locked --offline
 	if ($LASTEXITCODE -ne 0) { throw "x64 dogmosd build failed with exit code $LASTEXITCODE" }
-	& cargo "+$rustToolchain" build -p dogmos-byond --example cross_bitness_probe --target $shimTarget --release --offline
+	& cargo "+$rustToolchain" build -p dogmos-byond --example cross_bitness_probe --target $shimTarget --release --locked --offline
 	if ($LASTEXITCODE -ne 0) { throw "i686 IPC probe build failed with exit code $LASTEXITCODE" }
 
 	$serverPath = Join-Path $repositoryRoot "target\$serverTarget\release\dogmosd.exe"

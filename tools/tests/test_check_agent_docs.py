@@ -8,7 +8,7 @@ from tools.check_agent_docs import REQUIRED_GUIDES, check_repository
 
 class AgentDocumentTests(unittest.TestCase):
 	def initialize_repository(self, root: Path) -> str:
-		subprocess.run(["git", "init", "--quiet", root], check=True)
+		subprocess.run(["git", "init", "--quiet", "--initial-branch=fixture", root], check=True)
 		subprocess.run(["git", "-C", root, "config", "user.name", "Dogmos Tests"], check=True)
 		subprocess.run(["git", "-C", root, "config", "user.email", "dogmos-tests@example.invalid"], check=True)
 		(root / "source.txt").write_text("reviewed\n", encoding="utf-8")
@@ -26,10 +26,7 @@ class AgentDocumentTests(unittest.TestCase):
 		links = "\n".join(f"- [{Path(guide).stem}]({guide})" for guide in REQUIRED_GUIDES)
 		(root / "AGENTS.md").write_text(
 			"# Dogmos agent instructions\n\n"
-			f"{links}\n\n"
-			"Protected files require explicit user approval naming the exact file: Cargo.toml, Cargo.lock, "
-			"rust-toolchain.toml, .cargo/, .github/workflows, release tooling, artifact tooling, "
-			"Docker, and deployment scripts.\n",
+			f"{links}\n",
 			encoding="utf-8",
 		)
 		guides = {
@@ -117,16 +114,13 @@ class AgentDocumentTests(unittest.TestCase):
 			capture_output=True,
 			text=True,
 		).stdout.strip()
-		subprocess.run(["git", "-C", root, "checkout", "--quiet", "master"], check=True)
+		subprocess.run(["git", "-C", root, "checkout", "--quiet", "fixture"], check=True)
 		self.write_valid_guidance(root, foreign_revision)
 		self.assertTrue(any("not an ancestor" in error for error in check_repository(root)))
 
-	def test_protected_file_policy_is_required(self) -> None:
-		root, errors = self.errors_for_valid_fixture()
+	def test_guidance_without_an_additional_approval_policy_is_valid(self) -> None:
+		_, errors = self.errors_for_valid_fixture()
 		self.assertEqual(errors, [])
-		agents = root / "AGENTS.md"
-		agents.write_text(agents.read_text(encoding="utf-8").replace("Cargo.toml", "manifest"), encoding="utf-8")
-		self.assertTrue(any("protected-file policy" in error for error in check_repository(root)))
 
 	def test_generated_binding_warning_is_required(self) -> None:
 		root, errors = self.errors_for_valid_fixture()

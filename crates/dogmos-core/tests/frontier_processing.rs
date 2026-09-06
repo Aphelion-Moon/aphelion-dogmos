@@ -126,6 +126,56 @@ fn run_diffusion_stage(world: &mut DogmosWorld, frontier: &[TurfHandle]) {
 	panic!("diffusion stage did not complete within four chunks");
 }
 
+#[test]
+fn diffusion_resnapshots_connected_inputs_after_gameplay_write() {
+	for chunks_before_write in [1, 2, 3] {
+		let (mut world, turfs, mixtures) = diffusion_pair(10.0, 300.0, 30.0, 300.0);
+		world.begin_frontier(1, 2).unwrap();
+		world.append_frontier(1, 0, &turfs).unwrap();
+		world.commit_frontier(1).unwrap();
+		let request = StageChunkRequest {
+			stage: WorldStage::ProcessTurfs,
+			frontier_epoch: 1,
+			stage_epoch: 1,
+			work_limit: 1,
+			seconds_per_tick: 0.5,
+		};
+		for _ in 0..chunks_before_write {
+			assert!(
+				world
+					.process_stage_chunk_cancellable(request, || false)
+					.unwrap()
+					.pending
+			);
+		}
+		world
+			.apply_command(Command::SetMoles {
+				handle: mixtures[0],
+				gas: GasId(0),
+				amount: 20.0,
+			})
+			.unwrap();
+		let mut completed = false;
+		for _ in 0..32 {
+			let chunk = world
+				.process_stage_chunk_cancellable(request, || false)
+				.expect("a gameplay write is not a fatal stage identity conflict");
+			assert!(chunk.work_items <= request.work_limit);
+			if !chunk.pending {
+				completed = true;
+				break;
+			}
+			assert_eq!(world.snapshot(mixtures[0]).unwrap().total_moles, 20.0);
+			assert_eq!(world.snapshot(mixtures[1]).unwrap().total_moles, 30.0);
+			assert_eq!(world.pending_stage_epoch(), Some(1));
+		}
+		assert!(completed, "quiet inputs must eventually publish");
+		// One conservative 1/8 diffusion step from the NEW 20/30-mole input.
+		assert_eq!(world.snapshot(mixtures[0]).unwrap().total_moles, 21.25);
+		assert_eq!(world.snapshot(mixtures[1]).unwrap().total_moles, 28.75);
+	}
+}
+
 /// Builds a `size` x `size` grid of turfs with 4-connectivity, one gas registered, and the given
 /// moles placed in each cell. Returns the world plus the turf and mixture handles in row order.
 fn diffusion_grid(

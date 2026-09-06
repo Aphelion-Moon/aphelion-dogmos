@@ -164,8 +164,6 @@ impl PendingCallbackEvent {
 struct PendingContinuation {
 	core_token: CoreContinuationToken,
 	deadline_ticks: u64,
-	turf: Option<WireHandle>,
-	mixture: WireHandle,
 	transaction_id: u64,
 	/// False after its sole callback has been delivered to the caller.
 	queued: bool,
@@ -850,18 +848,7 @@ impl ServiceState {
 			.world
 			.apply_lifecycle(&core_mutations)
 			.map_err(map_world_error)?;
-		// Was a linear scan of the mutation slice inside a retain over the continuation map -
-		// O(continuations x mutations) per batch, on the boot path where mutation batches run to
-		// thousands. Build the unregistered-slot set once instead.
-		let unregistered_mixture_slots: std::collections::HashSet<u32> = mutations
-			.iter()
-			.filter(|mutation| mutation.action == LifecycleAction::Unregister)
-			.map(|mutation| mutation.handle.slot)
-			.collect();
-		self.pending_continuations.retain(|_, continuation| {
-			!unregistered_mixture_slots.contains(&continuation.mixture.slot)
-		});
-		self.remove_orphaned_continuation_callbacks();
+		self.remove_invalidated_continuations();
 		Ok(applied)
 	}
 
@@ -899,17 +886,7 @@ impl ServiceState {
 			.world
 			.apply_turf_lifecycle(&core_mutations)
 			.map_err(map_world_error)?;
-		let unregistered_turf_slots: std::collections::HashSet<u32> = mutations
-			.iter()
-			.filter(|mutation| mutation.action == LifecycleAction::Unregister)
-			.map(|mutation| mutation.turf.slot)
-			.collect();
-		self.pending_continuations.retain(|_, continuation| {
-			!continuation
-				.turf
-				.is_some_and(|turf| unregistered_turf_slots.contains(&turf.slot))
-		});
-		self.remove_orphaned_continuation_callbacks();
+		self.remove_invalidated_continuations();
 		Ok(applied)
 	}
 
@@ -1955,8 +1932,6 @@ impl ServiceState {
 		for (index, event) in events.iter().copied().enumerate() {
 			let continuation = match event {
 				WorldEvent::RunDmReaction {
-					turf,
-					mixture,
 					continuation: core_token,
 					..
 				} => {
@@ -1974,8 +1949,6 @@ impl ServiceState {
 						PendingContinuation {
 							core_token,
 							deadline_ticks,
-							turf: turf.map(wire_handle_from_turf),
-							mixture: wire_handle(mixture),
 							transaction_id,
 							queued: true,
 						},
@@ -2096,6 +2069,16 @@ impl ServiceState {
 				.is_none_or(|token| token.id != continuation_id)
 		});
 		self.pending_callback_count -= (before - queue.len()) as u32;
+	}
+
+	fn remove_invalidated_continuations(&mut self) {
+		// Follow the core's completed batch, including replacement and change-then-restore,
+		// without duplicating owner invalidation rules or scanning mutations per token.
+		self.pending_continuations.retain(|_, continuation| {
+			self.world
+				.is_reaction_continuation_pending(continuation.core_token)
+		});
+		self.remove_orphaned_continuation_callbacks();
 	}
 
 	fn remove_orphaned_continuation_callbacks(&mut self) {
@@ -2767,6 +2750,289 @@ mod tests {
 			}])
 			.unwrap();
 		(state, mixture, holder)
+	}
+
+	#[test]
+	fn mixture_generation_changes_remove_queued_and_delivered_continuations() {
+		for delivered in [false, true] {
+			let (mut state, mixture, holder) = dm_reaction_state_with_capacities(16, 4, 4);
+			let other = handle(1, 1);
+			state
+				.apply_lifecycle(&[LifecycleMutation {
+					action: LifecycleAction::Register,
+					handle: other,
+				}])
+				.unwrap();
+			let (transaction, event) = start_direct_continuation(&mut state, mixture, holder);
+			let (other_transaction, other_event) =
+				start_direct_continuation(&mut state, other, holder);
+			let token = event.continuation.unwrap();
+			state.enqueue_diagnostic_callbacks(1).unwrap();
+			if delivered {
+				let mut output = [0; CALLBACK_BATCH_HEADER_LEN + CALLBACK_EVENT_LEN];
+				state
+					.drain_callbacks_at(CallbackScope::Reaction, transaction, 1, &mut output, 10)
+					.unwrap();
+				assert_eq!(
+					CallbackEvent::decode(&output[CALLBACK_BATCH_HEADER_LEN..]).unwrap(),
+					event
+				);
+			}
+			let queued_before = lifecycle_callback_snapshot(&state);
+			state
+				.apply_lifecycle(&[LifecycleMutation {
+					action: LifecycleAction::Register,
+					handle: mixture,
+				}])
+				.unwrap();
+			assert_eq!(lifecycle_callback_snapshot(&state), queued_before);
+			assert!(state
+				.apply_lifecycle(&[
+					LifecycleMutation {
+						action: LifecycleAction::Register,
+						handle: handle(0, 2)
+					},
+					LifecycleMutation {
+						action: LifecycleAction::Unregister,
+						handle: handle(1, 2)
+					},
+				])
+				.is_err());
+			assert_eq!(state.pending_continuation_count(), 2);
+			assert_eq!(state.world.pending_reaction_continuations(), 2);
+			assert_eq!(lifecycle_callback_snapshot(&state), queued_before);
+			state
+				.apply_lifecycle(&[LifecycleMutation {
+					action: LifecycleAction::Register,
+					handle: handle(0, 2),
+				}])
+				.unwrap();
+			assert_eq!(state.world.pending_reaction_continuations(), 1);
+			assert_eq!(state.pending_continuation_count(), 1);
+			assert_eq!(state.pending_callback_count, 2);
+			assert!(!state.reaction_callbacks.contains_key(&transaction));
+			assert_eq!(
+				state.reaction_callbacks[&other_transaction]
+					.callbacks
+					.front()
+					.unwrap()
+					.event,
+				other_event
+			);
+			let before = state.snapshot(other).unwrap();
+			assert_eq!(
+				state.apply_continuation_command_at(
+					token,
+					MixtureCommandRequest::SetMoles {
+						handle: other,
+						gas_id: 0,
+						amount: ScalarValue(9.0)
+					},
+					11
+				),
+				Err(StateError::UnknownContinuation(token))
+			);
+			assert_eq!(state.snapshot(other).unwrap(), before);
+			state
+				.resume_continuation_with_result_at(other_event.continuation.unwrap(), 0, 11)
+				.unwrap();
+			assert_eq!(state.pending_continuation_count(), 0);
+			assert_eq!(state.pending_callback_count, 1);
+		}
+	}
+
+	#[test]
+	fn turf_replacements_remove_only_the_invalidated_general_continuation() {
+		for delivered in [false, true] {
+			for mode in 0..4 {
+				let (mut state, mixture, holder) = dm_reaction_state_with_capacities(16, 4, 4);
+				let other = handle(1, 1);
+				let original_turf = handle(10, 1);
+				let other_turf = handle(11, 1);
+				state
+					.apply_lifecycle(&[LifecycleMutation {
+						action: LifecycleAction::Register,
+						handle: other,
+					}])
+					.unwrap();
+				let registration = WireTurfLifecycleMutation {
+					action: LifecycleAction::Register,
+					turf: original_turf,
+					mixture: Some(mixture),
+				};
+				state
+					.apply_turf_lifecycle(&[
+						registration,
+						WireTurfLifecycleMutation {
+							turf: other_turf,
+							mixture: Some(other),
+							..registration
+						},
+					])
+					.unwrap();
+				state
+					.world
+					.add_frontier(
+						1,
+						&[
+							core_turf_handle(original_turf),
+							core_turf_handle(other_turf),
+						],
+					)
+					.unwrap();
+				assert!(
+					!state
+						.process_stage_chunk_cancellable(
+							SimulationStage::ProcessReactions,
+							1,
+							1,
+							4096,
+							0.5,
+							|| false
+						)
+						.unwrap()
+						.pending
+				);
+				let event = state.general_callbacks.front().unwrap().event;
+				let other_general_event = state.general_callbacks[1].event;
+				let token = event.continuation.unwrap();
+				let (other_transaction, other_event) =
+					start_direct_continuation(&mut state, other, holder);
+				state.enqueue_diagnostic_callbacks(1).unwrap();
+				if delivered {
+					let mut output = [0; CALLBACK_BATCH_HEADER_LEN + CALLBACK_EVENT_LEN];
+					state
+						.drain_callbacks_at(CallbackScope::General, 0, 1, &mut output, 10)
+						.unwrap();
+					assert_eq!(
+						CallbackEvent::decode(&output[CALLBACK_BATCH_HEADER_LEN..]).unwrap(),
+						event
+					);
+				}
+				let queued_before = lifecycle_callback_snapshot(&state);
+				state.apply_turf_lifecycle(&[registration]).unwrap();
+				assert_eq!(lifecycle_callback_snapshot(&state), queued_before);
+				assert!(state
+					.apply_turf_lifecycle(&[
+						WireTurfLifecycleMutation {
+							mixture: None,
+							..registration
+						},
+						WireTurfLifecycleMutation {
+							action: LifecycleAction::Unregister,
+							turf: handle(10, 2),
+							mixture: None
+						},
+					])
+					.is_err());
+				assert_eq!(state.pending_continuation_count(), 3);
+				assert_eq!(lifecycle_callback_snapshot(&state), queued_before);
+				let replacement = match mode {
+					0 => WireTurfLifecycleMutation {
+						turf: handle(10, 2),
+						..registration
+					},
+					1 => WireTurfLifecycleMutation {
+						mixture: None,
+						..registration
+					},
+					_ => WireTurfLifecycleMutation {
+						mixture: Some(other),
+						..registration
+					},
+				};
+				let mut changes = vec![replacement];
+				if mode == 3 {
+					changes.push(registration);
+				}
+				state.apply_turf_lifecycle(&changes).unwrap();
+				assert_eq!(state.world.pending_reaction_continuations(), 2);
+				assert_eq!(state.pending_continuation_count(), 2);
+				assert_eq!(state.pending_callback_count, 3);
+				assert_eq!(state.general_callbacks.len(), 2);
+				assert_eq!(state.general_callbacks[0].event, other_general_event);
+				assert_eq!(
+					state.general_callbacks[1].event.kind,
+					CallbackEventKind::Diagnostic
+				);
+				assert_eq!(
+					state.reaction_callbacks[&other_transaction]
+						.callbacks
+						.front()
+						.unwrap()
+						.event,
+					other_event
+				);
+				assert_eq!(
+					state.resume_continuation_with_result_at(token, 0, 11),
+					Err(StateError::UnknownContinuation(token))
+				);
+				state
+					.resume_continuation_with_result_at(
+						other_general_event.continuation.unwrap(),
+						0,
+						11,
+					)
+					.unwrap();
+				state
+					.resume_continuation_with_result_at(other_event.continuation.unwrap(), 0, 11)
+					.unwrap();
+				assert_eq!(state.pending_continuation_count(), 0);
+				assert_eq!(state.pending_callback_count, 1);
+			}
+		}
+	}
+
+	fn lifecycle_callback_snapshot(state: &ServiceState) -> Vec<(u64, Vec<CallbackEvent>)> {
+		let mut snapshot = vec![(
+			0,
+			state
+				.general_callbacks
+				.iter()
+				.map(|entry| entry.event)
+				.collect(),
+		)];
+		snapshot.extend(
+			state
+				.reaction_callbacks
+				.iter()
+				.map(|(&transaction, queue)| {
+					(
+						transaction,
+						queue.callbacks.iter().map(|entry| entry.event).collect(),
+					)
+				}),
+		);
+		snapshot
+	}
+
+	fn start_direct_continuation(
+		state: &mut ServiceState,
+		mixture: WireHandle,
+		holder: WireHandle,
+	) -> (u64, CallbackEvent) {
+		let MixtureCommandResponse::ReactionProgress {
+			transaction_id,
+			pending: true,
+			..
+		} = state
+			.apply_mixture_command(MixtureCommandRequest::React {
+				handle: mixture,
+				target: holder,
+				reaction_profile_threshold_ms: None,
+			})
+			.unwrap()
+		else {
+			panic!("expected a pending DM reaction");
+		};
+		(
+			transaction_id,
+			state.reaction_callbacks[&transaction_id]
+				.callbacks
+				.front()
+				.unwrap()
+				.event,
+		)
 	}
 
 	#[test]
