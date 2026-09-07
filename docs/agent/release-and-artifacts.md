@@ -13,9 +13,10 @@ Build BYOND-facing artifacts for i686 and service artifacts for x86_64 with the 
 
 Never fetch a mutable branch for production deployment. The paired Meridian-Rift checkout installs artifacts atomically only after manifest, architecture, filename, executable permission, bindings, and hash verification. A missing, truncated, mismatched, or cross-revision member rejects the entire set before game initialization.
 
-At runtime, the shim streams `dogmosd.exe` through Windows CNG SHA-256 before launch and places that
-digest in the authenticated startup identity. The service independently hashes its own current
-executable before it creates the named pipe. This closes parent-only digest assertion; it does not
+At runtime, the shim streams the service executable through SHA-256 before launch and places that
+digest in the authenticated startup identity. Windows uses CNG; other platforms use RustCrypto
+SHA-256 with a fixed 16 KiB read buffer. The service independently hashes its own current executable
+before it creates the local socket. This closes parent-only digest assertion; it does not
 replace signed or otherwise trusted release-manifest provenance.
 
 Follow [AGENTS.md](../../AGENTS.md) for authorization and change ownership. When changing release

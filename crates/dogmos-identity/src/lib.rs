@@ -234,11 +234,19 @@ pub fn sha256_reader(mut reader: impl Read) -> io::Result<[u8; 32]> {
 }
 
 #[cfg(not(windows))]
-pub fn sha256_reader(_reader: impl Read) -> io::Result<[u8; 32]> {
-	Err(io::Error::new(
-		io::ErrorKind::Unsupported,
-		"Dogmos executable hashing currently requires Windows CNG",
-	))
+pub fn sha256_reader(mut reader: impl Read) -> io::Result<[u8; 32]> {
+	use sha2::{Digest, Sha256};
+
+	let mut hash = Sha256::new();
+	let mut buffer = [0_u8; 16 * 1024];
+	loop {
+		let read = reader.read(&mut buffer)?;
+		if read == 0 {
+			break;
+		}
+		hash.update(&buffer[..read]);
+	}
+	Ok(hash.finalize().into())
 }
 
 #[cfg(windows)]
