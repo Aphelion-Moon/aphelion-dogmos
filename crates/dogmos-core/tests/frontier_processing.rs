@@ -2226,6 +2226,251 @@ fn heat_publication_and_cancellation_preserve_both_temperatures() {
 	assert!(completed);
 }
 
+fn heat_contention_pair() -> (DogmosWorld, [TurfHandle; 2], [MixtureHandle; 2]) {
+	let (mut world, turfs, mixtures) = diffusion_pair(10.0, 600.0, 10.0, 300.0);
+	for (handle, temperature) in turfs.into_iter().zip([800.0, 300.0]) {
+		world
+			.apply_turf_heat(&[TurfHeatMutation {
+				handle,
+				state: Some(TurfHeatState {
+					temperature,
+					thermal_conductivity: 0.1,
+					heat_capacity: 100.0,
+					adjacent_to_space: false,
+				}),
+			}])
+			.unwrap();
+	}
+	world
+		.apply_turf_heat_adjacency(&[TurfHeatAdjacencyMutation {
+			left: turfs[0],
+			right: turfs[1],
+			connected: true,
+		}])
+		.unwrap();
+	world.add_frontier(1, &turfs).unwrap();
+	(world, turfs, mixtures)
+}
+
+#[test]
+fn gameplay_write_at_each_heat_yield_retries_without_partial_heat_or_events() {
+	let request = StageChunkRequest {
+		stage: WorldStage::TurfHeat,
+		frontier_epoch: 1,
+		stage_epoch: 1,
+		work_limit: 1,
+		seconds_per_tick: 0.5,
+	};
+	let (mut reference, reference_turfs, reference_mixtures) = heat_contention_pair();
+	reference
+		.apply_command(Command::SetTemperature {
+			handle: reference_mixtures[0],
+			temperature: 900.0,
+		})
+		.unwrap();
+	assert!(
+		!reference
+			.process_stage_chunk_cancellable(
+				StageChunkRequest {
+					work_limit: 1024,
+					..request
+				},
+				|| false
+			)
+			.unwrap()
+			.pending
+	);
+	let expected_heat = reference_turfs.map(|handle| reference.turf_heat(handle).unwrap());
+	let expected_events = reference.pending_events(32).to_vec();
+	assert!(
+		!expected_events.is_empty(),
+		"fixture must exercise event publication"
+	);
+	let mut tested = 0;
+	for pause in 1..128 {
+		let (mut world, turfs, mixtures) = heat_contention_pair();
+		let mut finished = false;
+		for _ in 0..pause {
+			let chunk = world
+				.process_stage_chunk_cancellable(request, || false)
+				.unwrap();
+			assert!(chunk.work_items <= 1);
+			if !chunk.pending {
+				finished = true;
+				break;
+			}
+		}
+		if finished {
+			break;
+		}
+		tested += 1;
+		world
+			.apply_command(Command::SetTemperature {
+				handle: mixtures[0],
+				temperature: 900.0,
+			})
+			.unwrap();
+		for _ in 0..256 {
+			let chunk = world
+				.process_stage_chunk_cancellable(request, || false)
+				.unwrap_or_else(|error| panic!("heat conflict after yield {pause}: {error:?}"));
+			assert!(chunk.work_items <= 1);
+			if !chunk.pending {
+				finished = true;
+				break;
+			}
+			assert_eq!(world.snapshot(mixtures[0]).unwrap().temperature, 900.0);
+			assert_eq!(world.snapshot(mixtures[1]).unwrap().temperature, 300.0);
+			assert_eq!(
+				turfs.map(|handle| world.turf_heat(handle).unwrap().unwrap().temperature),
+				[800.0, 300.0]
+			);
+			assert!(world.pending_events(32).is_empty());
+		}
+		assert!(finished, "heat retry did not finish after yield {pause}");
+		assert_eq!(
+			turfs.map(|handle| world.turf_heat(handle).unwrap()),
+			expected_heat
+		);
+		assert_eq!(world.pending_events(32), expected_events);
+		let mut energy = 0.0;
+		for index in 0..2 {
+			let gas = world.snapshot(mixtures[index]).unwrap();
+			let expected_gas = reference.snapshot(reference_mixtures[index]).unwrap();
+			assert_eq!(gas.temperature, expected_gas.temperature);
+			assert_eq!(gas.total_moles, 10.0);
+			energy += gas.temperature * 200.0
+				+ world.turf_heat(turfs[index]).unwrap().unwrap().temperature * 100.0;
+		}
+		assert!((energy - 350000.0_f32).abs() < 1.0);
+	}
+	assert!(
+		tested > 8,
+		"must cover preparation, computation and publication yields"
+	);
+}
+
+#[test]
+fn repeated_heat_contention_keeps_identity_and_finishes_after_writes_stop() {
+	let (mut world, turfs, mixtures) = heat_contention_pair();
+	let request = StageChunkRequest {
+		stage: WorldStage::TurfHeat,
+		frontier_epoch: 1,
+		stage_epoch: 1,
+		work_limit: 1,
+		seconds_per_tick: 0.5,
+	};
+	let mut last_temperature = 600.0;
+	for tick in 0..128 {
+		let chunk = world
+			.process_stage_chunk_cancellable(request, || false)
+			.unwrap();
+		assert!(chunk.pending);
+		assert!(chunk.work_items <= 1);
+		assert_eq!(world.pending_stage_epoch(), Some(1));
+		if tick % 3 == 0 {
+			last_temperature = 700.0 + tick as f32;
+			world
+				.apply_command(Command::SetTemperature {
+					handle: mixtures[0],
+					temperature: last_temperature,
+				})
+				.unwrap();
+		}
+		assert_eq!(
+			world.snapshot(mixtures[0]).unwrap().temperature,
+			last_temperature
+		);
+		assert_eq!(
+			world.turf_heat(turfs[0]).unwrap().unwrap().temperature,
+			800.0
+		);
+		assert!(world.pending_events(32).is_empty());
+	}
+	let mut finished = false;
+	for _ in 0..128 {
+		let chunk = world
+			.process_stage_chunk_cancellable(request, || false)
+			.unwrap();
+		assert!(chunk.work_items <= 1);
+		if !chunk.pending {
+			finished = true;
+			break;
+		}
+	}
+	assert!(finished);
+	assert_eq!(world.pending_stage_epoch(), None);
+	let energy: f32 = (0..2)
+		.map(|index| {
+			let gas = world.snapshot(mixtures[index]).unwrap();
+			assert_eq!(gas.total_moles, 10.0);
+			gas.temperature * 200.0
+				+ world.turf_heat(turfs[index]).unwrap().unwrap().temperature * 100.0
+		})
+		.sum();
+	assert!((energy - (last_temperature * 200.0 + 170000.0)).abs() < 1.0);
+	assert_eq!(world.pending_events(32).len(), 1);
+}
+
+#[test]
+fn heat_retry_preserves_cancellation_identity_and_backpressure_errors() {
+	for failure in 0..3 {
+		let (mut world, turfs, mixtures) = heat_contention_pair();
+		let request = StageChunkRequest {
+			stage: WorldStage::TurfHeat,
+			frontier_epoch: 1,
+			stage_epoch: 1,
+			work_limit: 1,
+			seconds_per_tick: 0.5,
+		};
+		assert!(
+			world
+				.process_stage_chunk_cancellable(request, || false)
+				.unwrap()
+				.pending
+		);
+		world
+			.apply_command(Command::SetTemperature {
+				handle: mixtures[0],
+				temperature: 900.0,
+			})
+			.unwrap();
+		let result = match failure {
+			0 => world.process_stage_chunk_cancellable(request, || true),
+			1 => world.process_stage_chunk_cancellable(
+				StageChunkRequest {
+					stage_epoch: 2,
+					..request
+				},
+				|| false,
+			),
+			_ => world.process_stage_chunk_cancellable_with_event_limit(
+				StageChunkRequest {
+					work_limit: 1024,
+					..request
+				},
+				0,
+				|| false,
+			),
+		};
+		match failure {
+			0 => assert!(matches!(result, Err(WorldError::Cancelled))),
+			1 => assert!(matches!(result, Err(WorldError::StageConflict(_)))),
+			_ => assert!(matches!(
+				result,
+				Err(WorldError::EventCapacityExceeded { .. })
+			)),
+		}
+		assert_eq!(world.pending_stage_epoch(), None);
+		assert_eq!(world.snapshot(mixtures[0]).unwrap().temperature, 900.0);
+		assert_eq!(
+			turfs.map(|handle| world.turf_heat(handle).unwrap().unwrap().temperature),
+			[800.0, 300.0]
+		);
+		assert!(world.pending_events(32).is_empty());
+	}
+}
+
 #[test]
 fn component_stages_reject_shared_mixtures_before_publishing() {
 	for stage in [WorldStage::Equalize, WorldStage::ExcitedGroups] {

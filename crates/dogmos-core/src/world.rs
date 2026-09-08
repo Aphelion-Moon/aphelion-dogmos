@@ -3110,7 +3110,18 @@ impl DogmosWorld {
 					..StageChunkResult::default()
 				});
 			}
-			let (completed, callback_events) = self.commit_stage_heat(event_capacity)?;
+			let Some((completed, callback_events)) = self.commit_stage_heat(event_capacity)? else {
+				// A gameplay write invalidated this entire atomic heat attempt. Keep
+				// its candidates/events invisible and recollect on the next bounded
+				// request with the same frontier, stage identity and elapsed interval.
+				self.stage_cursor.as_mut().unwrap().next_frontier_index = 0;
+				return Ok(StageChunkResult {
+					work_items,
+					pending: true,
+					remaining_estimate: preparation_len.max(1),
+					..StageChunkResult::default()
+				});
+			};
 			self.stage_cursor = None;
 			return Ok(StageChunkResult {
 				work_items,
@@ -3766,7 +3777,10 @@ impl DogmosWorld {
 		Ok(true)
 	}
 
-	fn commit_stage_heat(&mut self, event_capacity: usize) -> Result<(u32, u32), WorldError> {
+	fn commit_stage_heat(
+		&mut self,
+		event_capacity: usize,
+	) -> Result<Option<(u32, u32)>, WorldError> {
 		let mut state = self
 			.stage_heat
 			.take()
@@ -3787,17 +3801,15 @@ impl DogmosWorld {
 			.map_err(|_| WorldError::State("turf heat count exceeds u32".into()))?;
 		let callback_events = u32::try_from(state.staged_events.len()).unwrap_or(u32::MAX);
 		if !state.publication.publish() {
-			return Err(WorldError::StageConflict(
-				StageConflictReason::ActiveStageMutation {
-					operation: "publish heat after a concurrent write",
-				},
-			));
+			state.clear();
+			self.stage_heat = Some(state);
+			return Ok(None);
 		}
 		std::mem::swap(&mut self.heat_active, &mut state.staged_heat_active);
 		self.events.append(&mut state.staged_events);
 		state.clear();
 		self.cached_heat = Some(state);
-		Ok((completed, callback_events))
+		Ok(Some((completed, callback_events)))
 	}
 
 	fn prepare_stage_reaction_turf(&mut self, turf_handle: TurfHandle) {
