@@ -19,6 +19,9 @@ impl Publication {
 			.compare_exchange(PENDING, PUBLISHED, Ordering::AcqRel, Ordering::Acquire)
 			.is_ok()
 	}
+	pub(super) fn conflicted(&self) -> bool {
+		self.0.load(Ordering::Acquire) == CONFLICTED
+	}
 	fn visible(&self) -> bool {
 		self.0.load(Ordering::Acquire) == PUBLISHED
 	}

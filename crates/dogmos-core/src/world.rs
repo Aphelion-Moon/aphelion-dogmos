@@ -798,7 +798,8 @@ struct StageComponentState {
 	computation: Option<component::Computation>,
 	prepared_turfs: usize,
 	transaction: IndexedTransaction<MixtureRecord>,
-	published_mixtures: SlotSet<MixtureHandle>,
+	published_mixtures: SlotIndex<MixtureHandle, (u32, u32)>,
+	publication_attempt: u32,
 	staged_events: Vec<WorldEvent>,
 	callback_events: u32,
 	components_processed: u32,
@@ -823,7 +824,8 @@ impl StageComponentState {
 			prepared_turfs: 0,
 			transaction: IndexedTransaction::try_new(slot_count, max_entries)
 				.map_err(transaction_world_error)?,
-			published_mixtures: SlotSet::new(),
+			published_mixtures: SlotIndex::new(),
+			publication_attempt: 0,
 			staged_events: Vec::new(),
 			callback_events: 0,
 			components_processed: 0,
@@ -831,10 +833,35 @@ impl StageComponentState {
 	}
 
 	fn mixture_was_published(&self, handle: MixtureHandle) -> bool {
-		self.published_mixtures.contains(&handle)
+		self.published_mixtures
+			.get(&handle)
+			.is_some_and(|&(component, attempt)| {
+				component != self.components_processed || attempt == self.publication_attempt
+			})
 	}
 	fn mark_mixture_published(&mut self, handle: MixtureHandle) {
-		self.published_mixtures.insert(handle);
+		self.published_mixtures.insert(
+			handle,
+			(self.components_processed, self.publication_attempt),
+		);
+	}
+
+	/// Retry only the unpublished component, retaining earlier commits and traversal progress.
+	fn resnapshot_component(&mut self) -> Result<(), WorldError> {
+		self.publication_attempt = self
+			.publication_attempt
+			.checked_add(1)
+			.ok_or_else(|| WorldError::State("component publication attempts exhausted".into()))?;
+		self.publication = Publication::new();
+		self.publication_index = 0;
+		self.computed = false;
+		self.prepared_turfs = 0;
+		self.transaction.clear();
+		self.staged_events.clear();
+		if let Some(kernel) = &mut self.component_kernel {
+			kernel.clear();
+		}
+		Ok(())
 	}
 }
 
@@ -1372,8 +1399,10 @@ impl DogmosWorld {
 		}
 
 		if required_slots > self.mixtures.len() {
+			// Registration normally arrives one mixture at a time. Exact growth can move
+			// the entire service arena for every turf created during map initialization.
 			self.mixtures
-				.try_reserve_exact(required_slots - self.mixtures.len())
+				.try_reserve(required_slots - self.mixtures.len())
 				.map_err(|_| world_allocation_failed())?;
 			self.mixtures
 				.resize_with(required_slots, MixtureSlot::default);
@@ -1524,7 +1553,7 @@ impl DogmosWorld {
 
 		if required_slots > self.turfs.len() {
 			self.turfs
-				.try_reserve_exact(required_slots - self.turfs.len())
+				.try_reserve(required_slots - self.turfs.len())
 				.map_err(|_| world_allocation_failed())?;
 			self.turfs.resize_with(required_slots, TurfSlot::default);
 		}
@@ -4008,11 +4037,17 @@ impl DogmosWorld {
 				state.component_kernel = Some(component::ComponentKernel::new(self));
 			}
 			if state.prepared_turfs < state.queue.len() {
-				let result = state
-					.component_kernel
-					.as_mut()
-					.unwrap()
-					.capture(self, state.queue[state.prepared_turfs]);
+				let turf = state.queue[state.prepared_turfs];
+				let result = state.component_kernel.as_mut().unwrap().capture(self, turf);
+				// Track every captured input, including mixtures that the kernel only reads.
+				// A gameplay write invalidates this component without scanning its read set.
+				if result.is_ok() {
+					if let Some(handle) = self.require_turf_handle(turf)?.mixture {
+						self.mixtures[handle.slot as usize]
+							.mixture
+							.prepare(&state.publication);
+					}
+				}
 				state.prepared_turfs += 1;
 				self.stage_components = Some(state);
 				return result;
@@ -4053,6 +4088,11 @@ impl DogmosWorld {
 			state.computed = true;
 		}
 
+		if state.publication.conflicted() {
+			let result = state.resnapshot_component();
+			self.stage_components = Some(state);
+			return result;
+		}
 		if let Some(entry) = state.transaction.entries().get(state.publication_index) {
 			let handle = entry.handle;
 			let result = (|| {
@@ -6313,6 +6353,45 @@ fn total_moles_from_gases(gases: &[f32; MAX_GAS_SLOTS]) -> f32 {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn sequential_world_registration_has_amortized_arena_growth() {
+		let mut world = DogmosWorld::new(64 * 1024 * 1024);
+		let mut mixture_growths = 0;
+		let mut turf_growths = 0;
+		for slot in 0..4096 {
+			let mixture_capacity = world.mixtures.capacity();
+			let turf_capacity = world.turfs.capacity();
+			let mixture = handle(slot);
+			world
+				.apply_lifecycle(&[LifecycleMutation {
+					action: LifecycleAction::Register,
+					handle: mixture,
+				}])
+				.unwrap();
+			world
+				.apply_turf_lifecycle(&[TurfLifecycleMutation::Register {
+					handle: TurfHandle {
+						slot,
+						generation: 1,
+					},
+					mixture: Some(mixture),
+				}])
+				.unwrap();
+			mixture_growths += usize::from(world.mixtures.capacity() != mixture_capacity);
+			turf_growths += usize::from(world.turfs.capacity() != turf_capacity);
+		}
+		assert!(
+			mixture_growths <= 32,
+			"{mixture_growths} mixture arena growths for 4096 registrations"
+		);
+		assert!(
+			turf_growths <= 32,
+			"{turf_growths} turf arena growths for 4096 registrations"
+		);
+		assert_eq!(world.slot_count(), 4096);
+		assert_eq!(world.snapshot(handle(4095)).unwrap().revision, 0);
+	}
 
 	fn handle(slot: u32) -> MixtureHandle {
 		MixtureHandle {

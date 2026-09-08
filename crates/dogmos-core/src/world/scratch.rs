@@ -90,6 +90,7 @@ impl StageComponentState {
 		self.prepared_turfs = 0;
 		self.transaction.clear();
 		self.published_mixtures.clear();
+		self.publication_attempt = 0;
 		self.staged_events.clear();
 		self.callback_events = 0;
 		self.components_processed = 0;
