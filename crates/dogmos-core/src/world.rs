@@ -3165,7 +3165,18 @@ impl DogmosWorld {
 					..StageChunkResult::default()
 				});
 			}
-			let (_, callback_events) = self.commit_stage_reactions(event_capacity)?;
+			let Some((_, callback_events)) = self.commit_stage_reactions(event_capacity)? else {
+				// A gameplay write invalidated this entire atomic reaction attempt. Keep
+				// candidates, reserved continuations, and events invisible, then recollect
+				// the frontier on the next bounded request with the same stage identity.
+				self.stage_cursor.as_mut().unwrap().next_frontier_index = 0;
+				return Ok(StageChunkResult {
+					work_items,
+					pending: true,
+					remaining_estimate: preparation_len.max(1),
+					..StageChunkResult::default()
+				});
+			};
 			self.stage_cursor = None;
 			return Ok(StageChunkResult {
 				work_items,
@@ -3868,7 +3879,10 @@ impl DogmosWorld {
 		Ok(())
 	}
 
-	fn commit_stage_reactions(&mut self, event_capacity: usize) -> Result<(u32, u32), WorldError> {
+	fn commit_stage_reactions(
+		&mut self,
+		event_capacity: usize,
+	) -> Result<Option<(u32, u32)>, WorldError> {
 		let mut state = self
 			.stage_reactions
 			.take()
@@ -3912,11 +3926,16 @@ impl DogmosWorld {
 		}
 		if !state.publication.publish() {
 			self.cancel_staged_reaction_continuations(&state)?;
-			return Err(WorldError::StageConflict(
-				StageConflictReason::ActiveStageMutation {
-					operation: "publish reactions after a concurrent write",
-				},
-			));
+			state.clear();
+			for continuation in self
+				.continuations
+				.iter()
+				.filter_map(|slot| slot.continuation.as_ref())
+			{
+				state.active_continuations.insert(continuation.mixture);
+			}
+			self.stage_reactions = Some(state);
+			return Ok(None);
 		}
 		let callback_events = state.staged_events.len();
 		for event in state.staged_events.drain(..) {
@@ -3939,10 +3958,10 @@ impl DogmosWorld {
 		let completed = u32::try_from(state.targets.len()).unwrap_or(u32::MAX);
 		state.clear();
 		self.cached_reactions = Some(state);
-		Ok((
+		Ok(Some((
 			completed,
 			u32::try_from(callback_events).unwrap_or(u32::MAX),
-		))
+		)))
 	}
 
 	fn cancel_staged_reaction_continuations(
