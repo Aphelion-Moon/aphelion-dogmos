@@ -151,22 +151,44 @@ Preserved baseline executable SHA-256:
 `499f4c8a2af7475b8453584b3683a3c79d23fa57d881fe8929e711f257b6f439`.
 Measured candidate executable SHA-256:
 `b4580548d58f9aae4057d2a2252d427696e3730f8628a6e161d54e9a757ced92`.
+Lifecycle implementation and evidence were committed as `66b117f`.
+
+## Frontier reservation and failure atomicity
+
+The follow-up found that `begin` reserved target minus capacity rather than target
+minus length. It also resized staging and erased received-range/duplicate state
+before the final reservation. A rejected replacement upload could therefore leave
+the old epoch active with inconsistent contents. The regression was observed red:
+after an injected second reservation failure, the previous two-element upload
+returned a 513-element staging slice.
+
+All three upload buffers now reserve before any logical mutation. The count is
+relative to current length, so clearing/reusing capacity cannot hide an infallible
+allocation in later resize/insert. Incremental add and full commit likewise reserve
+membership/vector storage before publishing contents or epochs. Append's existing
+fallible scratch reservation uses the same error conversion.
+
+Test-only, thread-local failure injection rejects individual reservation attempts;
+it does not emulate global process exhaustion. Tests preserve the previous partial
+upload's range and duplicate checks at every failure point, verify add/commit leave
+both staged and committed views intact, and exercise cleared-buffer growth.
+No-op deltas also keep the materialized view: empty adds and absent removals no longer
+discard a complete cached copy. Remove/re-add ordering remains deterministic.
+
+Actual frontier changes still require a full hashed view rebuild. A compact canonical
+vector would simplify ownership, but naive per-handle removal can turn bulk deltas
+into repeated scans/shifts. That redesign needs a delta-plus-first-read benchmark
+covering both sparse and bulk updates before replacing the current representation.
 
 ## Remaining source-backed audit targets
 
 1. **Frontier reads materialize a complete cached copy after deltas.**
-   `FrontierState::add/remove` discard `committed_view`, even for empty adds or
-   missing-handle removes; the next `committed()` scans and allocates the full view.
+   Effective `FrontierState::add/remove` changes discard `committed_view`; the next
+   `committed()` scans and allocates the full view. No-op invalidations are fixed.
    Existing sparse-removal timing ends before that read. Measure delta plus the
    first stage/read as one operation before choosing a cursor or packed-view redesign.
    Preserve deterministic surviving order and remove/re-add semantics.
-2. **Frontier fallible reservation arithmetic needs a focused correction.**
-   `begin` passes target minus capacity to `try_reserve`, whose additional count is
-   relative to length. After buffer reuse, this can under-reserve, letting later
-   resize/insert use an infallible allocation. Test a cleared reusable buffer followed
-   by growth beyond capacity, including the bitset and duplicate set, with allocation
-   failure coverage before changing the error path.
-3. **Pipenet reconciliation still allocates request-local vectors.**
+2. **Pipenet reconciliation still allocates request-local vectors.**
    The server decoder/response path and `ServiceState::reconcile_pipenet` build handle
    and snapshot vectors per request. Compare with snapshot-batch buffer reuse and
    measure actual pipenet frequency before adding scratch ownership.
@@ -177,6 +199,13 @@ largest remaining structural opportunity in this audit is eliminating repeated
 whole-set work at lifecycle/frontier boundaries while preserving domain authority.
 
 ## Verification and qualification boundaries
+
+The final frontier follow-up passed 470 i686 Windows workspace tests (zero failed,
+two existing ignored doc examples), 341 x64 core/server/protocol/perf tests (zero
+failed/ignored), strict i686 all-target Clippy, formatting and whitespace checks.
+The four frontier regressions passed and independent review found no correctness
+regression. Logs use the `frontier-` prefix. Linux and final paired-game qualification
+are recorded separately from these source-checkpoint results.
 
 The lifecycle follow-up passed i686 Windows workspace tests (466 executable tests,
 zero failed, two existing ignored documentation examples), strict all-target Clippy,
@@ -216,15 +245,15 @@ remains separate evidence.
   intentionally emitted errors for rejected invalid requests; their assertions passed.
 - Independent Luna High source review: **no actionable findings** in topology removal,
   the expiry lower-bound invariant, tests, or the measurement claims.
-- Linux/i686 Linux, candidate paired native-load, DM compile/focused/full suite,
-  boot/soak and repeated DreamDaemon/service workload: **not run for these edits**.
-  The paired checkout currently pins `14f0a4c`, which precedes these uncommitted edits.
-  Exercising that installed pair would not qualify this candidate.
+- Candidate paired native-load, DM compile/focused/full suite, boot/soak and repeated
+  DreamDaemon/service workload were pending at the native source checkpoint. Linux
+  results for the follow-up are recorded above; the earlier release builds below
+  `target/audit-20260909/` must not be mistaken for the final packaged source identity.
 
-Before integration, commit the reviewed native source when authorized, generate and
+Before integration, commit the reviewed native source, generate and
 verify a complete candidate artifact pair through maintained release tooling, then
 run the paired game's supported compile, focused tests, full suite and boot/soak.
-Keep protected artifact installation as its explicit approval gate. Runtime consumers
+Commit and protected artifact installation were authorized for this task. Runtime consumers
 must restart to load a new shim/service pair. Finish with at least three identical
 controls and candidates, separate DreamDaemon and service process measurements, and
 numerical/event equivalence; retain every unrun gate as an unrun gate.

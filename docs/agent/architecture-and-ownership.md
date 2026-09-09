@@ -38,6 +38,11 @@ rotation preserves it. Lifecycle batches can only remove continuations, so the s
 the count before and after a successful batch to decide whether callback ownership cleanup is
 needed. Keep owner matching in core rather than duplicating its generation rules in the service.
 
+Frontier upload replacement, incremental add and commit reserve all required storage before
+changing logical contents or epochs. A reservation failure must leave the prior upload and
+committed view usable. Additional reservation counts are relative to collection length, even
+when a reusable buffer already has spare capacity. No-op deltas preserve the cached read view.
+
 ## Ownership boundary
 
 | Component | Owns | Must not own |

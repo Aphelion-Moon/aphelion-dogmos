@@ -1,8 +1,36 @@
 use crate::metadata::TurfHandle;
 use std::{
+	collections::TryReserveError,
 	collections::{HashMap, HashSet},
 	sync::OnceLock,
 };
+
+fn reserve(operation: impl FnOnce() -> Result<(), TryReserveError>) -> Result<(), FrontierError> {
+	#[cfg(test)]
+	if FAIL_RESERVATION.with(|remaining| match remaining.get() {
+		Some(0) => {
+			remaining.set(None);
+			true
+		}
+		Some(count) => {
+			remaining.set(Some(count - 1));
+			false
+		}
+		None => false,
+	}) {
+		return Err(FrontierError::AllocationFailed);
+	}
+	operation().map_err(|_| FrontierError::AllocationFailed)
+}
+
+fn reserve_vec_to<T>(buffer: &mut Vec<T>, target: usize) -> Result<(), FrontierError> {
+	reserve(|| buffer.try_reserve(target.saturating_sub(buffer.len())))
+}
+
+#[cfg(test)]
+thread_local! {
+	static FAIL_RESERVATION: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum FrontierError {
@@ -82,9 +110,15 @@ impl FrontierState {
 		}
 
 		let expected_usize = expected as usize;
-		self.staging
-			.try_reserve(expected_usize.saturating_sub(self.staging.capacity()))
-			.map_err(|_| FrontierError::AllocationFailed)?;
+		let word_count = expected_usize.div_ceil(u64::BITS as usize);
+		// Reserve every buffer before changing a previous upload. Capacity growth is harmless
+		// on failure; changing its ranges or membership would make the old epoch inconsistent.
+		reserve_vec_to(&mut self.staging, expected_usize)?;
+		reserve_vec_to(&mut self.received_bits, word_count)?;
+		reserve(|| {
+			self.upload_seen
+				.try_reserve(expected_usize.saturating_sub(self.upload_seen.len()))
+		})?;
 		self.staging.resize(
 			expected_usize,
 			TurfHandle {
@@ -92,16 +126,9 @@ impl FrontierState {
 				generation: 0,
 			},
 		);
-		let word_count = expected_usize.div_ceil(u64::BITS as usize);
-		self.received_bits
-			.try_reserve(word_count.saturating_sub(self.received_bits.capacity()))
-			.map_err(|_| FrontierError::AllocationFailed)?;
 		self.received_bits.resize(word_count, 0);
 		self.received_bits.fill(0);
 		self.upload_seen.clear();
-		self.upload_seen
-			.try_reserve(expected_usize.saturating_sub(self.upload_seen.capacity()))
-			.map_err(|_| FrontierError::AllocationFailed)?;
 		self.upload_epoch = Some(epoch);
 		self.upload_expected = expected;
 		self.upload_received = 0;
@@ -144,9 +171,7 @@ impl FrontierState {
 			return Err(FrontierError::RangeAlreadyReceived { offset, count });
 		}
 		let mut incoming = HashSet::new();
-		incoming
-			.try_reserve(handles.len())
-			.map_err(|_| FrontierError::AllocationFailed)?;
+		reserve(|| incoming.try_reserve(handles.len()))?;
 		for handle in handles {
 			if self.upload_seen.contains(handle) || !incoming.insert(*handle) {
 				return Err(FrontierError::DuplicateHandle(*handle));
@@ -180,11 +205,13 @@ impl FrontierState {
 		Ok(&self.staging)
 	}
 
-	/// Commits the staged upload. The only caller (World::commit_frontier) always calls
-	/// `pending()` itself first to check the handles exist as real turfs, so this doesn't
-	/// re-validate - `pending()` allocates a fresh BTreeSet of the whole staging vector on every
-	/// call, and a full-map bootstrap commit was paying that O(n log n) pass and allocation twice.
+	/// Commits an upload after World::commit_frontier validates completeness and live turfs.
+	/// Reserve the replacement membership before publishing either vector or epoch.
 	pub(crate) fn commit_validated(&mut self, epoch: u64) -> Result<u32, FrontierError> {
+		reserve(|| {
+			self.committed_set
+				.try_reserve(self.staging.len().saturating_sub(self.committed_set.len()))
+		})?;
 		std::mem::swap(&mut self.committed, &mut self.staging);
 		self.staging.clear();
 		self.committed_epoch = Some(epoch);
@@ -232,12 +259,19 @@ impl FrontierState {
 				maximum,
 			});
 		}
-		let mut incoming = HashSet::with_capacity(handles.len());
+		if handles.is_empty() {
+			self.committed_epoch = Some(epoch);
+			return Ok(0);
+		}
+		let mut incoming = HashSet::new();
+		reserve(|| incoming.try_reserve(handles.len()))?;
 		for handle in handles {
 			if self.committed_set.contains_key(handle) || !incoming.insert(*handle) {
 				return Err(FrontierError::DuplicateHandle(*handle));
 			}
 		}
+		reserve(|| self.committed.try_reserve(handles.len()))?;
+		reserve(|| self.committed_set.try_reserve(handles.len()))?;
 		self.compact();
 		let start = self.committed.len();
 		self.committed.extend_from_slice(handles);
@@ -276,8 +310,10 @@ impl FrontierState {
 		for handle in handles {
 			self.committed_set.remove(handle);
 		}
-		self.committed_view.take();
-		self.compact();
+		if before != self.committed_set.len() {
+			self.committed_view.take();
+			self.compact();
+		}
 		self.committed_epoch = Some(epoch);
 		Ok((before - self.committed_set.len()) as u32)
 	}
@@ -338,5 +374,115 @@ impl FrontierState {
 	fn is_received(&self, index: u32) -> bool {
 		let index = index as usize;
 		self.received_bits[index / u64::BITS as usize] & (1 << (index % u64::BITS as usize)) != 0
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	fn handle(slot: u32) -> TurfHandle {
+		TurfHandle {
+			slot,
+			generation: 1,
+		}
+	}
+
+	fn fail_at<T>(index: usize, operation: impl FnOnce() -> T) -> T {
+		struct Reset;
+		impl Drop for Reset {
+			fn drop(&mut self) {
+				FAIL_RESERVATION.with(|failure| failure.set(None));
+			}
+		}
+		FAIL_RESERVATION.with(|failure| failure.set(Some(index)));
+		let _reset = Reset;
+		operation()
+	}
+
+	#[test]
+	fn rejected_begin_preserves_previous_partial_upload() {
+		for failure in 0..3 {
+			let mut frontier = FrontierState::default();
+			frontier.begin(1, 2, 1024).unwrap();
+			frontier.append(1, 0, &[handle(7)]).unwrap();
+			assert_eq!(
+				fail_at(failure, || frontier.begin(2, 513, 1024)),
+				Err(FrontierError::AllocationFailed)
+			);
+			assert_eq!(
+				frontier.append(1, 0, &[handle(9)]),
+				Err(FrontierError::RangeAlreadyReceived {
+					offset: 0,
+					count: 1
+				})
+			);
+			assert_eq!(
+				frontier.append(1, 1, &[handle(7)]),
+				Err(FrontierError::DuplicateHandle(handle(7)))
+			);
+			frontier.append(1, 1, &[handle(9)]).unwrap();
+			assert_eq!(frontier.pending(1).unwrap(), &[handle(7), handle(9)]);
+		}
+	}
+
+	#[test]
+	fn cleared_upload_buffers_reserve_the_full_new_length() {
+		let mut buffer = Vec::<TurfHandle>::with_capacity(100);
+		buffer.resize(50, handle(7));
+		buffer.clear();
+		let target = buffer.capacity() + 50;
+		reserve_vec_to(&mut buffer, target).unwrap();
+		assert!(buffer.capacity() >= target);
+		assert!(buffer.is_empty());
+		let mut frontier = FrontierState::default();
+		for (epoch, expected) in [(1, 100), (2, 50), (3, 150), (4, 513)] {
+			frontier.begin(epoch, expected, 1024).unwrap();
+			assert!(frontier.staging.capacity() >= expected as usize);
+			assert!(frontier.received_bits.capacity() >= (expected as usize).div_ceil(64));
+			assert!(frontier.upload_seen.capacity() >= expected as usize);
+		}
+	}
+
+	#[test]
+	fn rejected_add_and_commit_preserve_both_frontiers() {
+		for failure in 0..3 {
+			let mut frontier = FrontierState::default();
+			frontier.add(1, &[handle(3), handle(7)], 1024).unwrap();
+			frontier.begin(2, 1, 1024).unwrap();
+			frontier.append(2, 0, &[handle(9)]).unwrap();
+			assert_eq!(frontier.committed(), &[handle(3), handle(7)]);
+			assert_eq!(
+				fail_at(failure, || frontier.add(3, &[handle(5)], 1024)),
+				Err(FrontierError::AllocationFailed)
+			);
+			assert_eq!(frontier.committed_epoch(), Some(1));
+			assert_eq!(frontier.committed(), &[handle(3), handle(7)]);
+			assert_eq!(frontier.pending(2).unwrap(), &[handle(9)]);
+			assert_eq!(
+				fail_at(0, || frontier.commit_validated(2)),
+				Err(FrontierError::AllocationFailed)
+			);
+			assert_eq!(frontier.committed_epoch(), Some(1));
+			assert_eq!(frontier.committed(), &[handle(3), handle(7)]);
+			assert_eq!(frontier.pending(2).unwrap(), &[handle(9)]);
+			frontier.commit_validated(2).unwrap();
+			assert_eq!(frontier.committed(), &[handle(9)]);
+		}
+	}
+
+	#[test]
+	fn no_op_deltas_preserve_materialized_view_and_readds_keep_order() {
+		let mut frontier = FrontierState::default();
+		frontier
+			.add(1, &[handle(3), handle(7), handle(9)], 1024)
+			.unwrap();
+		assert_eq!(frontier.committed(), &[handle(3), handle(7), handle(9)]);
+		frontier.add(2, &[], 1024).unwrap();
+		assert!(frontier.committed_view.get().is_some());
+		frontier.remove(3, &[handle(999)]).unwrap();
+		assert!(frontier.committed_view.get().is_some());
+		frontier.remove(4, &[handle(7), handle(7)]).unwrap();
+		frontier.add(5, &[handle(7)], 1024).unwrap();
+		assert_eq!(frontier.committed(), &[handle(3), handle(9), handle(7)]);
 	}
 }
