@@ -150,21 +150,40 @@ impl PackedTopology {
 	}
 
 	pub fn remove_slot(&mut self, slot: u32) -> bool {
+		self.remove_layers(slot, true, true)
+	}
+
+	/// Remove only gas edges; heat adjacency and its ordering remain untouched.
+	pub fn remove_gas_slot(&mut self, slot: u32) -> bool {
+		self.remove_layers(slot, true, false)
+	}
+
+	/// Remove only heat edges; gas adjacency and firelock metadata remain untouched.
+	pub fn remove_heat_slot(&mut self, slot: u32) -> bool {
+		self.remove_layers(slot, false, true)
+	}
+
+	fn remove_layers(&mut self, slot: u32, gas: bool, heat: bool) -> bool {
 		let Some(entry) = self.slots.get_mut(slot as usize) else {
 			return false;
 		};
-		// Copy the fixed-size neighbor arrays out (cheap, stack-only - both are Copy) before
-		// clearing the slot, instead of scanning every slot in the world to find who pointed at
-		// it. Degree is capped at MAX_TURF_NEIGHBORS and the slot already names its own partners
-		// exactly, so only those ≤12 partner slots need their back-reference removed.
-		let gas_neighbors = entry.gas;
-		let heat_neighbors = entry.heat;
+		// Take only the selected fixed-size arrays. Each layer owns its own reciprocal links;
+		// deleting one never allocates or tears down and rebuilds the other.
+		let gas_neighbors = if gas {
+			std::mem::take(&mut entry.gas)
+		} else {
+			[None; MAX_TURF_NEIGHBORS]
+		};
+		let heat_neighbors = if heat {
+			std::mem::take(&mut entry.heat)
+		} else {
+			[None; MAX_TURF_NEIGHBORS]
+		};
 		let removed_gas = gas_neighbors.iter().flatten().count();
 		let removed_heat = heat_neighbors.iter().flatten().count();
 		if removed_gas == 0 && removed_heat == 0 {
 			return false;
 		}
-		*entry = TopologySlot::default();
 		for neighbor in gas_neighbors.into_iter().flatten() {
 			if let Some(partner) = self.slots.get_mut(neighbor.handle.slot as usize) {
 				remove_neighbor_slot(&mut partner.gas, slot);

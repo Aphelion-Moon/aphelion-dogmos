@@ -1081,12 +1081,14 @@ fn heat_only_turf_reregistration_preserves_conduction_edges() {
 			connected: true,
 		}])
 		.unwrap();
+	let topology_revision = world.topology_revision();
 	world
 		.apply_turf_lifecycle(&[TurfLifecycleMutation::Register {
 			handle: hot,
 			mixture: None,
 		}])
 		.unwrap();
+	assert_eq!(world.topology_revision(), topology_revision);
 
 	world
 		.process_stage_cancellable(WorldStage::TurfHeat, 0.5, || false)

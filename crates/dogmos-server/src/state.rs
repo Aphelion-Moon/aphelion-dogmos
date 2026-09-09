@@ -227,6 +227,9 @@ pub struct ServiceState {
 	pending_continuation_scratch: Vec<(u64, PendingContinuation)>,
 	expired_continuation_scratch: Vec<(u64, CoreContinuationToken)>,
 	pending_continuations: BTreeMap<u64, PendingContinuation>,
+	// A lower bound on the earliest pending deadline. Removing a token may leave an earlier
+	// bound until the next sweep, but insertion must never allow a later bound to hide it.
+	next_continuation_deadline: Option<u64>,
 	max_pending_continuations: u32,
 	continuation_high_water: u32,
 	continuation_timeouts: u64,
@@ -285,6 +288,7 @@ impl ServiceState {
 			pending_continuation_scratch: Vec::new(),
 			expired_continuation_scratch: Vec::new(),
 			pending_continuations: BTreeMap::new(),
+			next_continuation_deadline: None,
 			max_pending_continuations,
 			continuation_high_water: 0,
 			continuation_timeouts: 0,
@@ -689,14 +693,31 @@ impl ServiceState {
 	}
 
 	fn expire_continuations_at(&mut self, now_ticks: u64) -> Result<(), StateError> {
+		if self.pending_continuations.is_empty() {
+			self.next_continuation_deadline = None;
+			return Ok(());
+		}
+		if self
+			.next_continuation_deadline
+			.is_some_and(|deadline| now_ticks < deadline)
+		{
+			return Ok(());
+		}
 		self.expired_continuation_scratch.clear();
 		self.expired_continuation_scratch
 			.try_reserve(self.pending_continuations.len())
 			.map_err(|_| state_allocation_failed())?;
+		let mut next_deadline: Option<u64> = None;
 		for (id, continuation) in &self.pending_continuations {
 			if now_ticks >= continuation.deadline_ticks {
 				self.expired_continuation_scratch
 					.push((*id, continuation.core_token));
+			} else {
+				next_deadline = Some(
+					next_deadline.map_or(continuation.deadline_ticks, |deadline| {
+						deadline.min(continuation.deadline_ticks)
+					}),
+				);
 			}
 		}
 		// Nothing can become orphaned unless a continuation was actually removed, and this is the
@@ -704,6 +725,7 @@ impl ServiceState {
 		// Skip the callback-queue retains, the full recount, and the reaction-transaction sweep
 		// entirely when the scan above found nothing to expire.
 		if self.expired_continuation_scratch.is_empty() {
+			self.next_continuation_deadline = next_deadline;
 			return Ok(());
 		}
 		for (id, core_token) in self.expired_continuation_scratch.drain(..) {
@@ -713,6 +735,7 @@ impl ServiceState {
 			self.pending_continuations.remove(&id);
 			self.continuation_timeouts = self.continuation_timeouts.saturating_add(1);
 		}
+		self.next_continuation_deadline = next_deadline;
 		self.general_callbacks.retain(|callback| {
 			callback
 				.event
@@ -1991,6 +2014,12 @@ impl ServiceState {
 			.expect("prepared callback events must remain pending until commit");
 		self.next_continuation_id += u64::from(batch.continuation_count);
 		for (id, continuation) in batch.continuations.drain(..) {
+			self.next_continuation_deadline = Some(
+				self.next_continuation_deadline
+					.map_or(continuation.deadline_ticks, |deadline| {
+						deadline.min(continuation.deadline_ticks)
+					}),
+			);
 			self.pending_continuations.insert(id, continuation);
 		}
 		self.continuation_high_water = self
@@ -4327,6 +4356,109 @@ mod tests {
 			state.install_gases(Vec::new()),
 			Err(StateError::InvalidMetadata)
 		);
+	}
+
+	#[test]
+	fn non_expiring_callback_drains_do_not_allocate_expiration_storage() {
+		let (mut state, mixture, holder) = dm_reaction_state_with_capacities(8, 8, 8);
+		let (_, event) = start_direct_continuation(&mut state, mixture, holder);
+		let token = event.continuation.unwrap();
+		let mut output = [0; CALLBACK_BATCH_HEADER_LEN];
+		for _ in 0..100 {
+			state
+				.drain_callbacks_at(
+					CallbackScope::General,
+					0,
+					0,
+					&mut output,
+					token.deadline_ticks - 1,
+				)
+				.unwrap();
+		}
+		assert_eq!(state.pending_continuation_count(), 1);
+		assert_eq!(
+			state.expired_continuation_scratch.capacity(),
+			0,
+			"a future deadline must not reserve storage proportional to pending continuations"
+		);
+		state
+			.drain_callbacks_at(
+				CallbackScope::General,
+				0,
+				0,
+				&mut output,
+				token.deadline_ticks,
+			)
+			.unwrap();
+		assert_eq!(state.pending_continuation_count(), 0);
+		assert_eq!(state.world.pending_reaction_continuations(), 0);
+		assert_eq!(state.pending_callback_count, 0);
+		assert_eq!(state.continuation_timeouts, 1);
+	}
+
+	#[test]
+	fn expiration_tracks_earlier_insertions_and_cancelled_earliest_deadlines() {
+		let (mut state, mixture, holder) = dm_reaction_state_with_capacities(8, 8, 8);
+		let mut tokens = Vec::new();
+		// Deliberately insert out of deadline order; correctness does not rely on clock order.
+		for now in [30, 10, 20] {
+			state
+				.world
+				.react_mixture_with_event_limit(
+					core_handle(mixture),
+					core_gameplay_handle(holder),
+					None,
+					8,
+				)
+				.unwrap();
+			state
+				.enqueue_world_events_at(8, now, CallbackScope::General, 0)
+				.unwrap();
+			tokens.push(
+				state
+					.general_callbacks
+					.back()
+					.unwrap()
+					.event
+					.continuation
+					.unwrap(),
+			);
+		}
+		assert_eq!(
+			tokens
+				.iter()
+				.map(|token| token.deadline_ticks)
+				.collect::<Vec<_>>(),
+			[80, 60, 70]
+		);
+		state.expire_continuations_at(59).unwrap();
+		assert_eq!(state.pending_continuation_count(), 3);
+		state.cancel_continuation_at(tokens[1], 59).unwrap();
+		state.expire_continuations_at(60).unwrap();
+		assert_eq!(state.pending_continuation_count(), 2);
+		assert_eq!(state.continuation_timeouts, 0);
+		state.expire_continuations_at(69).unwrap();
+		assert_eq!(state.pending_continuation_count(), 2);
+		state.expire_continuations_at(70).unwrap();
+		assert_eq!(
+			state
+				.pending_continuations
+				.keys()
+				.copied()
+				.collect::<Vec<_>>(),
+			[tokens[0].id]
+		);
+		assert_eq!(state.world.pending_reaction_continuations(), 1);
+		assert_eq!(state.pending_callback_count, 1);
+		assert_eq!(
+			state.general_callbacks.front().unwrap().event.continuation,
+			Some(tokens[0])
+		);
+		state.expire_continuations_at(80).unwrap();
+		assert_eq!(state.pending_continuation_count(), 0);
+		assert_eq!(state.world.pending_reaction_continuations(), 0);
+		assert_eq!(state.pending_callback_count, 0);
+		assert_eq!(state.continuation_timeouts, 2);
 	}
 
 	#[test]

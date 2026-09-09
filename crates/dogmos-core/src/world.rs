@@ -5363,24 +5363,6 @@ impl DogmosWorld {
 		)
 	}
 
-	fn current_turf_handle(&self, slot: u32) -> Result<TurfHandle, WorldError> {
-		let Some(turf_slot) = self.turfs.get(slot as usize) else {
-			return Err(WorldError::UnknownTurfHandle(TurfHandle {
-				slot,
-				generation: 0,
-			}));
-		};
-		let Some(generation) = turf_slot.generation else {
-			return Err(WorldError::UnknownTurfHandle(TurfHandle {
-				slot,
-				generation: 0,
-			}));
-		};
-		let handle = TurfHandle { slot, generation };
-		self.require_turf_handle(handle)?;
-		Ok(handle)
-	}
-
 	fn validate_slot_capacity(&self, slot: u32) -> Result<(), WorldError> {
 		let mixture_slots = u64::from(slot) + 1;
 		self.validate_world_capacity(mixture_slots, self.turfs.len() as u64)
@@ -5998,52 +5980,16 @@ impl DogmosWorld {
 		self.turf_graph = None;
 	}
 
-	/// Removes this slot's gas edges while preserving its heat edges (topology.remove_slot()
-	/// clears both, so heat edges are captured first and reconnected after).
-	///
-	/// Looks up this slot's own neighbors via topology.heat_neighbors() (an O(its own degree,
-	/// <=6) direct slot lookup) rather than topology.heat_slot_edges() (an O(total heat edges in
-	/// the world) scan filtered down to this slot). apply_turf_lifecycle calls this for every
-	/// turf whose registration declares no mixture (heat-only turfs), and does so on every
-	/// re-registration, not just the first - unnoticeable at unit-test scale, this scan cost
-	/// multiplying against a real map's edge count and re-registration frequency was minutes.
+	/// Gas cleanup is bounded by this slot's degree and never touches heat adjacency.
 	fn remove_incident_gas_edges(&mut self, slot: u32) {
-		let heat_partners = self
-			.current_turf_handle(slot)
-			.map(|handle| {
-				self.topology
-					.heat_neighbors(handle)
-					.map(|neighbor| neighbor.handle)
-					.collect::<Vec<_>>()
-			})
-			.unwrap_or_default();
-		self.topology.remove_slot(slot);
-		if let Ok(this) = self.current_turf_handle(slot) {
-			for other in heat_partners {
-				let _ = self.topology.connect_heat(this, other);
-			}
+		if self.topology.remove_gas_slot(slot) {
+			self.turf_graph = None;
 		}
-		self.turf_graph = None;
 	}
 
-	/// Removes this slot's heat edges while preserving its gas edges and their firelock flags.
-	/// See remove_incident_gas_edges() above for why this looks up neighbors via
-	/// topology.gas_neighbors() (this slot's own degree) instead of topology.gas_slot_edges()
-	/// (the whole world's edge count).
+	/// Heat cleanup is bounded by this slot's degree and preserves gas firelock metadata.
 	fn remove_incident_heat_edges(&mut self, slot: u32) {
-		let gas_partners = self
-			.current_turf_handle(slot)
-			.map(|handle| self.topology.gas_neighbors(handle).collect::<Vec<_>>())
-			.unwrap_or_default();
-		self.topology.remove_slot(slot);
-		if let Ok(this) = self.current_turf_handle(slot) {
-			for other in gas_partners {
-				let _ = self.topology.connect_gas(this, other.handle);
-				let _ = self
-					.topology
-					.set_firelock(this, other.handle, other.firelock);
-			}
-		}
+		self.topology.remove_heat_slot(slot);
 	}
 
 	#[cfg(debug_assertions)]

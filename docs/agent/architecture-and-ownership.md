@@ -24,6 +24,15 @@ duplicate mixture arena. Core simulation state and resumable work stay in the 64
 These are source ownership facts, not a claim of complete gameplay parity or runtime qualification.
 Use the [verification matrix](verification.md) for each candidate artifact pair.
 
+Packed gas and heat topology layers own their reciprocal links independently. Remove one layer
+through its direct bounded removal operation; do not delete and reconstruct the other layer.
+No-op topology mutations leave the topology revision unchanged.
+
+The service's pending continuation map remains authoritative for expiry. Its cached earliest
+deadline is a conservative lower bound: publication must lower it for earlier deadlines, and
+removal may leave a stale early bound until a due sweep recomputes it. A future bound allows
+callback drains to skip expiry scanning without maintaining another growing ownership index.
+
 ## Ownership boundary
 
 | Component | Owns | Must not own |
