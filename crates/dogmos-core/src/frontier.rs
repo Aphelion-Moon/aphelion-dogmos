@@ -337,16 +337,31 @@ impl FrontierState {
 		self.committed_epoch
 	}
 
+	pub(crate) fn len(&self) -> usize {
+		self.committed_set.len()
+	}
+
+	/// Storage positions to inspect, including tombstones. A bounded consumer must charge
+	/// each inspected position to its work limit, even when `entry` returns None.
+	pub(crate) fn entry_count(&self) -> usize {
+		self.committed.len()
+	}
+
+	pub(crate) fn entry(&self, index: usize) -> Option<TurfHandle> {
+		let handle = *self.committed.get(index)?;
+		(self.committed.len() == self.len() || self.committed_set.get(&handle) == Some(&index))
+			.then_some(handle)
+	}
+
+	/// Contiguous compatibility view. Stage processing uses bounded entry access instead.
 	pub(crate) fn committed(&self) -> &[TurfHandle] {
+		if self.committed.len() == self.len() {
+			return &self.committed;
+		}
 		self.committed_view.get_or_init(|| {
-			self.committed
-				.iter()
-				.copied()
-				.enumerate()
-				.filter_map(|(index, handle)| {
-					(self.committed_set.get(&handle) == Some(&index)).then_some(handle)
-				})
-				.collect()
+			let mut view = Vec::with_capacity(self.len());
+			view.extend((0..self.entry_count()).filter_map(|index| self.entry(index)));
+			view
 		})
 	}
 
@@ -477,11 +492,13 @@ mod tests {
 			.add(1, &[handle(3), handle(7), handle(9)], 1024)
 			.unwrap();
 		assert_eq!(frontier.committed(), &[handle(3), handle(7), handle(9)]);
-		frontier.add(2, &[], 1024).unwrap();
+		// Fragment the storage so the contiguous compatibility view owns a cached copy.
+		frontier.remove(2, &[handle(7)]).unwrap();
+		assert_eq!(frontier.committed(), &[handle(3), handle(9)]);
+		frontier.add(3, &[], 1024).unwrap();
 		assert!(frontier.committed_view.get().is_some());
-		frontier.remove(3, &[handle(999)]).unwrap();
+		frontier.remove(4, &[handle(999)]).unwrap();
 		assert!(frontier.committed_view.get().is_some());
-		frontier.remove(4, &[handle(7), handle(7)]).unwrap();
 		frontier.add(5, &[handle(7)], 1024).unwrap();
 		assert_eq!(frontier.committed(), &[handle(3), handle(9), handle(7)]);
 	}

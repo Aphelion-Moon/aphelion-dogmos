@@ -28,7 +28,8 @@ pub(crate) struct StageCursor {
 	pub(crate) stage_epoch: u64,
 	pub(crate) seconds_per_tick_bits: u64,
 	pub(crate) topology_revision: u64,
-	pub(crate) next_frontier_index: u32,
+	// Physical position, including removed entries: skipping tombstones is bounded work.
+	pub(crate) next_frontier_index: usize,
 }
 
 impl StageCursor {

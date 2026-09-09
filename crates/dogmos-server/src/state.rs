@@ -378,7 +378,7 @@ impl ServiceState {
 				.saturating_sub(general_callback_depth),
 			reaction_transaction_depth: self.reaction_callbacks.len() as u32,
 			reaction_transaction_high_water: self.reaction_transaction_high_water,
-			frontier_count: self.world.committed_frontier().len() as u32,
+			frontier_count: self.world.committed_frontier_count() as u32,
 			stage_kind,
 			frontier_upload_bytes: self.world.frontier_upload_bytes(),
 			stage_epoch,

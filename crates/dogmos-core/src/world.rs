@@ -1143,6 +1143,11 @@ impl DogmosWorld {
 		self.frontier.committed()
 	}
 
+	/// Live membership count, without materializing a contiguous frontier view.
+	pub fn committed_frontier_count(&self) -> usize {
+		self.frontier.len()
+	}
+
 	pub fn frontier_upload_bytes(&self) -> u64 {
 		self.frontier.upload_bytes()
 	}
@@ -1168,7 +1173,11 @@ impl DogmosWorld {
 
 	pub fn stage_telemetry(&self) -> Option<(WorldStage, u64, u32, u32)> {
 		self.stage_cursor.as_ref().map(|cursor| {
-			let frontier_count = u32::try_from(self.frontier.committed().len()).unwrap_or(u32::MAX);
+			let frontier_remaining = self
+				.frontier
+				.entry_count()
+				.saturating_sub(cursor.next_frontier_index);
+			let frontier_progress = u32::try_from(cursor.next_frontier_index).unwrap_or(u32::MAX);
 			let (active_heat_cursor, active_heat_count) = if cursor.stage == WorldStage::TurfHeat {
 				(
 					self.stage_heat
@@ -1183,11 +1192,9 @@ impl DogmosWorld {
 			(
 				cursor.stage,
 				cursor.stage_epoch,
-				cursor
-					.next_frontier_index
-					.saturating_add(active_heat_cursor),
-				frontier_count
-					.saturating_sub(cursor.next_frontier_index)
+				frontier_progress.saturating_add(active_heat_cursor),
+				u32::try_from(frontier_remaining)
+					.unwrap_or(u32::MAX)
 					.saturating_add(active_heat_count.saturating_sub(active_heat_cursor)),
 			)
 		})
@@ -2800,13 +2807,13 @@ impl DogmosWorld {
 					Some(if let Some(mut state) = self.cached_components.take() {
 						state.prepare(
 							self.mixtures.len(),
-							self.frontier.committed().len().min(self.mixtures.len()),
+							self.frontier.len().min(self.mixtures.len()),
 						)?;
 						state
 					} else {
 						StageComponentState::try_new(
 							self.mixtures.len(),
-							self.frontier.committed().len().min(self.mixtures.len()),
+							self.frontier.len().min(self.mixtures.len()),
 						)?
 					})
 				} else {
@@ -2858,7 +2865,7 @@ impl DogmosWorld {
 			Some(_) => {}
 		}
 
-		let preparation_len = u32::try_from(self.frontier.committed().len()).unwrap_or(u32::MAX);
+		let preparation_len = self.frontier.entry_count();
 		if let Some(cursor) = self
 			.stage_cursor
 			.as_ref()
@@ -2889,21 +2896,19 @@ impl DogmosWorld {
 				.as_ref()
 				.expect("stage cursor was created")
 				.next_frontier_index;
-			if request.stage == WorldStage::TurfHeat {
-				let handle = self.frontier.committed()[index as usize];
-				self.prepare_stage_heat_turf(handle, false)?;
-			} else if request.stage == WorldStage::ProcessTurfs {
-				let handle = self.frontier.committed()[index as usize];
-				self.prepare_stage_diffusion_turf(handle)?;
-			} else if request.stage == WorldStage::React {
-				let handle = self.frontier.committed()[index as usize];
-				self.prepare_stage_reaction_turf(handle);
-			} else if matches!(
-				request.stage,
-				WorldStage::Equalize | WorldStage::ExcitedGroups
-			) {
-				let handle = self.frontier.committed()[index as usize];
-				self.prepare_stage_component_turf(handle);
+			if let Some(handle) = self.frontier.entry(index) {
+				if request.stage == WorldStage::TurfHeat {
+					self.prepare_stage_heat_turf(handle, false)?;
+				} else if request.stage == WorldStage::ProcessTurfs {
+					self.prepare_stage_diffusion_turf(handle)?;
+				} else if request.stage == WorldStage::React {
+					self.prepare_stage_reaction_turf(handle);
+				} else if matches!(
+					request.stage,
+					WorldStage::Equalize | WorldStage::ExcitedGroups
+				) {
+					self.prepare_stage_component_turf(handle);
+				}
 			}
 			self.stage_cursor
 				.as_mut()
@@ -2911,12 +2916,15 @@ impl DogmosWorld {
 				.next_frontier_index += 1;
 			work_items += 1;
 		}
-		let remaining_estimate = preparation_len.saturating_sub(
-			self.stage_cursor
-				.as_ref()
-				.expect("stage cursor was created")
-				.next_frontier_index,
-		);
+		let remaining_estimate = u32::try_from(
+			preparation_len.saturating_sub(
+				self.stage_cursor
+					.as_ref()
+					.expect("stage cursor was created")
+					.next_frontier_index,
+			),
+		)
+		.unwrap_or(u32::MAX);
 		if remaining_estimate != 0 {
 			return Ok(StageChunkResult {
 				work_items,
@@ -3016,8 +3024,7 @@ impl DogmosWorld {
 				return Ok(StageChunkResult {
 					work_items,
 					pending: true,
-					remaining_estimate: u32::try_from(self.frontier.committed().len())
-						.unwrap_or(u32::MAX),
+					remaining_estimate: u32::try_from(preparation_len).unwrap_or(u32::MAX),
 					..StageChunkResult::default()
 				});
 			}
@@ -3115,7 +3122,7 @@ impl DogmosWorld {
 				return Ok(StageChunkResult {
 					work_items,
 					pending: true,
-					remaining_estimate: preparation_len.max(1),
+					remaining_estimate: u32::try_from(preparation_len.max(1)).unwrap_or(u32::MAX),
 					..StageChunkResult::default()
 				});
 			};
@@ -3170,7 +3177,7 @@ impl DogmosWorld {
 				return Ok(StageChunkResult {
 					work_items,
 					pending: true,
-					remaining_estimate: preparation_len.max(1),
+					remaining_estimate: u32::try_from(preparation_len.max(1)).unwrap_or(u32::MAX),
 					..StageChunkResult::default()
 				});
 			};

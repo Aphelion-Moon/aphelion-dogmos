@@ -26,6 +26,151 @@ fn register_turfs(world: &mut DogmosWorld, handles: &[TurfHandle]) {
 	);
 }
 
+#[test]
+fn sparse_frontier_preparation_does_not_materialize_a_full_copy() {
+	let mut world = DogmosWorld::new(16 * 1024 * 1024);
+	let handles = (0..1_000).map(|slot| turf(slot, 1)).collect::<Vec<_>>();
+	register_turfs(&mut world, &handles);
+	world.add_frontier(1, &handles).unwrap();
+	world.remove_frontier(2, &handles[250..500]).unwrap();
+	let retained = world.frontier_committed_storage_bytes_lower_bound();
+	let request = StageChunkRequest {
+		stage: WorldStage::ProcessTurfs,
+		frontier_epoch: 2,
+		stage_epoch: 1,
+		work_limit: 1,
+		seconds_per_tick: 0.5,
+	};
+	let chunk = world
+		.process_stage_chunk_cancellable(request, || false)
+		.unwrap();
+	assert_eq!(chunk.work_items, 1);
+	assert!(chunk.pending);
+	assert!(world.stage_telemetry().is_some());
+	assert_eq!(world.committed_frontier_count(), 750);
+	assert_eq!(
+		world.frontier_committed_storage_bytes_lower_bound(),
+		retained,
+		"a bounded chunk and its telemetry must not allocate a full frontier copy"
+	);
+	// The removed run must consume bounded inspection work too, not be skipped in one call.
+	for inspected in 2..=501 {
+		let chunk = world
+			.process_stage_chunk_cancellable(request, || false)
+			.unwrap();
+		assert_eq!(chunk.work_items, 1);
+		assert_eq!(chunk.remaining_estimate, 1_000 - inspected);
+		assert_eq!(
+			world.stage_telemetry(),
+			Some((WorldStage::ProcessTurfs, 1, inspected, 1_000 - inspected))
+		);
+	}
+	assert_eq!(
+		world.process_stage_chunk_cancellable(request, || true),
+		Err(WorldError::Cancelled)
+	);
+	assert!(world.pending_stage_epoch().is_none());
+	let retry = StageChunkRequest {
+		stage_epoch: 2,
+		..request
+	};
+	assert_eq!(
+		world
+			.process_stage_chunk_cancellable(retry, || false)
+			.unwrap()
+			.remaining_estimate,
+		999
+	);
+}
+
+#[test]
+fn fragmented_frontier_matches_a_dense_upload_across_all_stage_budgets() {
+	for stage in [
+		WorldStage::ProcessTurfs,
+		WorldStage::TurfHeat,
+		WorldStage::Equalize,
+		WorldStage::ExcitedGroups,
+		WorldStage::React,
+	] {
+		for work_limit in [1, 7, 4096] {
+			let fixture = |fragmented: bool| {
+				let (mut world, turfs, mixtures) = diffusion_grid(4, |x, y| (x * 4 + y + 1) as f32);
+				world
+					.apply_turf_heat(
+						&turfs
+							.iter()
+							.enumerate()
+							.map(|(index, handle)| TurfHeatMutation {
+								handle: *handle,
+								state: Some(TurfHeatState {
+									temperature: 300.0 + index as f32 * 10.0,
+									thermal_conductivity: 0.05,
+									heat_capacity: 20_000.0,
+									adjacent_to_space: false,
+								}),
+							})
+							.collect::<Vec<_>>(),
+					)
+					.unwrap();
+				let expected = turfs[5..]
+					.iter()
+					.copied()
+					.chain([turfs[1], turfs[3]])
+					.collect::<Vec<_>>();
+				if fragmented {
+					world.add_frontier(1, &turfs).unwrap();
+					world.remove_frontier(2, &turfs[..5]).unwrap();
+					world.add_frontier(3, &[turfs[1], turfs[3]]).unwrap();
+				} else {
+					world.begin_frontier(3, expected.len() as u32).unwrap();
+					world.append_frontier(3, 0, &expected).unwrap();
+					world.commit_frontier(3).unwrap();
+				}
+				(world, turfs, mixtures, expected)
+			};
+			let mut results = Vec::new();
+			for fragmented in [false, true] {
+				let (mut world, turfs, mixtures, expected) = fixture(fragmented);
+				let request = StageChunkRequest {
+					stage,
+					frontier_epoch: 3,
+					stage_epoch: 1,
+					work_limit,
+					seconds_per_tick: 0.5,
+				};
+				let mut completed = false;
+				for _ in 0..10_000 {
+					let chunk = world
+						.process_stage_chunk_cancellable(request, || false)
+						.unwrap();
+					assert!(chunk.work_items <= work_limit);
+					if !chunk.pending {
+						completed = true;
+						break;
+					}
+				}
+				assert!(completed, "stage did not complete: {stage:?}/{work_limit}");
+				assert_eq!(world.committed_frontier(), expected);
+				results.push((
+					mixtures
+						.iter()
+						.map(|handle| world.snapshot(*handle).unwrap())
+						.collect::<Vec<_>>(),
+					turfs
+						.iter()
+						.map(|handle| world.turf_heat(*handle).unwrap())
+						.collect::<Vec<_>>(),
+					world.pending_events(4096).to_vec(),
+				));
+			}
+			assert_eq!(
+				results[0], results[1],
+				"fragmented/dense mismatch: {stage:?}/{work_limit}"
+			);
+		}
+	}
+}
+
 fn mixture(slot: u32) -> MixtureHandle {
 	MixtureHandle {
 		slot,
@@ -187,6 +332,7 @@ fn diffusion_grid(
 	let mixtures = (0..count).map(|i| mixture(i as u32)).collect::<Vec<_>>();
 	let mut world = DogmosWorld::new(16 * 1024 * 1024);
 	world.install_gases(vec![oxygen()]).unwrap();
+	world.install_reactions(Vec::new()).unwrap();
 	world
 		.apply_lifecycle(
 			&mixtures

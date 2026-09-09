@@ -182,6 +182,10 @@ covering both sparse and bulk updates before replacing the current representatio
 
 ## Remaining source-backed audit targets
 
+The subsequent [frontier consumer audit](2026-09-09-frontier-consumer-audit.md)
+measures the first target below and changes bounded stage execution to consume
+ordered storage directly. Its evidence and integration checkpoint are separate.
+
 1. **Frontier reads materialize a complete cached copy after deltas.**
    Effective `FrontierState::add/remove` changes discard `committed_view`; the next
    `committed()` scans and allocates the full view. No-op invalidations are fixed.
