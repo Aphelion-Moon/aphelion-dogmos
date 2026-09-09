@@ -33,6 +33,11 @@ deadline is a conservative lower bound: publication must lower it for earlier de
 removal may leave a stale early bound until a due sweep recomputes it. A future bound allows
 callback drains to skip expiry scanning without maintaining another growing ownership index.
 
+Core maintains the live continuation count at allocation, completion and owner invalidation;
+rotation preserves it. Lifecycle batches can only remove continuations, so the service compares
+the count before and after a successful batch to decide whether callback ownership cleanup is
+needed. Keep owner matching in core rather than duplicating its generation rules in the service.
+
 ## Ownership boundary
 
 | Component | Owns | Must not own |

@@ -4,8 +4,8 @@
 
 The clean local `master` branch was fast-forwarded from `8456726` to
 `14f0a4c2cb1a6db9a7e1685e385e0fb3d3fd7ced`, incorporating all three commits from
-local `dogmos`. The branch remains `master`. This audit's new source changes are
-uncommitted; no push or paired artifact installation was performed.
+local `dogmos`. The branch remains `master`. Topology and expiry changes were committed
+as `6274480`; the subsequent lifecycle work is described below. No push was performed.
 
 Inspection covered core topology/lifecycle ownership, frontier storage, continuation
 publication and expiry, and service/shim buffer ownership. Current implementation,
@@ -100,29 +100,73 @@ The measured candidate executable SHA-256 is
 `c196af0b21451193259b9c2b310d765ac287c332b2ada2d470fc28b3989f4aae`.
 These temporary binaries are not release artifacts.
 
+## Continuation-aware lifecycle cleanup
+
+Core now maintains its live continuation cardinality at allocation, completion and
+owner invalidation. Rotation leaves it unchanged; rejected or generation-exhausted
+allocation does not increment it. This replaces an arena scan for every count query.
+Lifecycle free-list reservation uses the live count rather than historical arena size.
+
+The service compares this count before and after each successful lifecycle batch.
+These batches can only invalidate continuations, so an unchanged count proves there
+is no callback ownership to prune. Actual invalidation still uses the existing queue
+cleanup and transaction recount. Core remains the sole authority on owner matching.
+Unrelated replacement still performs core owner validation/invalidation scanning;
+this is not a reverse index for continuation owners.
+
+The regression test first observed 117 allocations (27,736 requested bytes) for two
+idempotent registrations with 512 pending transactions. It now stays under the
+bounded 16-allocation allowance and checks that all callback ownership is unchanged,
+then replaces the actual owner and verifies complete cleanup. Additional core coverage
+checks count conservation across capacity rejection, token rotation, duplicate
+completion, free-slot reuse, exhausted generations and single/multiple-owner invalidation.
+
+`crates/dogmos-server/examples/lifecycle_allocations.rs` measures 100 one-owner
+updates with 64, 512 and 2,048 pending transactions, in three fresh repetitions.
+The baseline is `6274480` with the same probe. All 27 corresponding canonical
+callback transcript hashes match; deadline timestamps are normalized because they
+depend on setup wall time. Every continuation is subsequently cancelled and counts
+return to zero. Mixture snapshots are unchanged.
+
+At 2,048 pending transactions, for 100 updates:
+
+| Case | Allocations before / after | Requested bytes before / after | Median ms before / after |
+| --- | ---: | ---: | ---: |
+| Mixture no-op | 20,200 / 200 | 7,070,800 / 20,400 | 24.4005 / 0.0151 |
+| Turf no-op | 20,300 / 300 | 7,077,200 / 26,800 | 23.1640 / 0.0497 |
+| Unrelated mixture replacement | 20,300 / 300 | 7,085,200 / 34,800 | 26.2001 / 0.1647 |
+
+Raw measurements: [baseline](../performance/2026-09-09-continuation-lifecycle/baseline.csv)
+and [candidate](../performance/2026-09-09-continuation-lifecycle/candidate.csv).
+These are synchronous service-operation observations, not DreamDaemon footprint or
+whole-game performance results. The test allocator counts successful allocation and
+reallocation requests on the measured thread; it does not count peak live memory.
+
+```powershell
+cargo +1.98.0 build -p dogmos-server --locked --target x86_64-pc-windows-msvc --release --example lifecycle_allocations
+& target/x86_64-pc-windows-msvc/release/examples/lifecycle_allocations.exe --output target/audit-20260909/lifecycle-candidate.csv
+```
+
+Preserved baseline executable SHA-256:
+`499f4c8a2af7475b8453584b3683a3c79d23fa57d881fe8929e711f257b6f439`.
+Measured candidate executable SHA-256:
+`b4580548d58f9aae4057d2a2252d427696e3730f8628a6e161d54e9a757ced92`.
+
 ## Remaining source-backed audit targets
 
-1. **Lifecycle cleanup still revisits unrelated callback ownership.**
-   `ServiceState::apply_lifecycle` and `apply_turf_lifecycle` always call
-   `remove_invalidated_continuations`, which retains the full pending map, then
-   traverses callback queues and rebuilds an active-transaction set. Even idempotent
-   registration takes this path. A core invalidation revision or explicit affected
-   token result would allow the service to skip cleanup without duplicating domain
-   rules. Measure one-owner/no-op updates against increasing pending counts and
-   preserve change-then-restore invalidation and token reuse order.
-2. **Frontier reads materialize a complete cached copy after deltas.**
+1. **Frontier reads materialize a complete cached copy after deltas.**
    `FrontierState::add/remove` discard `committed_view`, even for empty adds or
    missing-handle removes; the next `committed()` scans and allocates the full view.
    Existing sparse-removal timing ends before that read. Measure delta plus the
    first stage/read as one operation before choosing a cursor or packed-view redesign.
    Preserve deterministic surviving order and remove/re-add semantics.
-3. **Frontier fallible reservation arithmetic needs a focused correction.**
+2. **Frontier fallible reservation arithmetic needs a focused correction.**
    `begin` passes target minus capacity to `try_reserve`, whose additional count is
    relative to length. After buffer reuse, this can under-reserve, letting later
    resize/insert use an infallible allocation. Test a cleared reusable buffer followed
    by growth beyond capacity, including the bitset and duplicate set, with allocation
    failure coverage before changing the error path.
-4. **Pipenet reconciliation still allocates request-local vectors.**
+3. **Pipenet reconciliation still allocates request-local vectors.**
    The server decoder/response path and `ServiceState::reconcile_pipenet` build handle
    and snapshot vectors per request. Compare with snapshot-batch buffer reuse and
    measure actual pipenet frequency before adding scratch ownership.
@@ -133,6 +177,16 @@ largest remaining structural opportunity in this audit is eliminating repeated
 whole-set work at lifecycle/frontier boundaries while preserving domain authority.
 
 ## Verification and qualification boundaries
+
+The lifecycle follow-up passed i686 Windows workspace tests (466 executable tests,
+zero failed, two existing ignored documentation examples), strict all-target Clippy,
+formatting and whitespace checks. Logs use the `lifecycle-` prefix under
+`target/audit-20260909/`. Linux WSL with Rust 1.98.0 and `--locked --offline` passed
+336 x64 core/server/protocol/perf tests and 453 i686 workspace tests (zero failures,
+two ignored documentation examples on i686), plus strict i686 all-target Clippy.
+Linux logs use the `linux-` prefix. Independent source review found no actionable
+issues in count conservation or the lifecycle guard. The earlier checkpoint below
+remains separate evidence.
 
 - x86_64 Windows core/server/protocol/perf: **335 tests passed**, zero failed/ignored.
   Command: `cargo +1.98.0 test -p dogmos-core -p dogmos-server -p dogmos-protocol -p dogmos-perf --locked --target x86_64-pc-windows-msvc`.

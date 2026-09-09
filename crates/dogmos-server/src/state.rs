@@ -857,6 +857,7 @@ impl ServiceState {
 	}
 
 	pub fn apply_lifecycle(&mut self, mutations: &[LifecycleMutation]) -> Result<u32, StateError> {
+		let pending_before = self.world.pending_reaction_continuations();
 		let core_mutations = mutations
 			.iter()
 			.map(|mutation| CoreLifecycleMutation {
@@ -871,7 +872,11 @@ impl ServiceState {
 			.world
 			.apply_lifecycle(&core_mutations)
 			.map_err(map_world_error)?;
-		self.remove_invalidated_continuations();
+		// Lifecycle batches can invalidate continuations but cannot create or rotate them.
+		// Compare the core's constant-time cardinality instead of duplicating its owner rules.
+		if self.world.pending_reaction_continuations() != pending_before {
+			self.remove_invalidated_continuations();
+		}
 		Ok(applied)
 	}
 
@@ -893,6 +898,7 @@ impl ServiceState {
 		&mut self,
 		mutations: &[TurfLifecycleMutation],
 	) -> Result<u32, StateError> {
+		let pending_before = self.world.pending_reaction_continuations();
 		let core_mutations = mutations
 			.iter()
 			.map(|mutation| match mutation.action {
@@ -909,7 +915,9 @@ impl ServiceState {
 			.world
 			.apply_turf_lifecycle(&core_mutations)
 			.map_err(map_world_error)?;
-		self.remove_invalidated_continuations();
+		if self.world.pending_reaction_continuations() != pending_before {
+			self.remove_invalidated_continuations();
+		}
 		Ok(applied)
 	}
 
@@ -2779,6 +2787,49 @@ mod tests {
 			}])
 			.unwrap();
 		(state, mixture, holder)
+	}
+
+	#[test]
+	fn unrelated_lifecycle_does_not_allocate_per_pending_transaction() {
+		let (mut state, mixture, holder) = dm_reaction_state_with_capacities(1024, 1024, 1024);
+		let turf_registration = WireTurfLifecycleMutation {
+			action: LifecycleAction::Register,
+			turf: handle(0, 1),
+			mixture: Some(mixture),
+		};
+		state.apply_turf_lifecycle(&[turf_registration]).unwrap();
+		for _ in 0..512 {
+			start_direct_continuation(&mut state, mixture, holder);
+		}
+		let registration = LifecycleMutation {
+			action: LifecycleAction::Register,
+			handle: mixture,
+		};
+		// Warm the reusable free-list storage before measuring repeated registration.
+		state.apply_lifecycle(&[registration]).unwrap();
+		state.apply_turf_lifecycle(&[turf_registration]).unwrap();
+		let before = lifecycle_callback_snapshot(&state);
+		let (_, allocations) = test_allocations::measure(|| {
+			state.apply_lifecycle(&[registration]).unwrap();
+			state.apply_turf_lifecycle(&[turf_registration]).unwrap();
+		});
+		assert!(
+			allocations.calls <= 16,
+			"two one-owner no-op batches must not rebuild all 512 transactions: {allocations:?}"
+		);
+		assert_eq!(lifecycle_callback_snapshot(&state), before);
+		assert_eq!(state.world.pending_reaction_continuations(), 512);
+		assert_eq!(state.pending_continuation_count(), 512);
+		state
+			.apply_lifecycle(&[LifecycleMutation {
+				action: LifecycleAction::Register,
+				handle: handle(0, 2),
+			}])
+			.unwrap();
+		assert_eq!(state.pending_continuation_count(), 0);
+		assert_eq!(state.world.pending_reaction_continuations(), 0);
+		assert_eq!(state.pending_callback_count, 0);
+		assert!(state.reaction_callbacks.is_empty());
 	}
 
 	#[test]
@@ -4666,3 +4717,6 @@ mod tests {
 		);
 	}
 }
+#[cfg(test)]
+#[path = "test_allocations.rs"]
+pub(crate) mod test_allocations;

@@ -663,6 +663,7 @@ pub struct DogmosWorld {
 	max_continuations: u32,
 	continuations: Vec<ContinuationSlot>,
 	free_continuations: Vec<u32>,
+	live_continuations: u32,
 	realistic_space_radiation: bool,
 	equalize_hard_turf_limit: u32,
 	max_world_bytes: u64,
@@ -1034,6 +1035,7 @@ impl DogmosWorld {
 			max_continuations,
 			continuations: Vec::new(),
 			free_continuations: Vec::new(),
+			live_continuations: 0,
 			realistic_space_radiation: true,
 			equalize_hard_turf_limit: DEFAULT_EQUALIZE_HARD_TURF_LIMIT,
 			max_world_bytes,
@@ -1409,7 +1411,7 @@ impl DogmosWorld {
 		}
 		if !mutations.is_empty() {
 			self.free_continuations
-				.try_reserve(self.continuations.len())
+				.try_reserve(self.live_continuations as usize)
 				.map_err(|_| world_allocation_failed())?;
 		}
 
@@ -1559,7 +1561,7 @@ impl DogmosWorld {
 		}
 		if !mutations.is_empty() {
 			self.free_continuations
-				.try_reserve(self.continuations.len())
+				.try_reserve(self.live_continuations as usize)
 				.map_err(|_| world_allocation_failed())?;
 		}
 
@@ -2668,12 +2670,7 @@ impl DogmosWorld {
 	}
 
 	pub fn pending_reaction_continuations(&self) -> u32 {
-		self.continuations
-			.iter()
-			.filter(|slot| slot.continuation.is_some())
-			.count()
-			.try_into()
-			.unwrap_or(u32::MAX)
+		self.live_continuations
 	}
 
 	pub fn cancel_reaction(&mut self, token: ReactionContinuationToken) -> Result<(), WorldError> {
@@ -4807,6 +4804,7 @@ impl DogmosWorld {
 				.checked_add(1)
 				.ok_or(WorldError::ReactionContinuationCapacityExceeded)?;
 			entry.continuation = Some(continuation);
+			self.live_continuations += 1;
 			return Ok(ReactionContinuationToken {
 				slot,
 				generation: entry.generation,
@@ -4823,6 +4821,7 @@ impl DogmosWorld {
 			generation: 1,
 			continuation: Some(continuation),
 		});
+		self.live_continuations += 1;
 		Ok(ReactionContinuationToken {
 			slot,
 			generation: 1,
@@ -4878,6 +4877,7 @@ impl DogmosWorld {
 		self.require_continuation(token)?;
 		self.continuations[token.slot as usize].continuation = None;
 		self.free_continuations.push(token.slot);
+		self.live_continuations -= 1;
 		Ok(())
 	}
 
@@ -4886,7 +4886,7 @@ impl DogmosWorld {
 		invalidated_slots: &BTreeMap<u32, usize>,
 		owner_slot: impl Fn(&ReactionContinuation) -> Option<u32>,
 	) {
-		if invalidated_slots.is_empty() {
+		if invalidated_slots.is_empty() || self.live_continuations == 0 {
 			return;
 		}
 		if invalidated_slots.len() == 1 {
@@ -4896,6 +4896,7 @@ impl DogmosWorld {
 				if entry.continuation.as_ref().and_then(&owner_slot) == Some(owner) {
 					entry.continuation = None;
 					self.free_continuations.push(slot as u32);
+					self.live_continuations -= 1;
 				}
 			}
 			return;
@@ -4928,6 +4929,7 @@ impl DogmosWorld {
 		for &slot in &self.free_continuations[first_free..] {
 			self.continuations[slot as usize].continuation = None;
 		}
+		self.live_continuations -= (self.free_continuations.len() - first_free) as u32;
 	}
 
 	#[cfg(debug_assertions)]
@@ -6375,6 +6377,72 @@ mod tests {
 			slot,
 			generation: 1,
 		}
+	}
+
+	#[test]
+	fn continuation_cardinality_survives_reuse_rotation_failures_and_invalidation() {
+		let mut world = DogmosWorld::new_with_capacities(1024 * 1024, 4, 4);
+		let suspended = |slot| ReactionContinuation {
+			turf: Some(TurfHandle {
+				slot,
+				generation: 1,
+			}),
+			mixture: handle(slot),
+			target: crate::metadata::GameplayHandle {
+				slot,
+				generation: 1,
+			},
+			next_reaction_index: 1,
+			reaction_profile_threshold_ms: None,
+		};
+		let mut tokens = Vec::new();
+		for slot in 0..4 {
+			tokens.push(world.allocate_continuation(suspended(slot)).unwrap());
+		}
+		assert_eq!(world.pending_reaction_continuations(), 4);
+		assert_eq!(
+			world.allocate_continuation(suspended(4)),
+			Err(WorldError::ReactionContinuationCapacityExceeded)
+		);
+		assert_eq!(world.pending_reaction_continuations(), 4);
+		world.complete_continuation(tokens[1]).unwrap();
+		assert!(world.complete_continuation(tokens[1]).is_err());
+		assert_eq!(world.pending_reaction_continuations(), 3);
+		let rotated = world.rotate_continuation(tokens[0], suspended(0)).unwrap();
+		assert!(world.complete_continuation(tokens[0]).is_err());
+		assert_eq!(world.pending_reaction_continuations(), 3);
+		let replacement = world.allocate_continuation(suspended(1)).unwrap();
+		assert_eq!(replacement.slot, tokens[1].slot);
+		assert_eq!(world.pending_reaction_continuations(), 4);
+		// Generation-exhausted free slots do not become live when reuse is rejected.
+		world.continuations[rotated.slot as usize].generation = u32::MAX;
+		world
+			.complete_continuation(ReactionContinuationToken {
+				generation: u32::MAX,
+				..rotated
+			})
+			.unwrap();
+		assert_eq!(
+			world.allocate_continuation(suspended(0)),
+			Err(WorldError::ReactionContinuationCapacityExceeded)
+		);
+		assert_eq!(world.pending_reaction_continuations(), 3);
+		world.invalidate_continuations(&BTreeMap::from([(1, 1), (2, 0)]), |continuation| {
+			Some(continuation.mixture.slot)
+		});
+		assert_eq!(world.pending_reaction_continuations(), 1);
+		world.invalidate_continuations(&BTreeMap::from([(3, 0)]), |continuation| {
+			continuation.turf.map(|turf| turf.slot)
+		});
+		assert_eq!(world.pending_reaction_continuations(), 0);
+		world.invalidate_continuations(&BTreeMap::from([(3, 0)]), |continuation| {
+			Some(continuation.mixture.slot)
+		});
+		assert_eq!(world.pending_reaction_continuations(), 0);
+		assert!(world
+			.continuations
+			.iter()
+			.all(|slot| slot.continuation.is_none()));
 	}
 
 	#[test]
