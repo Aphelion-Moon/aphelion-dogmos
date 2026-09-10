@@ -198,6 +198,11 @@ fn every_fixed_mixture_command_round_trips() {
 			target: second,
 			reaction_profile_threshold_ms: None,
 		},
+		MixtureCommandRequest::CreateFromSource {
+			destination: first,
+			source: second,
+			volume: ScalarValue(125.0),
+		},
 	];
 	for (index, command) in commands.into_iter().enumerate() {
 		let bytes = command.encode().unwrap();

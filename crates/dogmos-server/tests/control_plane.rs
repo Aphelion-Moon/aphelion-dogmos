@@ -7,17 +7,17 @@ use dogmos_protocol::{
 	encode_turf_heat_batch, encode_turf_lifecycle_batch, read_frame_into, write_frame,
 	AdjacencyMutation, BuildIdentity, CallbackBatchHeader, CallbackBatchRequest, CallbackEvent,
 	CallbackScope, CapacityLimits, FrontierBeginRequest, FrontierCommitRequest,
-	GasMetadataRegistration, HandshakePayload, LifecycleAction, LifecycleMutation, MixtureSnapshot,
-	MixtureSnapshotRequest, MixtureStateMutation, MixtureStateUploadAbortRequest,
-	MixtureStateUploadAppendRequest, MixtureStateUploadBeginRequest,
-	MixtureStateUploadBeginResponse, MixtureStateUploadCommitRequest, OperationKind,
-	ProtocolHeader, ScalarValue, ServiceErrorCode, ServiceTelemetry, SimulationStage,
-	SimulationStageRequest, TurfHeatMutation, TurfHeatSnapshot, TurfHeatSnapshotRequest,
-	TurfHeatState, TurfLifecycleMutation, WireGasFireRole, WireHandle, CALLBACK_BATCH_HEADER_LEN,
-	CALLBACK_EVENT_LEN, DOGMOS_ABI_VERSION, DOGMOS_PROTOCOL_VERSION, FLAG_ERROR,
-	HANDSHAKE_PAYLOAD_LEN, MAX_CONTROL_PAYLOAD, MAX_GAS_SLOTS, MIXTURE_SNAPSHOT_LEN,
-	PIPENET_RECONCILE_SNAPSHOT_LEN, SERVICE_TELEMETRY_LEN, SIMULATION_STAGE_RESPONSE_LEN,
-	TURF_HEAT_SNAPSHOT_LEN,
+	GasMetadataRegistration, HandshakePayload, LifecycleAction, LifecycleMutation,
+	MixtureCommandRequest, MixtureCommandResponse, MixtureSnapshot, MixtureSnapshotRequest,
+	MixtureStateMutation, MixtureStateUploadAbortRequest, MixtureStateUploadAppendRequest,
+	MixtureStateUploadBeginRequest, MixtureStateUploadBeginResponse,
+	MixtureStateUploadCommitRequest, OperationKind, ProtocolHeader, ScalarValue, ServiceErrorCode,
+	ServiceTelemetry, SimulationStage, SimulationStageRequest, TurfHeatMutation, TurfHeatSnapshot,
+	TurfHeatSnapshotRequest, TurfHeatState, TurfLifecycleMutation, WireGasFireRole, WireHandle,
+	CALLBACK_BATCH_HEADER_LEN, CALLBACK_EVENT_LEN, DOGMOS_ABI_VERSION, DOGMOS_PROTOCOL_VERSION,
+	FLAG_ERROR, HANDSHAKE_PAYLOAD_LEN, MAX_CONTROL_PAYLOAD, MAX_GAS_SLOTS,
+	MIXTURE_COMMAND_RESPONSE_LEN, MIXTURE_SNAPSHOT_LEN, PIPENET_RECONCILE_SNAPSHOT_LEN,
+	SERVICE_TELEMETRY_LEN, SIMULATION_STAGE_RESPONSE_LEN, TURF_HEAT_SNAPSHOT_LEN,
 };
 use interprocess::local_socket::{prelude::*, ConnectOptions, GenericNamespaced, Stream};
 use std::{
@@ -197,6 +197,183 @@ fn service_rejects_duplicate_and_decreasing_request_ids_without_losing_the_sessi
 		raw_round_trip(&mut stream, expected, OperationKind::Shutdown, 13, &[]);
 	assert_eq!(response.flags & FLAG_ERROR, 0);
 	assert!(payload.is_empty());
+	assert!(service.0.wait().unwrap().success());
+}
+
+#[test]
+fn create_from_source_rejections_are_typed_and_the_same_session_can_retry() {
+	let unique = SystemTime::now()
+		.duration_since(UNIX_EPOCH)
+		.unwrap()
+		.as_nanos();
+	let endpoint = format!(
+		"dogmos-create-from-source-{pid}-{unique}",
+		pid = std::process::id()
+	);
+	let service_path = std::path::Path::new(env!("CARGO_BIN_EXE_dogmosd"));
+	let expected = handshake(service_path);
+	let mut service = ChildGuard(
+		Command::new(service_path)
+			.arg("--echo-server")
+			.arg(&endpoint)
+			.stdin(Stdio::piped())
+			.stdout(Stdio::null())
+			.stderr(Stdio::inherit())
+			.spawn()
+			.unwrap(),
+	);
+	service
+		.0
+		.stdin
+		.take()
+		.unwrap()
+		.write_all(&expected.encode())
+		.unwrap();
+	let mut stream = connect_raw(&endpoint, Duration::from_secs(5));
+	let (response, _) = raw_round_trip(
+		&mut stream,
+		expected,
+		OperationKind::Handshake,
+		1,
+		&expected.encode(),
+	);
+	assert_eq!(response.flags & FLAG_ERROR, 0);
+
+	let source = WireHandle {
+		slot: 0,
+		generation: 1,
+	};
+	let mut lifecycle = Vec::new();
+	encode_lifecycle_batch(
+		&[LifecycleMutation {
+			action: LifecycleAction::Register,
+			handle: source,
+		}],
+		&mut lifecycle,
+	)
+	.unwrap();
+	let (response, _) = raw_round_trip(
+		&mut stream,
+		expected,
+		OperationKind::MixtureLifecycleBatch,
+		2,
+		&lifecycle,
+	);
+	assert_eq!(response.flags & FLAG_ERROR, 0);
+
+	let request = |destination, source, volume| {
+		MixtureCommandRequest::CreateFromSource {
+			destination,
+			source,
+			volume: ScalarValue(volume),
+		}
+		.encode()
+		.unwrap()
+	};
+	let destination = WireHandle {
+		slot: 1,
+		generation: 1,
+	};
+	let (response, payload) = raw_round_trip(
+		&mut stream,
+		expected,
+		OperationKind::MixtureCommand,
+		3,
+		&request(destination, source, 125.0),
+	);
+	assert_eq!(response.flags & FLAG_ERROR, 0);
+	assert_eq!(
+		MixtureCommandResponse::decode(&payload).unwrap(),
+		MixtureCommandResponse::Applied { updated: 1 }
+	);
+
+	for (request_id, rejected) in [
+		(4, request(destination, source, 125.0)),
+		(
+			5,
+			request(
+				WireHandle {
+					slot: 2,
+					generation: 1,
+				},
+				source,
+				f64::MAX,
+			),
+		),
+		(6, request(source, source, 125.0)),
+		(
+			7,
+			request(
+				WireHandle {
+					slot: source.slot,
+					generation: source.generation + 1,
+				},
+				source,
+				125.0,
+			),
+		),
+	] {
+		let (response, payload) = raw_round_trip(
+			&mut stream,
+			expected,
+			OperationKind::MixtureCommand,
+			request_id,
+			&rejected,
+		);
+		assert_ne!(response.flags & FLAG_ERROR, 0);
+		assert_eq!(
+			ServiceErrorCode::decode(&payload).unwrap(),
+			ServiceErrorCode::InvalidRequest
+		);
+	}
+	let stale_source = request(
+		WireHandle {
+			slot: 2,
+			generation: 1,
+		},
+		WireHandle {
+			slot: 0,
+			generation: 0,
+		},
+		125.0,
+	);
+	let (response, payload) = raw_round_trip(
+		&mut stream,
+		expected,
+		OperationKind::MixtureCommand,
+		8,
+		&stale_source,
+	);
+	assert_ne!(response.flags & FLAG_ERROR, 0);
+	assert_eq!(
+		ServiceErrorCode::decode(&payload).unwrap(),
+		ServiceErrorCode::StaleHandle
+	);
+
+	let retry = request(
+		WireHandle {
+			slot: 2,
+			generation: 1,
+		},
+		source,
+		125.0,
+	);
+	let (response, payload) = raw_round_trip(
+		&mut stream,
+		expected,
+		OperationKind::MixtureCommand,
+		9,
+		&retry,
+	);
+	assert_eq!(response.flags & FLAG_ERROR, 0);
+	assert_eq!(
+		MixtureCommandResponse::decode(&payload).unwrap(),
+		MixtureCommandResponse::Applied { updated: 1 }
+	);
+	assert_eq!(payload.len(), MIXTURE_COMMAND_RESPONSE_LEN);
+
+	let (response, _) = raw_round_trip(&mut stream, expected, OperationKind::Shutdown, 10, &[]);
+	assert_eq!(response.flags & FLAG_ERROR, 0);
 	assert!(service.0.wait().unwrap().success());
 }
 

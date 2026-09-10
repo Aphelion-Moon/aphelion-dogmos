@@ -14,7 +14,7 @@ pub use transport::{read_frame_into, write_frame, TransportError};
 
 pub const DOGMOS_FRAME_MAGIC: u32 = 0x534d_4744;
 pub const DOGMOS_ABI_VERSION: u16 = 2;
-pub const DOGMOS_PROTOCOL_VERSION: u16 = 13;
+pub const DOGMOS_PROTOCOL_VERSION: u16 = 14;
 pub const PROTOCOL_HEADER_LEN: u16 = 48;
 pub const HANDSHAKE_PAYLOAD_LEN: usize = 176;
 pub const MAX_CONTROL_PAYLOAD: u32 = 1024 * 1024;
@@ -2477,6 +2477,11 @@ pub enum MixtureCommandRequest {
 		target: WireHandle,
 		reaction_profile_threshold_ms: Option<ScalarValue>,
 	},
+	CreateFromSource {
+		destination: WireHandle,
+		source: WireHandle,
+		volume: ScalarValue,
+	},
 }
 
 impl MixtureCommandRequest {
@@ -2632,6 +2637,11 @@ impl MixtureCommandRequest {
 					0,
 				)
 			}
+			Self::CreateFromSource {
+				destination,
+				source,
+				volume,
+			} => (37, 0, destination, source, [volume, z, z], 0, 0),
 		};
 		let mut output = [0_u8; MIXTURE_COMMAND_REQUEST_LEN];
 		output[0..2].copy_from_slice(&kind.to_le_bytes());
@@ -2651,7 +2661,7 @@ impl MixtureCommandRequest {
 		require_exact_len(input, MIXTURE_COMMAND_REQUEST_LEN)?;
 		let kind = read_u16(input, 0);
 		let flags = read_u16(input, 2);
-		if !(1..=36).contains(&kind) {
+		if !(1..=37).contains(&kind) {
 			return Err(ProtocolError::UnknownMixtureCommand(kind));
 		}
 		if read_u16(input, 46) != 0 || read_u32(input, 52) != 0 {
@@ -2672,8 +2682,9 @@ impl MixtureCommandRequest {
 		let s3 = ScalarValue::decode(&input[36..44])?;
 		let gas_id = read_u16(input, 44);
 		let aux = read_u32(input, 48);
-		let uses_secondary = matches!(kind, 20 | 22..=24 | 28..=36);
+		let uses_secondary = matches!(kind, 20 | 22..=24 | 28..=37);
 		let uses_s1 = matches!(kind, 1..=3 | 14..=16 | 18..=19 | 21 | 24..=25 | 29..=35)
+			|| kind == 37
 			|| matches!(kind, 13 | 36) && flags & 1 != 0;
 		let uses_s2 = matches!(kind, 3 | 25);
 		let uses_s3 = kind == 25;
@@ -2829,6 +2840,11 @@ impl MixtureCommandRequest {
 					reaction_profile_threshold_ms: (flags & 1 != 0).then_some(s1),
 				})
 			}
+			37 => Ok(Self::CreateFromSource {
+				destination: primary,
+				source: secondary,
+				volume: s1,
+			}),
 			actual => Err(ProtocolError::UnknownMixtureCommand(actual)),
 		}
 	}

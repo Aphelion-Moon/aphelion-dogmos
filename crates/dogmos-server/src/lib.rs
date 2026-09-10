@@ -1105,6 +1105,7 @@ fn service_error_code(error: &state::StateError) -> ServiceErrorCode {
 		state::StateError::RevisionExhausted(_) => ServiceErrorCode::RevisionExhausted,
 		state::StateError::DuplicateMixtureState(_) => ServiceErrorCode::DuplicateMixtureState,
 		state::StateError::InvalidMixtureState => ServiceErrorCode::InvalidMixtureState,
+		state::StateError::InvalidRequest(_) => ServiceErrorCode::InvalidRequest,
 		state::StateError::StateCapacityExceeded => ServiceErrorCode::StateCapacityExceeded,
 		state::StateError::AllocationFailed(_) => ServiceErrorCode::AllocationFailed,
 		state::StateError::Graph(_) => ServiceErrorCode::InvalidGraph,
@@ -1217,7 +1218,7 @@ fn write_error_response(
 
 #[cfg(test)]
 mod tests {
-	use super::{service_error_diagnostic, RequestSequence};
+	use super::{service_error_code, service_error_diagnostic, RequestSequence};
 	use crate::state::StateError;
 	use dogmos_protocol::{OperationKind, ProtocolHeader, ServiceErrorCode};
 
@@ -1243,6 +1244,14 @@ mod tests {
 		assert!(!sequence.accept(7));
 		assert!(!sequence.accept(1));
 		assert!(sequence.accept(9));
+	}
+
+	#[test]
+	fn expected_create_rejections_are_stable_invalid_requests() {
+		assert_eq!(
+			service_error_code(&StateError::InvalidRequest("occupied destination".into())),
+			ServiceErrorCode::InvalidRequest
+		);
 	}
 
 	#[test]

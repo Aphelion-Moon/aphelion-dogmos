@@ -60,6 +60,7 @@ pub enum StateError {
 	RevisionExhausted(WireHandle),
 	DuplicateMixtureState(u32),
 	InvalidMixtureState,
+	InvalidRequest(String),
 	InvalidMetadata,
 	SelfAdjacency(u32),
 	DuplicateTurfAdjacency {
@@ -1255,6 +1256,29 @@ impl ServiceState {
 				transaction_id,
 			});
 		}
+		if let MixtureCommandRequest::CreateFromSource {
+			destination,
+			source,
+			volume,
+		} = request
+		{
+			match self.world.create_mixture_from_source(
+				core_handle(destination),
+				core_handle(source),
+				volume.0 as f32,
+			) {
+				Ok(()) => {}
+				Err(
+					error @ (WorldError::OccupiedMixtureSlot(_)
+					| WorldError::SameMixtureHandles(_)
+					| WorldError::InvalidVolume),
+				) => {
+					return Err(StateError::InvalidRequest(error.to_string()));
+				}
+				Err(error) => return Err(map_world_error(error)),
+			}
+			return Ok(MixtureCommandResponse::Applied { updated: 1 });
+		}
 		let command = match request {
 			MixtureCommandRequest::SetMoles {
 				handle,
@@ -1477,6 +1501,9 @@ impl ServiceState {
 				one_way,
 			},
 			MixtureCommandRequest::React { .. } => unreachable!("direct reaction handled above"),
+			MixtureCommandRequest::CreateFromSource { .. } => {
+				unreachable!("create-from-source handled above")
+			}
 		};
 		match self.world.apply_command(command).map_err(map_world_error)? {
 			CoreCommandResult::Applied { updated } => {
@@ -2363,6 +2390,7 @@ fn map_world_error(error: WorldError) -> StateError {
 		| WorldError::ReactionRegistryInstallationTooLate
 		| WorldError::ReactionRegistryMissing => StateError::InvalidMetadata,
 		WorldError::UnknownHandle(handle) => StateError::UnknownHandle(wire_handle(handle)),
+		error @ WorldError::OccupiedMixtureSlot(_) => StateError::InvalidRequest(error.to_string()),
 		WorldError::StaleHandle { requested, current } => StateError::StaleHandle {
 			requested: wire_handle(requested),
 			current,
@@ -2495,6 +2523,95 @@ mod tests {
 
 	fn handle(slot: u32, generation: u32) -> WireHandle {
 		WireHandle { slot, generation }
+	}
+
+	#[test]
+	fn create_from_source_rejections_preserve_state_for_retry() {
+		let mut state = ServiceState::new(1024 * 1024, 8);
+		let source = handle(0, 1);
+		state
+			.apply_lifecycle(&[LifecycleMutation {
+				action: LifecycleAction::Register,
+				handle: source,
+			}])
+			.unwrap();
+		state
+			.apply_mixture_command(MixtureCommandRequest::SetTemperature {
+				handle: source,
+				temperature: ScalarValue(401.0),
+			})
+			.unwrap();
+
+		let first_destination = handle(1, 1);
+		assert!(matches!(
+			state.apply_mixture_command(MixtureCommandRequest::CreateFromSource {
+				destination: first_destination,
+				source: handle(0, 0),
+				volume: ScalarValue(125.0),
+			}),
+			Err(StateError::StaleHandle { .. })
+		));
+		assert_eq!(
+			state.snapshot(first_destination),
+			Err(StateError::UnknownHandle(first_destination))
+		);
+
+		assert_eq!(
+			state
+				.apply_mixture_command(MixtureCommandRequest::CreateFromSource {
+					destination: first_destination,
+					source,
+					volume: ScalarValue(125.0),
+				})
+				.unwrap(),
+			MixtureCommandResponse::Applied { updated: 1 }
+		);
+		assert_eq!(
+			state.snapshot(first_destination).unwrap().temperature,
+			ScalarValue(401.0)
+		);
+		assert_eq!(
+			state.snapshot(first_destination).unwrap().volume,
+			ScalarValue(125.0)
+		);
+
+		assert!(matches!(
+			state.apply_mixture_command(MixtureCommandRequest::CreateFromSource {
+				destination: first_destination,
+				source,
+				volume: ScalarValue(125.0),
+			}),
+			Err(StateError::InvalidRequest(message)) if message.contains("OccupiedMixtureSlot")
+		));
+		let second_destination = handle(2, 1);
+		assert_eq!(
+			state
+				.apply_mixture_command(MixtureCommandRequest::CreateFromSource {
+					destination: second_destination,
+					source,
+					volume: ScalarValue(-0.0),
+				})
+				.unwrap(),
+			MixtureCommandResponse::Applied { updated: 1 }
+		);
+		assert_eq!(
+			state.snapshot(second_destination).unwrap().volume,
+			ScalarValue(-0.0)
+		);
+
+		let third_destination = handle(3, 1);
+		assert!(matches!(
+			state.apply_mixture_command(MixtureCommandRequest::CreateFromSource {
+				destination: third_destination,
+				source,
+				volume: ScalarValue(f64::MAX),
+			}),
+			Err(StateError::InvalidRequest(message)) if message.contains("InvalidVolume")
+		));
+		assert_eq!(
+			state.snapshot(third_destination),
+			Err(StateError::UnknownHandle(third_destination))
+		);
 	}
 
 	#[test]

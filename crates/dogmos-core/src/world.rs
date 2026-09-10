@@ -1,5 +1,6 @@
 pub use crate::frontier::FrontierError;
 mod component;
+mod mixture_creation;
 mod ownership;
 mod scratch;
 mod versioned;
@@ -550,6 +551,7 @@ pub enum WorldError {
 	ReactionRegistryInstallationTooLate,
 	ReactionRegistryMissing,
 	UnknownHandle(MixtureHandle),
+	OccupiedMixtureSlot(MixtureHandle),
 	StaleHandle {
 		requested: MixtureHandle,
 		current: u32,

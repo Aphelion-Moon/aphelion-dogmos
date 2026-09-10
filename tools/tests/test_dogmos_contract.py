@@ -91,7 +91,7 @@ class DogmosContractTests(unittest.TestCase):
         self.assertEqual(manifest["build_profile"], "release")
         self.assertEqual(manifest["versions"]["workspace"], "2.3.0")
         self.assertEqual(manifest["versions"]["abi"], 2)
-        self.assertEqual(manifest["versions"]["protocol"], 13)
+        self.assertEqual(manifest["versions"]["protocol"], 14)
         self.assertEqual(manifest["toolchain"]["rust"], "1.98.0")
         self.assertEqual(manifest["toolchain"]["byond"], "516.1687")
         self.assertEqual(
@@ -117,7 +117,7 @@ class DogmosContractTests(unittest.TestCase):
             hashlib.sha256(self.bindings.read_bytes()).hexdigest(),
         )
 
-    def test_protocol_11_capability_manifest_is_rejected_for_protocol_12_source(self) -> None:
+    def test_previous_protocol_capability_manifest_is_rejected_for_current_source(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             repository = Path(temporary)
             for relative_path in (
@@ -135,7 +135,7 @@ class DogmosContractTests(unittest.TestCase):
             capability = repository / "dogmos-build-manifest.toml"
             capability.write_text(
                 capability.read_text(encoding="utf-8").replace(
-                    "protocol_version = 13", "protocol_version = 11"
+                    "protocol_version = 14", "protocol_version = 13"
                 ),
                 encoding="utf-8",
             )
@@ -157,7 +157,7 @@ class DogmosContractTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(
             hashlib.sha256(first).hexdigest(),
-            "2beeeec17bb36f4afb5d9c353e699930a54415d04829d5c90bbf0cee00947894",
+            "ccd1d9966d522c06d0c645f6f604601744bbf23ca2dbdcf82be08c3d48d62584",
         )
         self.assertTrue(first.endswith(b"\n"))
         self.assertFalse(first.endswith(b"\n\n"))

@@ -42,8 +42,16 @@ state. Every record carries one slot/generation handle, an expected revision, te
 and all 32 gas slots. The service validates the complete counted batch, rejects stale revisions,
 duplicates, invalid physical values, and reserved fields, then commits every record or none. Slot
 generation tombstones survive unregister so an older or equal generation cannot target a reused
-slot. Registered empty state starts at the 2.7 K legacy temperature floor with zero volume; seeded
-state accepts finite non-negative volume and enforces the same temperature floor. State conflicts
-return stable error codes rather than collapsing into a generic malformed-request response.
+slot. Registered empty state starts at the 2.7 K legacy temperature floor with the normal 2500 L
+volume; seeded state accepts finite non-negative volume and enforces the same temperature floor.
+State conflicts return stable error codes rather than collapsing into a generic malformed-request response.
+
+Protocol v14 adds mixture command kind 37, `CreateFromSource`. Its existing fixed 56-byte command
+payload stores the fresh destination handle in primary, the exact source handle in secondary, and
+the requested destination volume in scalar one; flags and every other field are zero. The service
+rejects a non-finite or negative volume after narrowing to its finite `f32` state, an occupied or
+stale destination, and an unknown or stale source. It commits the equivalent of Register, optional
+SetVolume, and CopyFrom atomically, returning `Applied { updated: 1 }` even when the source is
+otherwise empty. It never replaces a live destination or makes creation idempotent.
 
 Batch only measured sequences. Write-only commutative operations may coalesce; immediate reads, reactions, and causal gameplay events are ordering barriers. A generic remote evaluator or bytecode interface is not permitted.

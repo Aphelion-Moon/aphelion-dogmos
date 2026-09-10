@@ -30,6 +30,8 @@ use std::{
 
 #[path = "support/continuation_lifecycle.rs"]
 mod continuation_lifecycle;
+#[path = "support/mixture_creation.rs"]
+mod mixture_creation;
 
 const LEGACY_MIXTURE_TRANSCRIPT: &str =
 	include_str!("../../dogmos-core/tests/fixtures/legacy_mixture_transcript_v1.txt");
@@ -174,6 +176,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 		&mut processed,
 	)?;
 	verify_legacy_mixture_transcript(&mut client)?;
+	mixture_creation::verify(&mut client)?;
 	let first_mixture = WireHandle {
 		slot: 0,
 		generation: 1,

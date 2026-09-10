@@ -8,17 +8,18 @@ use dogmos_protocol::{
 	encode_pipenet_reconcile_response, AdjacencyMutation, FrontierAppendRequest,
 	FrontierAppendResponse, FrontierBeginRequest, FrontierBeginResponse, FrontierCommitRequest,
 	FrontierCommitResponse, FrontierMutateRequest, FrontierMutateResponse, LifecycleAction,
-	LifecycleMutation, MixtureCommandResponse, MixtureSnapshot, MixtureSnapshotRecord,
-	MixtureSnapshotRequest, MixtureStateMutation, MixtureStateUploadAbortRequest,
-	MixtureStateUploadAppendRequest, MixtureStateUploadBeginRequest,
-	MixtureStateUploadCommitRequest, OperationKind, PipenetReconcileSnapshot, ProtocolError,
-	ScalarValue, SimulationStage, SimulationStageRequest, SimulationStageResponse, WireHandle,
-	ADJACENCY_MUTATION_LEN, DOGMOS_PROTOCOL_VERSION, FRONTIER_APPEND_HEADER_LEN,
-	FRONTIER_APPEND_RESPONSE_LEN, FRONTIER_BEGIN_REQUEST_LEN, FRONTIER_BEGIN_RESPONSE_LEN,
-	FRONTIER_COMMIT_REQUEST_LEN, FRONTIER_COMMIT_RESPONSE_LEN, FRONTIER_MUTATE_HEADER_LEN,
-	FRONTIER_MUTATE_RESPONSE_LEN, LIFECYCLE_MUTATION_LEN, MAX_FRONTIER_APPEND_HANDLES,
-	MAX_GAS_SLOTS, MIXTURE_SNAPSHOT_LEN, MIXTURE_SNAPSHOT_RECORD_LEN, MIXTURE_STATE_MUTATION_LEN,
-	PIPENET_RECONCILE_SNAPSHOT_LEN, SIMULATION_STAGE_REQUEST_LEN, SIMULATION_STAGE_RESPONSE_LEN,
+	LifecycleMutation, MixtureCommandRequest, MixtureCommandResponse, MixtureSnapshot,
+	MixtureSnapshotRecord, MixtureSnapshotRequest, MixtureStateMutation,
+	MixtureStateUploadAbortRequest, MixtureStateUploadAppendRequest,
+	MixtureStateUploadBeginRequest, MixtureStateUploadCommitRequest, OperationKind,
+	PipenetReconcileSnapshot, ProtocolError, ScalarValue, SimulationStage, SimulationStageRequest,
+	SimulationStageResponse, WireHandle, ADJACENCY_MUTATION_LEN, DOGMOS_PROTOCOL_VERSION,
+	FRONTIER_APPEND_HEADER_LEN, FRONTIER_APPEND_RESPONSE_LEN, FRONTIER_BEGIN_REQUEST_LEN,
+	FRONTIER_BEGIN_RESPONSE_LEN, FRONTIER_COMMIT_REQUEST_LEN, FRONTIER_COMMIT_RESPONSE_LEN,
+	FRONTIER_MUTATE_HEADER_LEN, FRONTIER_MUTATE_RESPONSE_LEN, LIFECYCLE_MUTATION_LEN,
+	MAX_FRONTIER_APPEND_HANDLES, MAX_GAS_SLOTS, MIXTURE_SNAPSHOT_LEN, MIXTURE_SNAPSHOT_RECORD_LEN,
+	MIXTURE_STATE_MUTATION_LEN, PIPENET_RECONCILE_SNAPSHOT_LEN, SIMULATION_STAGE_REQUEST_LEN,
+	SIMULATION_STAGE_RESPONSE_LEN,
 };
 
 fn handle(slot: u32, generation: u32) -> WireHandle {
@@ -47,7 +48,7 @@ fn decode_hex_fixture(input: &str) -> Vec<u8> {
 
 #[test]
 fn compound_operation_ids_are_stable() {
-	assert_eq!(DOGMOS_PROTOCOL_VERSION, 13);
+	assert_eq!(DOGMOS_PROTOCOL_VERSION, 14);
 	assert_eq!(OperationKind::MixtureSnapshot as u16, 18);
 	assert_eq!(OperationKind::MixtureLifecycleBatch as u16, 19);
 	assert_eq!(OperationKind::AdjacencyBatch as u16, 20);
@@ -79,6 +80,66 @@ fn compound_operation_ids_are_stable() {
 	assert_eq!(
 		OperationKind::try_from(21),
 		Ok(OperationKind::SimulationStage)
+	);
+}
+
+#[test]
+fn create_from_source_command_has_a_canonical_fixed_width_layout() {
+	let request = MixtureCommandRequest::CreateFromSource {
+		destination: handle(7, 11),
+		source: handle(13, 17),
+		volume: ScalarValue(125.5),
+	};
+	let encoded = request.encode().unwrap();
+	assert_eq!(
+		encoded.to_vec(),
+		decode_hex_fixture(
+			"25 00 00 00
+			 07 00 00 00 0b 00 00 00
+			 0d 00 00 00 11 00 00 00
+			 00 00 00 00 00 60 5f 40
+			 00 00 00 00 00 00 00 00
+			 00 00 00 00 00 00 00 00
+			 00 00 00 00 00 00 00 00
+			 00 00 00 00"
+		)
+	);
+	assert_eq!(MixtureCommandRequest::decode(&encoded), Ok(request));
+
+	assert!(matches!(
+		MixtureCommandRequest::decode(&encoded[..encoded.len() - 1]),
+		Err(ProtocolError::InvalidPayloadLength { .. })
+	));
+	let mut trailing = encoded.to_vec();
+	trailing.push(0);
+	assert!(matches!(
+		MixtureCommandRequest::decode(&trailing),
+		Err(ProtocolError::InvalidPayloadLength { .. })
+	));
+
+	let mut invalid_flags = encoded;
+	invalid_flags[2..4].copy_from_slice(&1_u16.to_le_bytes());
+	assert_eq!(
+		MixtureCommandRequest::decode(&invalid_flags),
+		Err(ProtocolError::UnknownMixtureCommandFlags { kind: 37, flags: 1 })
+	);
+	let mut reserved_scalar = encoded;
+	reserved_scalar[28..36].copy_from_slice(&1.0_f64.to_le_bytes());
+	assert_eq!(
+		MixtureCommandRequest::decode(&reserved_scalar),
+		Err(ProtocolError::ReservedMixtureCommandField)
+	);
+	let mut reserved_gas = encoded;
+	reserved_gas[44..46].copy_from_slice(&1_u16.to_le_bytes());
+	assert_eq!(
+		MixtureCommandRequest::decode(&reserved_gas),
+		Err(ProtocolError::ReservedMixtureCommandField)
+	);
+	let mut non_finite = encoded;
+	non_finite[20..28].copy_from_slice(&f64::NAN.to_bits().to_le_bytes());
+	assert_eq!(
+		MixtureCommandRequest::decode(&non_finite),
+		Err(ProtocolError::NonFiniteScalar)
 	);
 }
 

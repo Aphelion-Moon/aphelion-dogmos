@@ -3330,6 +3330,36 @@ mod tests {
 				reaction_profile_threshold_ms: Some(ScalarValue(0.5)),
 			})
 		);
+
+		let create_from_source = encode_dm_mixture_command(DmMixtureCommandFields {
+			kind: 37,
+			flags: 0,
+			primary: handle(7, 2),
+			secondary: handle(41, 9),
+			scalars: [125.5, 0.0, 0.0],
+			gas_id: 0,
+			aux: 0,
+		})
+		.unwrap();
+		assert_eq!(
+			MixtureCommandRequest::decode(&create_from_source),
+			Ok(MixtureCommandRequest::CreateFromSource {
+				destination: handle(7, 2),
+				source: handle(41, 9),
+				volume: ScalarValue(125.5),
+			})
+		);
+
+		assert!(encode_dm_mixture_command(DmMixtureCommandFields {
+			kind: 37,
+			flags: 0,
+			primary: handle(7, 2),
+			secondary: handle(41, 9),
+			scalars: [f32::INFINITY, 0.0, 0.0],
+			gas_id: 0,
+			aux: 0,
+		})
+		.is_err());
 	}
 
 	#[test]
