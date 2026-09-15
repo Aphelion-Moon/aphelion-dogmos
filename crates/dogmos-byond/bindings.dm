@@ -122,3 +122,40 @@
 
 /proc/dogmos_turf_lifecycle_batch(entries)
 	return call_ext(DOGMOS, "byond:dogmos_turf_lifecycle_batch_ffi")(entries)
+
+/*
+ * Generated process-metrics DM adapter reference.
+ * Authority: dogmos-byond/src/process_metrics_layout.rs; regenerate with generate_bindings.
+ * /proc/dogmos_process_metrics returns 28 exact u16 words in an f32 list.
+ * Scalar words are low-first; positions below are one-based DM list indices.
+ * Unknown availability bits are rejected; an unavailable counter must be zero.
+ * Words 1-2 (u32): DOGMOS_PROCESS_LAYOUT_WORD - Adapter layout version (must match DOGMOS_PROCESS_METRICS_LAYOUT_VERSION).
+ * Words 3-4 (u32): DOGMOS_PROCESS_HOST_FLAGS_WORD - DreamDaemon availability flags; host CPU is not included in this adapter.
+ * Words 5-6 (u32): DOGMOS_PROCESS_SERVICE_FLAGS_WORD - dogmosd availability flags, independent of DreamDaemon flags.
+ * Words 7-8 (u32): DOGMOS_PROCESS_RESERVED_WORD - Reserved; must be zero.
+ * Words 9-12 (u64): DOGMOS_PROCESS_HOST_PRIVATE_BYTES_WORD - DreamDaemon private/committed bytes (platform sampler semantics).
+ * Words 13-16 (u64): DOGMOS_PROCESS_HOST_VIRTUAL_BYTES_WORD - DreamDaemon virtual address-space bytes.
+ * Words 17-20 (u64): DOGMOS_PROCESS_HOST_WORKING_SET_BYTES_WORD - DreamDaemon working-set/resident bytes.
+ * Words 21-24 (u64): DOGMOS_PROCESS_SERVICE_RSS_BYTES_WORD - dogmosd resident bytes; never added to DreamDaemon memory.
+ * Words 25-28 (u64): DOGMOS_PROCESS_SERVICE_CPU_MILLISECONDS_WORD - dogmosd cumulative CPU milliseconds (not elapsed wall time).
+ */
+#define DOGMOS_PROCESS_METRICS_WORDS 28
+#define DOGMOS_PROCESS_METRICS_LAYOUT_VERSION 1
+#define DOGMOS_PROCESS_WORD_BASE 65536
+#define DOGMOS_PROCESS_WORD_MAX 65535
+#define DOGMOS_PROCESS_LAYOUT_WORD 1
+#define DOGMOS_PROCESS_HOST_FLAGS_WORD 3
+#define DOGMOS_PROCESS_SERVICE_FLAGS_WORD 5
+#define DOGMOS_PROCESS_RESERVED_WORD 7
+#define DOGMOS_PROCESS_HOST_PRIVATE_BYTES_WORD 9
+#define DOGMOS_PROCESS_HOST_VIRTUAL_BYTES_WORD 13
+#define DOGMOS_PROCESS_HOST_WORKING_SET_BYTES_WORD 17
+#define DOGMOS_PROCESS_SERVICE_RSS_BYTES_WORD 21
+#define DOGMOS_PROCESS_SERVICE_CPU_MILLISECONDS_WORD 25
+#define DOGMOS_DREAMDAEMON_PRIVATE_BYTES_AVAILABLE 1
+#define DOGMOS_DREAMDAEMON_VIRTUAL_BYTES_AVAILABLE 2
+#define DOGMOS_DREAMDAEMON_WORKING_SET_BYTES_AVAILABLE 4
+#define DOGMOS_DREAMDAEMON_ALL_AVAILABLE 7
+#define DOGMOS_SERVICE_RSS_BYTES_AVAILABLE 1
+#define DOGMOS_SERVICE_CPU_MILLISECONDS_AVAILABLE 2
+#define DOGMOS_SERVICE_ALL_AVAILABLE 3

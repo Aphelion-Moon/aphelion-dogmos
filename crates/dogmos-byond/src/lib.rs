@@ -3,6 +3,7 @@
 mod binding_generation;
 mod client;
 mod ffi;
+mod process_metrics_layout;
 mod session;
 #[doc(hidden)]
 pub mod stage_jobs;
@@ -106,11 +107,6 @@ const PRODUCTION_CONTINUATION_TOKEN_FIELDS: usize = 10;
 const PRODUCTION_CALLBACK_HEADER_FIELDS: usize = 12;
 const PRODUCTION_CALLBACK_EVENT_FIELDS: usize = 36;
 const PRODUCTION_MAX_CALLBACK_EVENTS: u32 = 256;
-const PROCESS_METRICS_LAYOUT_VERSION: u32 = 1;
-const PROCESS_METRICS_FIELDS: usize = 28;
-const DREAMDAEMON_PROCESS_FLAGS: u32 = PROCESS_PRIVATE_BYTES_AVAILABLE
-	| PROCESS_VIRTUAL_BYTES_AVAILABLE
-	| PROCESS_WORKING_SET_AVAILABLE;
 
 #[auxmacros::bind("/proc/dogmos_abi_version")]
 fn dogmos_abi_version() -> eyre::Result<ByondValue> {
@@ -291,21 +287,7 @@ pub fn encode_production_process_metrics(
 ) -> eyre::Result<Vec<f32>> {
 	validate_current_process_metrics(host)?;
 	let service = ServiceTelemetry::decode(service_response)?;
-	let mut fields = Vec::with_capacity(PROCESS_METRICS_FIELDS);
-	append_u32_words(&mut fields, PROCESS_METRICS_LAYOUT_VERSION);
-	append_u32_words(
-		&mut fields,
-		host.available_flags & DREAMDAEMON_PROCESS_FLAGS,
-	);
-	append_u32_words(&mut fields, service.service_process_available_flags);
-	append_u32_words(&mut fields, 0);
-	append_u64_words(&mut fields, host.private_bytes);
-	append_u64_words(&mut fields, host.virtual_bytes);
-	append_u64_words(&mut fields, host.working_set_bytes);
-	append_u64_words(&mut fields, service.service_rss_bytes);
-	append_u64_words(&mut fields, service.service_cpu_total_milliseconds);
-	debug_assert_eq!(fields.len(), PROCESS_METRICS_FIELDS);
-	Ok(fields)
+	Ok(process_metrics_layout::encode(host, &service))
 }
 
 fn validate_current_process_metrics(metrics: CurrentProcessMetrics) -> eyre::Result<()> {
