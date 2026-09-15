@@ -59,9 +59,18 @@ generations rather than `usize` or raw slots; internal collection indexes may us
 A mixture or turf handle is valid only for its world generation; slot reuse must not make a stale
 request target new state.
 
-`tools/check_dependency_direction.py` enforces that `dogmos-core` and `dogmos-protocol` do not
-depend on `byondapi`, contain DM-call identifiers, or expose pointer-sized public numeric state
-fields such as `usize`. The CI tooling-test suite runs this guard while extraction is in progress.
+`tools/check_dependency_direction.py` checks the locked Cargo graph by package identity, so
+renamed and transitive dependencies cannot bring `byondapi` into other workspace packages.
+The explicit consumers remain the shim and retained legacy `dogmos`/`auxcallback`. One test-only
+exception permits `dogmos-server` to use the shim client under
+`cfg(all(windows, target_arch = "x86"))` dev-dependencies for process integration tests; this does
+not permit a production or build dependency. A dependency's own dev-dependencies are not inherited.
+The guard also scans core/protocol source for DM-call identifiers and public `usize` fields;
+those lexical checks are guardrails, not a Rust type-system proof.
+
+The CI tooling suite runs the default locked graph. Use `--target <triple>`, `--features <selection>`
+and `--no-default-features` to check a supported feature/target case. Without `--target`, Cargo
+includes dependencies for all targets. A metadata failure is a failed gate, never a clean result.
 
 DM remains authoritative for datum identity, public proc compatibility, subsystem cadence, machinery decisions, atom movement, gameplay consequences, logs, rights, and TGUI. `dogmosd` returns typed facts/events; the shim validates and dispatches them but does not invent game policy.
 
