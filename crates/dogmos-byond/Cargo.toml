@@ -19,4 +19,7 @@ eyre = { workspace = true }
 interprocess = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { workspace = true }
+windows-sys = { workspace = true, features = ["Win32_System_Pipes"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "=0.2.169"

@@ -296,10 +296,23 @@ impl BoundedDogmosClient {
 				}
 			}
 		});
-		let thread_token = thread_receiver
-			.recv()
-			.map_err(|_| ClientError::WorkerStopped)?;
-		let canceller = IoCanceller::new(thread_token, io_handle_token)?;
+		let thread_token = match thread_receiver.recv() {
+			Ok(token) => token,
+			Err(_) => {
+				drop(sender);
+				let _ = worker.join();
+				return Err(ClientError::WorkerStopped);
+			}
+		};
+		let canceller = match IoCanceller::new(thread_token, io_handle_token) {
+			Ok(canceller) => canceller,
+			Err(error) => {
+				// No request was admitted: dropping the sender releases the idle worker.
+				drop(sender);
+				let _ = worker.join();
+				return Err(error);
+			}
+		};
 		Ok(Self {
 			sender: Some(sender),
 			response,
@@ -413,7 +426,10 @@ impl BoundedDogmosClient {
 		}
 		let deadline = Instant::now() + timeout;
 		while !self.is_worker_finished() && Instant::now() < deadline {
-			thread::yield_now();
+			// Cancellation can race a Windows worker between receiving a request and
+			// entering its next system call. Retry until the owned worker completes.
+			let _ = self.canceller.cancel();
+			thread::sleep(Duration::from_millis(1));
 		}
 		if !self.is_worker_finished() {
 			return Err(ClientError::WorkerShutdownTimeout);
@@ -427,7 +443,14 @@ impl BoundedDogmosClient {
 
 impl Drop for BoundedDogmosClient {
 	fn drop(&mut self) {
-		let _ = self.close(Duration::ZERO);
+		if let Err(error) = self.close(Duration::from_secs(1)) {
+			// Retain ownership until completion instead of silently detaching a worker.
+			// OS cancellation failure is exceptional and cannot offer an absolute deadline.
+			eprintln!("dogmosd request worker cleanup exceeded its deadline ({error}); waiting for owned worker");
+			if let Some(worker) = self.worker.take() {
+				let _ = worker.join();
+			}
+		}
 	}
 }
 
@@ -498,19 +521,19 @@ fn current_io_handle_token(
 }
 
 #[cfg(not(windows))]
-struct IoCanceller;
+struct IoCanceller(std::os::unix::net::UnixStream);
 
 #[cfg(not(windows))]
-struct IoHandleToken;
+struct IoHandleToken(std::os::unix::net::UnixStream);
 
 #[cfg(not(windows))]
 impl IoCanceller {
-	fn new(_thread_id: u32, _pipe: IoHandleToken) -> Result<Self, ClientError> {
-		Ok(Self)
+	fn new(_thread_id: u32, pipe: IoHandleToken) -> Result<Self, ClientError> {
+		Ok(Self(pipe.0))
 	}
 
 	fn cancel(&self) -> io::Result<()> {
-		Ok(())
+		self.0.shutdown(std::net::Shutdown::Both)
 	}
 }
 
@@ -520,8 +543,10 @@ fn current_thread_token() -> u32 {
 }
 
 #[cfg(not(windows))]
-fn current_io_handle_token(_client: &DogmosClient) -> Result<IoHandleToken, ClientError> {
-	Ok(IoHandleToken)
+fn current_io_handle_token(client: &DogmosClient) -> Result<IoHandleToken, ClientError> {
+	match client.stream.get_ref() {
+		Stream::UdSocket(stream) => Ok(IoHandleToken(stream.inner().try_clone()?)),
+	}
 }
 
 #[cfg(test)]
