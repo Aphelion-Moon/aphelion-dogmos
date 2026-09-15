@@ -19,7 +19,7 @@ Keep maintained source documentation, agent instructions, workload definitions, 
 
 ## Ownership and implementation rules
 
-The current audited crate is a 32-bit in-process BYOND DLL. Its Rust allocations consume DreamDaemon address space. The target architecture separates a thin `dogmos-byond` shim from a 64-bit `dogmosd` service. Route BYOND conversion and main-thread dispatch to `dogmos-byond`, domain rules and numerical kernels to `dogmos-core`, wire types to `dogmos-protocol`, and service lifecycle/state to `dogmos-server`. Only the shim may depend on `byondapi`.
+The [architecture guide](docs/agent/architecture-and-ownership.md) owns the current component map. The paired build selects a thin 32-bit `dogmos-byond` shim and a 64-bit `dogmosd` service; the root crate remains the legacy in-process implementation. Shim and legacy DLL allocations consume DreamDaemon address space. Route BYOND conversion and main-thread dispatch to `dogmos-byond`, domain rules and numerical kernels to `dogmos-core`, wire types to `dogmos-protocol`, and service lifecycle/state to `dogmos-server`. In the service architecture only the shim may depend on `byondapi`; retained legacy `dogmos` and `auxcallback` are explicit exceptions. Source implementation, artifact selection and runtime qualification are separate facts.
 
 Preserve public DM proc paths and caller-legible errors. No panic may unwind across the BYOND FFI boundary. Inputs and numerical state must be finite and validated; do not change atmosphere coefficients from intuition.
 

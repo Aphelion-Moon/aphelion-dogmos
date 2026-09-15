@@ -52,7 +52,12 @@ when a reusable buffer already has spare capacity. No-op deltas preserve the cac
 | `dogmos-core` | Gas/mixture state, reactions, graphs, numerical kernels, typed commands/events, world generation | `ByondValue`, DM refs, transport, process globals |
 | `dogmos-server` / `dogmosd` | Authoritative 64-bit `DogmosWorld`, scheduling, workers, bounded event outbox, health and metrics | BYOND references, player/admin policy, automatic empty-state restart |
 
-Only `dogmos-byond` may depend on `byondapi`. Public protocol/core types use fixed-width integers and explicit generations rather than `usize` or raw slots. A mixture or turf handle is valid only for its world generation; slot reuse must not make a stale request target new state.
+In the service architecture only `dogmos-byond` may depend on `byondapi`. The retained legacy
+`dogmos` and `auxcallback` packages are explicit exceptions, not permitted dependencies of core or
+protocol. Public protocol/core identity and wire state use fixed-width integers and explicit
+generations rather than `usize` or raw slots; internal collection indexes may use `usize`.
+A mixture or turf handle is valid only for its world generation; slot reuse must not make a stale
+request target new state.
 
 `tools/check_dependency_direction.py` enforces that `dogmos-core` and `dogmos-protocol` do not
 depend on `byondapi`, contain DM-call identifiers, or expose pointer-sized public numeric state
@@ -61,3 +66,23 @@ fields such as `usize`. The CI tooling-test suite runs this guard while extracti
 DM remains authoritative for datum identity, public proc compatibility, subsystem cadence, machinery decisions, atom movement, gameplay consequences, logs, rights, and TGUI. `dogmosd` returns typed facts/events; the shim validates and dispatches them but does not invent game policy.
 
 Move code by responsibility, not filename. Extract pure math before moving orchestration. Keep an adapter only while differential transcript tests prove old and new paths equivalent. Do not duplicate a growing arena in the shim as a fallback.
+
+## Contract glossary
+
+| Term | Meaning |
+| --- | --- |
+| Shim | The bounded i686 adapter loaded in DreamDaemon; it converts BYOND values and owns the service connection. |
+| Service | The x86_64 `dogmosd` process hosting one authoritative world. |
+| World generation | Session/world identity that fences requests from another authoritative world. |
+| Slot generation | Identity version that rejects an old handle after its slot is reused. |
+| Frontier | The selected set of simulation work, uploaded and committed with explicit epochs. |
+| Continuation | A single-use, generation-bound token allowing DM gameplay work before native computation resumes. |
+| Publication receipt | An acknowledgement identifying committed stage output; replay must not publish its effects twice. |
+
+## Selection and qualification
+
+This page describes implemented ownership. The paired build and generated artifact contract select
+the actual executable implementation and features. The verification record for that exact pair
+establishes qualification in a specific environment. Optional asynchronous SSair stages remain
+off by default in the paired Meridian source pending controlled qualification. Neither a source
+module nor a successfully generated bundle proves a runtime gate passed.
