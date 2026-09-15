@@ -5,12 +5,16 @@ mod client;
 mod ffi;
 mod process_metrics_layout;
 mod session;
+mod session_limits;
 #[doc(hidden)]
 pub mod stage_jobs;
 
 pub use binding_generation::generate_bindings_file;
 pub use client::{BoundedDogmosClient, ClientError, DogmosClient};
 use session::{start_service_session, ServiceSession};
+#[cfg(any(feature = "diagnostic-bindings", test))]
+use session_limits::SESSION_PENDING_CAPACITY;
+use session_limits::{SESSION_CONTROL_PAYLOAD_BYTES, SESSION_REQUEST_TIMEOUT};
 
 use byondapi::prelude::ByondValue;
 use dogmos_process_metrics::{
@@ -69,40 +73,37 @@ static BENCHMARK_LIFECYCLE_BATCH: OnceLock<Vec<u8>> = OnceLock::new();
 static BENCHMARK_STATE_BATCH: OnceLock<Vec<u8>> = OnceLock::new();
 #[cfg(feature = "diagnostic-bindings")]
 static BENCHMARK_ADJACENCY_BATCH: OnceLock<Vec<u8>> = OnceLock::new();
-const BENCHMARK_CALLBACK_CAPACITY: u32 = 65_536;
-const BENCHMARK_CONTROL_PAYLOAD: usize = 64 * 1024;
-const BENCHMARK_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_EXACT_BYOND_INTEGER: f32 = 16_777_216.0;
 const PRODUCTION_MAX_BATCH_OPERATIONS: usize = 4096;
 const PRODUCTION_MAX_MIXTURE_ADJUSTMENTS: usize =
-	(BENCHMARK_CONTROL_PAYLOAD - MIXTURE_ADJUST_MULTIPLE_HEADER_LEN) / MIXTURE_ADJUSTMENT_LEN;
+	(SESSION_CONTROL_PAYLOAD_BYTES - MIXTURE_ADJUST_MULTIPLE_HEADER_LEN) / MIXTURE_ADJUSTMENT_LEN;
 const PRODUCTION_MIXTURE_STATE_FIELDS: usize = 6 + MAX_GAS_SLOTS;
 const PRODUCTION_PIPENET_RESPONSE_FIELDS: usize = 2 + 10 + MAX_GAS_SLOTS;
 // The production session negotiates 64 KiB, below the protocol codec's theoretical ceiling.
 const PRODUCTION_MAX_PIPENET_RECONCILE_MIXTURES: usize =
-	(BENCHMARK_CONTROL_PAYLOAD - 4) / PIPENET_RECONCILE_SNAPSHOT_LEN;
+	(SESSION_CONTROL_PAYLOAD_BYTES - 4) / PIPENET_RECONCILE_SNAPSHOT_LEN;
 const PRODUCTION_MAX_MIXTURE_SNAPSHOT_BATCH: usize =
-	(BENCHMARK_CONTROL_PAYLOAD - 4) / MIXTURE_SNAPSHOT_RECORD_LEN;
+	(SESSION_CONTROL_PAYLOAD_BYTES - 4) / MIXTURE_SNAPSHOT_RECORD_LEN;
 const PRODUCTION_MAX_MIXTURE_STATE_MUTATIONS: usize =
-	(BENCHMARK_CONTROL_PAYLOAD - 4) / MIXTURE_STATE_MUTATION_LEN;
+	(SESSION_CONTROL_PAYLOAD_BYTES - 4) / MIXTURE_STATE_MUTATION_LEN;
 const PRODUCTION_TURF_LIFECYCLE_FIELDS: usize = 6;
 const PRODUCTION_MAX_TURF_LIFECYCLE_MUTATIONS: usize =
-	(BENCHMARK_CONTROL_PAYLOAD - 4) / TURF_LIFECYCLE_MUTATION_LEN;
+	(SESSION_CONTROL_PAYLOAD_BYTES - 4) / TURF_LIFECYCLE_MUTATION_LEN;
 const PRODUCTION_TURF_ADJACENCY_FIELDS: usize = 6;
 const PRODUCTION_MAX_TURF_ADJACENCY_MUTATIONS: usize =
-	(BENCHMARK_CONTROL_PAYLOAD - 4) / TURF_ADJACENCY_MUTATION_LEN;
+	(SESSION_CONTROL_PAYLOAD_BYTES - 4) / TURF_ADJACENCY_MUTATION_LEN;
 const PRODUCTION_TURF_HEAT_FIELDS: usize = 7;
 const PRODUCTION_MAX_TURF_HEAT_MUTATIONS: usize =
-	(BENCHMARK_CONTROL_PAYLOAD - 4) / TURF_HEAT_MUTATION_LEN;
+	(SESSION_CONTROL_PAYLOAD_BYTES - 4) / TURF_HEAT_MUTATION_LEN;
 const PRODUCTION_TURF_HEAT_ADJACENCY_FIELDS: usize = 5;
 const PRODUCTION_MAX_TURF_HEAT_ADJACENCY_MUTATIONS: usize =
-	(BENCHMARK_CONTROL_PAYLOAD - 4) / TURF_HEAT_ADJACENCY_MUTATION_LEN;
+	(SESSION_CONTROL_PAYLOAD_BYTES - 4) / TURF_HEAT_ADJACENCY_MUTATION_LEN;
 const PRODUCTION_GAS_METADATA_FIELDS: usize = 13;
 const PRODUCTION_GAS_PRODUCT_FIELDS: usize = 3;
 const PRODUCTION_REACTION_METADATA_FIELDS: usize = 12;
 const PRODUCTION_REACTION_REQUIREMENT_FIELDS: usize = 3;
 const PRODUCTION_MAX_REACTION_METADATA: usize =
-	(BENCHMARK_CONTROL_PAYLOAD - 4) / REACTION_METADATA_RECORD_LEN;
+	(SESSION_CONTROL_PAYLOAD_BYTES - 4) / REACTION_METADATA_RECORD_LEN;
 const PRODUCTION_CONTINUATION_TOKEN_FIELDS: usize = 10;
 const PRODUCTION_CALLBACK_HEADER_FIELDS: usize = 12;
 const PRODUCTION_CALLBACK_EVENT_FIELDS: usize = 36;
@@ -1048,7 +1049,7 @@ fn production_mixture_state_upload(values: &[f32]) -> eyre::Result<u32> {
 		.as_mut()
 		.ok_or_else(|| eyre::eyre!("Dogmos production service session is not running"))?;
 	let deadline = Instant::now()
-		.checked_add(BENCHMARK_REQUEST_TIMEOUT)
+		.checked_add(SESSION_REQUEST_TIMEOUT)
 		.ok_or_else(|| eyre::eyre!("Dogmos mixture state upload deadline overflowed"))?;
 	let begin = MixtureStateUploadBeginRequest {
 		expected_count: operation_count as u32,
@@ -2288,7 +2289,7 @@ fn dogmos_ipc_benchmark_callback_drain(max_events: ByondValue) -> eyre::Result<B
 	session.request_with_response(
 		OperationKind::CallbackBatch,
 		&request,
-		BENCHMARK_CONTROL_PAYLOAD,
+		SESSION_CONTROL_PAYLOAD_BYTES,
 		decode_benchmark_callback_drain,
 	)
 }
@@ -2508,7 +2509,7 @@ fn diagnostic_bytes_from_number(bytes: f32) -> eyre::Result<u64> {
 fn callback_count_from_number(count: f32) -> eyre::Result<u32> {
 	if !count.is_finite()
 		|| count < 0.0
-		|| count > BENCHMARK_CALLBACK_CAPACITY as f32
+		|| count > SESSION_PENDING_CAPACITY as f32
 		|| count.fract() != 0.0
 	{
 		return Err(eyre::eyre!(

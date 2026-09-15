@@ -10,10 +10,10 @@
 //! wall-time guarantee: OS termination/reaping or failed OS cancellation can still
 //! delay final ownership cleanup. No worker is silently detached to meet a deadline.
 
-use crate::{
-	BoundedDogmosClient, ClientError, DogmosClient, BENCHMARK_CALLBACK_CAPACITY,
-	BENCHMARK_CONTROL_PAYLOAD, BENCHMARK_REQUEST_TIMEOUT,
+use crate::session_limits::{
+	SESSION_CONTROL_PAYLOAD_BYTES, SESSION_PENDING_CAPACITY, SESSION_REQUEST_TIMEOUT,
 };
+use crate::{BoundedDogmosClient, ClientError, DogmosClient};
 use dogmos_protocol::{
 	BuildIdentity, CapacityLimits, HandshakePayload, OperationKind, DOGMOS_ABI_VERSION,
 	DOGMOS_PROTOCOL_VERSION,
@@ -278,7 +278,7 @@ impl ServiceSession {
 			operation,
 			payload,
 			response_capacity,
-			BENCHMARK_REQUEST_TIMEOUT,
+			SESSION_REQUEST_TIMEOUT,
 			decode,
 		)
 	}
@@ -463,13 +463,13 @@ pub(crate) fn start_service_session(service_path: &str) -> eyre::Result<ServiceS
 			executable_digest: service_digest,
 		},
 		capacities: CapacityLimits {
-			max_control_payload: BENCHMARK_CONTROL_PAYLOAD as u32,
+			max_control_payload: SESSION_CONTROL_PAYLOAD_BYTES as u32,
 			max_batch_operations: 4096,
-			max_callback_events: BENCHMARK_CALLBACK_CAPACITY,
-			max_pending_continuations: BENCHMARK_CALLBACK_CAPACITY,
+			max_callback_events: SESSION_PENDING_CAPACITY,
+			max_pending_continuations: SESSION_PENDING_CAPACITY,
 			max_frontier_handles: 1_048_576,
 			max_stage_work_items: 4096,
-			max_reaction_transactions: BENCHMARK_CALLBACK_CAPACITY,
+			max_reaction_transactions: SESSION_PENDING_CAPACITY,
 			reserved: 0,
 			max_world_bytes: 8 * 1024 * 1024 * 1024,
 		},

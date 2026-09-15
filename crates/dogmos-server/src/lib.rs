@@ -73,6 +73,10 @@ enum ActorAction {
 	Wait,
 }
 
+// Allow a short burst of control requests, then grant runnable preparation work
+// a quantum so continuously queued commands cannot starve job progress.
+const MAX_REQUESTS_BEFORE_RUNNABLE_QUANTUM: u8 = 8;
+
 #[derive(Default)]
 struct ActorScheduler {
 	commands: u8,
@@ -80,7 +84,7 @@ struct ActorScheduler {
 
 impl ActorScheduler {
 	fn next(&mut self, runnable: bool, request_ready: bool) -> ActorAction {
-		if runnable && (!request_ready || self.commands >= 8) {
+		if runnable && (!request_ready || self.commands >= MAX_REQUESTS_BEFORE_RUNNABLE_QUANTUM) {
 			self.commands = 0;
 			ActorAction::Quantum
 		} else if request_ready {
