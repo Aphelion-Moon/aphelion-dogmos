@@ -44,6 +44,9 @@ namespace Dogmos {
 		public static extern bool CloseHandle(IntPtr handle);
 
 		[DllImport("kernel32.dll", SetLastError = true)]
+		public static extern bool IsWow64Process(IntPtr process, out bool wow64);
+
+		[DllImport("kernel32.dll", SetLastError = true)]
 		public static extern UIntPtr VirtualQueryEx(
 			IntPtr process,
 			IntPtr address,
@@ -64,6 +67,12 @@ function Get-ProcessMemoryCheckpoint {
 		throw "OpenProcess failed for exact PID $ExactPid with Win32 error $([Runtime.InteropServices.Marshal]::GetLastWin32Error())."
 	}
 	try {
+		$wow64 = $false
+		if (-not [Dogmos.ProcessMemory]::IsWow64Process($handle, [ref]$wow64)) {
+			throw "IsWow64Process failed for exact PID $ExactPid."
+		}
+		# A 32-bit target cannot use the host's enormous 64-bit free address range.
+		[uint64]$addressLimit = if ($wow64 -or -not [Environment]::Is64BitOperatingSystem) { 4294967296 } else { [uint64][int64]::MaxValue }
 		$information = New-Object Dogmos.ProcessMemory+MemoryBasicInformation
 		$informationSize = [Runtime.InteropServices.Marshal]::SizeOf($information)
 		[uint64]$address = 0
@@ -71,8 +80,10 @@ function Get-ProcessMemoryCheckpoint {
 		[uint64]$committedMapped = 0
 		[uint64]$committedImage = 0
 		[uint64]$reserved = 0
+		[uint64]$free = 0
+		[uint64]$largestFree = 0
 		[int]$regions = 0
-		while($true) {
+		while($address -lt $addressLimit) {
 			$result = [Dogmos.ProcessMemory]::VirtualQueryEx(
 				$handle,
 				[System.IntPtr]::new([int64]$address),
@@ -80,7 +91,7 @@ function Get-ProcessMemoryCheckpoint {
 				[UIntPtr]::new([uint32]$informationSize)
 			)
 			if($result -eq [UIntPtr]::Zero) { break }
-			$regionBytes = $information.RegionSize.ToUInt64()
+			$regionBytes = [Math]::Min($information.RegionSize.ToUInt64(), $addressLimit - $address)
 			if($regionBytes -eq 0) { break }
 			$regions++
 			if($information.State -eq 0x1000) {
@@ -91,6 +102,9 @@ function Get-ProcessMemoryCheckpoint {
 				}
 			} elseif($information.State -eq 0x2000) {
 				$reserved += $regionBytes
+			} elseif($information.State -eq 0x10000) {
+				$free += $regionBytes
+				$largestFree = [Math]::Max($largestFree, $regionBytes)
 			}
 			$base = [uint64]$information.BaseAddress.ToInt64()
 			$next = $base + $regionBytes
@@ -102,6 +116,9 @@ function Get-ProcessMemoryCheckpoint {
 			committed_mapped_bytes = $committedMapped
 			committed_image_bytes = $committedImage
 			reserved_bytes = $reserved
+			free_bytes = $free
+			largest_free_region_bytes = $largestFree
+			address_limit_exclusive = $addressLimit
 			region_count = $regions
 		}
 	} finally {

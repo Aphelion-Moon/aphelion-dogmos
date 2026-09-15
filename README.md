@@ -49,6 +49,8 @@ The root `dogmos` package is the retained in-process implementation. An unqualif
 selects that package; it does **not** build the release pair. Its `bindings.dm` and `generate_binds`
 test belong to that legacy path. Retain it for current consumers and differential/reference tests
 until supported-target parity, rollback artifacts and an explicit retirement decision permit removal.
+The [retention decision](docs/architecture/legacy-retention.md) records consumers, reference
+dependencies, capability gaps and the prerequisites for a later removal.
 
 Contributor rules and topic-specific guidance start at [AGENTS.md](AGENTS.md) and the
 [agent guide index](docs/agent/README.md).
