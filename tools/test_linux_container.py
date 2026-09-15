@@ -30,7 +30,7 @@ def elf_class(path: Path) -> int:
     return header[4]
 
 
-def qualify(bundle: Path, probe: Path, output: Path, image_id: str) -> None:
+def qualify(bundle: Path, probe: Path, output: Path, image_id: str, *, allow_local_qualification: bool = False) -> None:
     if not image_id.startswith("sha256:") or len(image_id) != 71:
         raise ValueError("Use the immutable sha256 image ID produced by docker build --iidfile")
     output.mkdir(parents=True, exist_ok=False)
@@ -38,6 +38,8 @@ def qualify(bundle: Path, probe: Path, output: Path, image_id: str) -> None:
     verifier = repository / "tools/dogmos_contract.py"
     manifest = bundle / "dogmos-release-manifest.json"
     verify = ["python3", "-B", str(verifier), "verify", "--manifest", str(manifest), "--bundle-root", str(bundle)]
+    if allow_local_qualification:
+        verify.append("--allow-local-qualification")
     run(verify)
     if (elf_class(bundle / "linux/libdogmos.so"), elf_class(bundle / "linux/dogmosd"), elf_class(probe)) != (1, 2, 1):
         raise ValueError("Expected i686 shim/probe and x64 service")
@@ -88,5 +90,8 @@ if __name__ == "__main__":
     parser.add_argument("--probe", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--image-id", required=True)
+    parser.add_argument("--allow-local-qualification", action="store_true",
+                        help="Verify a development source-snapshot bundle; never publish it as a release")
     args = parser.parse_args()
-    qualify(args.bundle.resolve(), args.probe.resolve(), args.output.resolve(), args.image_id)
+    qualify(args.bundle.resolve(), args.probe.resolve(), args.output.resolve(), args.image_id,
+            allow_local_qualification=args.allow_local_qualification)

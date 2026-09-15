@@ -39,13 +39,23 @@ class LinuxContainerTests(unittest.TestCase):
 
             with patch("tools.test_linux_container.elf_class", side_effect=[1, 2, 1]), patch("tools.test_linux_container.run", side_effect=invoke):
                 with self.assertRaises(subprocess.TimeoutExpired):
-                    qualify(root, probe, root / "result", "sha256:" + "a" * 64)
+                    qualify(root, probe, root / "result", "sha256:" + "a" * 64, allow_local_qualification=True)
+            self.assertIn("--allow-local-qualification", calls[0])
             self.assertIn(["docker", "rm", "--force", "owned-exact-id"], calls)
             self.assertIn(["docker", "ps", "--all", "--quiet", "--filter", "id=owned-exact-id"], calls)
             report = json.loads((root / "result/result.json").read_text())
             self.assertFalse(report["passed"])
             self.assertTrue(report["container_removed"])
             self.assertEqual((root / "result/stdout.log").read_text(), "partial diagnostic\n")
+
+    def test_unapproved_local_bundle_fails_before_container_creation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with patch("tools.test_linux_container.run", side_effect=subprocess.CalledProcessError(1, "verify")) as invoke:
+                with self.assertRaises(subprocess.CalledProcessError):
+                    qualify(root, root / "probe", root / "result", "sha256:" + "a" * 64)
+            self.assertEqual(invoke.call_count, 1)
+            self.assertNotIn("--allow-local-qualification", invoke.call_args.args[0])
 
 
 if __name__ == "__main__":
