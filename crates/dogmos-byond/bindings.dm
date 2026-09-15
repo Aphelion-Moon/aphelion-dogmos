@@ -96,6 +96,18 @@
 /proc/dogmos_source_revision()
 	return call_ext(DOGMOS, "byond:dogmos_source_revision_ffi")()
 
+/proc/dogmos_stage_job_cancel(fields)
+	return call_ext(DOGMOS, "byond:dogmos_stage_job_cancel_ffi")(fields)
+
+/proc/dogmos_stage_job_commit(fields)
+	return call_ext(DOGMOS, "byond:dogmos_stage_job_commit_ffi")(fields)
+
+/proc/dogmos_stage_job_poll(fields)
+	return call_ext(DOGMOS, "byond:dogmos_stage_job_poll_ffi")(fields)
+
+/proc/dogmos_stage_job_submit(fields)
+	return call_ext(DOGMOS, "byond:dogmos_stage_job_submit_ffi")(fields)
+
 /proc/dogmos_turf_adjacency_batch(entries)
 	return call_ext(DOGMOS, "byond:dogmos_turf_adjacency_batch_ffi")(entries)
 

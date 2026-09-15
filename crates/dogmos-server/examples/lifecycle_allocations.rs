@@ -2,6 +2,12 @@
 #[path = "../src/test_allocations.rs"]
 mod allocation_measurements;
 #[allow(dead_code)]
+#[path = "../src/job_observations.rs"]
+mod job_observations;
+#[allow(dead_code)]
+#[path = "../src/jobs.rs"]
+mod jobs;
+#[allow(dead_code)]
 #[path = "../src/state.rs"]
 mod state;
 #[cfg(test)]

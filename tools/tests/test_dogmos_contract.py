@@ -6,6 +6,8 @@ import struct
 import tempfile
 import unittest
 
+from tools.dogmos_source_snapshot import capture_snapshot, canonical_bytes, local_fingerprint
+
 from tools.dogmos_contract import (
     ArtifactInput,
     ContractError,
@@ -91,7 +93,7 @@ class DogmosContractTests(unittest.TestCase):
         self.assertEqual(manifest["build_profile"], "release")
         self.assertEqual(manifest["versions"]["workspace"], "2.3.0")
         self.assertEqual(manifest["versions"]["abi"], 2)
-        self.assertEqual(manifest["versions"]["protocol"], 14)
+        self.assertEqual(manifest["versions"]["protocol"], 16)
         self.assertEqual(manifest["toolchain"]["rust"], "1.98.0")
         self.assertEqual(manifest["toolchain"]["byond"], "516.1687")
         self.assertEqual(
@@ -135,7 +137,7 @@ class DogmosContractTests(unittest.TestCase):
             capability = repository / "dogmos-build-manifest.toml"
             capability.write_text(
                 capability.read_text(encoding="utf-8").replace(
-                    "protocol_version = 14", "protocol_version = 13"
+                    "protocol_version = 16", "protocol_version = 15"
                 ),
                 encoding="utf-8",
             )
@@ -157,7 +159,7 @@ class DogmosContractTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(
             hashlib.sha256(first).hexdigest(),
-            "ccd1d9966d522c06d0c645f6f604601744bbf23ca2dbdcf82be08c3d48d62584",
+            "14df3b53248015c9280c0df57f35ee43a03cf9edfee55142c8f8aa0d9c03e9d0",
         )
         self.assertTrue(first.endswith(b"\n"))
         self.assertFalse(first.endswith(b"\n\n"))
@@ -202,6 +204,36 @@ class DogmosContractTests(unittest.TestCase):
         self.artifacts[0].symbols_path.unlink()
         with self.assertRaises(ContractError):
             self.manifest()
+
+    def test_local_snapshot_is_explicit_and_binds_the_handshake_identity(self):
+        snapshot = capture_snapshot(REPOSITORY_ROOT)
+        encoded_snapshot = canonical_bytes(snapshot)
+        snapshot_path = self.bundle / "dogmos-source-snapshot.json"
+        snapshot_path.write_bytes(encoded_snapshot)
+        manifest = build_manifest(
+            REPOSITORY_ROOT, self.bindings, "dogmos_bindings.dm", self.artifacts,
+            snapshot["source_revision"], True, local_snapshot=snapshot_path,
+        )
+        self.assertEqual(manifest["qualification"]["kind"], "local-source-snapshot-v1")
+        self.assertEqual(manifest["qualification"]["source_snapshot"]["sha256"], hashlib.sha256(encoded_snapshot).hexdigest())
+        self.assertEqual(manifest["capabilities"]["feature_fingerprint"], local_fingerprint(encoded_snapshot))
+        encoded = canonical_manifest_bytes(manifest)
+        with self.assertRaisesRegex(ContractError, "local qualification"):
+            verify_manifest_bytes(encoded, self.bundle)
+        self.assertEqual(verify_manifest_bytes(encoded, self.bundle, allow_local_qualification=True), manifest)
+        manifest["capabilities"]["feature_fingerprint"] = "0" * 64
+        with self.assertRaisesRegex(ContractError, "fingerprint"):
+            verify_manifest_bytes(canonical_manifest_bytes(manifest), self.bundle, allow_local_qualification=True)
+        with self.assertRaisesRegex(ContractError, "revision"):
+            build_manifest(REPOSITORY_ROOT, self.bindings, "dogmos_bindings.dm", self.artifacts,
+                           "0" * 40, True, local_snapshot=snapshot_path)
+
+    def test_release_verification_rejects_unknown_qualification_even_with_opt_in(self):
+        manifest = self.manifest()
+        for qualifier in (None, {}, {"kind": "unknown"}):
+            manifest["qualification"] = qualifier
+            with self.assertRaises(ContractError):
+                verify_manifest_bytes(canonical_manifest_bytes(manifest), self.bundle, allow_local_qualification=True)
 
     def test_verification_rejects_changed_hash_and_bindings(self) -> None:
         encoded = canonical_manifest_bytes(self.manifest())

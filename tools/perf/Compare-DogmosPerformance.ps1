@@ -49,6 +49,14 @@ if(-not $BaselinePath -or -not $CurrentPath) {
 }
 $baseline = Get-Content -LiteralPath (Resolve-Path -LiteralPath $BaselinePath) -Raw | ConvertFrom-Json
 $current = Get-Content -LiteralPath (Resolve-Path -LiteralPath $CurrentPath) -Raw | ConvertFrom-Json
+$runtimeReport = @($baseline, $current) | Where-Object {
+	($_.PSObject.Properties['schema_version'] -and $_.schema_version -eq 2) -or
+	($_.PSObject.Properties['kind'] -and $_.kind -eq 'runtime_isolation')
+}
+if($runtimeReport) {
+	& python -B (Join-Path $PSScriptRoot 'runtime_contract.py') $BaselinePath $CurrentPath $BudgetPath
+	exit $LASTEXITCODE
+}
 $identityResult = Compare-DogmosIdentity -Baseline $baseline.identity -Current $current.identity
 if(-not $identityResult.comparable) {
 	$identityResult | ConvertTo-Json -Compress

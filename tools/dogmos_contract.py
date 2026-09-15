@@ -11,6 +11,11 @@ import subprocess
 import tomllib
 from typing import Any, Iterable
 
+try:
+    from .dogmos_source_snapshot import SnapshotError, local_fingerprint, validate_snapshot, verify_snapshot
+except ImportError:  # Direct maintained CLI invocation.
+    from dogmos_source_snapshot import SnapshotError, local_fingerprint, validate_snapshot, verify_snapshot
+
 
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 REVISION_PATTERN = re.compile(r"^[0-9a-f]{40}$")
@@ -194,9 +199,11 @@ def build_manifest(
     artifacts: Iterable[ArtifactInput],
     source_revision: str,
     dirty: bool,
+    *,
+    local_snapshot: Path | None = None,
 ) -> dict[str, Any]:
     repository_root = Path(repository_root)
-    if dirty:
+    if dirty and local_snapshot is None:
         raise ContractError("refusing to generate a release contract from dirty source")
     if not REVISION_PATTERN.fullmatch(source_revision):
         raise ContractError("source revision must be exact lowercase 40-hex")
@@ -251,7 +258,7 @@ def build_manifest(
         raise ContractError("release contract requires all four platform/role pairs")
     entries.sort(key=lambda entry: (entry["platform"], entry["role"]))
     source = _source_metadata(repository_root)
-    return {
+    manifest = {
         "artifacts": entries,
         "bindings": {
             "file": bindings_name,
@@ -265,6 +272,24 @@ def build_manifest(
         "toolchain": source["toolchain"],
         "versions": source["versions"],
     }
+    if local_snapshot is not None:
+        encoded_snapshot = _read_required(local_snapshot, "local source snapshot")
+        try:
+            snapshot = verify_snapshot(repository_root, encoded_snapshot)
+        except SnapshotError as error:
+            raise ContractError(str(error)) from error
+        if snapshot["source_revision"] != source_revision:
+            raise ContractError("local source snapshot base revision mismatch")
+        snapshot_name = "dogmos-source-snapshot.json"
+        if snapshot_name in seen_names:
+            raise ContractError("source snapshot bundle path collides with another member")
+        manifest["qualification"] = {
+            "kind": "local-source-snapshot-v1",
+            "source_snapshot": {"file": snapshot_name, "size": len(encoded_snapshot),
+                                "sha256": _sha256(encoded_snapshot)},
+        }
+        manifest["capabilities"]["feature_fingerprint"] = local_fingerprint(encoded_snapshot)
+    return manifest
 
 
 def canonical_manifest_bytes(manifest: dict[str, Any]) -> bytes:
@@ -297,7 +322,7 @@ def _verify_file(record: dict[str, Any], bundle_root: Path, description: str) ->
     return data
 
 
-def verify_manifest_bytes(data: bytes, bundle_root: Path) -> dict[str, Any]:
+def verify_manifest_bytes(data: bytes, bundle_root: Path, *, allow_local_qualification: bool = False) -> dict[str, Any]:
     if b"\r" in data or not data.endswith(b"\n") or data.endswith(b"\n\n"):
         raise ContractError("manifest must use LF and end with exactly one terminal LF")
     try:
@@ -322,6 +347,26 @@ def verify_manifest_bytes(data: bytes, bundle_root: Path) -> dict[str, Any]:
     fingerprint = capabilities.get("feature_fingerprint")
     if not isinstance(fingerprint, str) or not SHA256_PATTERN.fullmatch(fingerprint):
         raise ContractError("release contract has an invalid feature fingerprint")
+    if "qualification" in manifest:
+        if not allow_local_qualification:
+            raise ContractError("local qualification bundles are not production releases")
+        qualification = manifest["qualification"]
+        if (not isinstance(qualification, dict)
+                or set(qualification) != {"kind", "source_snapshot"}
+                or qualification["kind"] != "local-source-snapshot-v1"):
+            raise ContractError("invalid local qualification marker")
+        record = qualification["source_snapshot"]
+        if not isinstance(record, dict) or record.get("file") != "dogmos-source-snapshot.json":
+            raise ContractError("invalid local qualification snapshot path")
+        encoded_snapshot = _verify_file(record, Path(bundle_root), "source snapshot")
+        try:
+            snapshot = validate_snapshot(encoded_snapshot)
+        except SnapshotError as error:
+            raise ContractError(str(error)) from error
+        if snapshot["source_revision"] != revision:
+            raise ContractError("local source snapshot base revision mismatch")
+        if local_fingerprint(encoded_snapshot) != fingerprint:
+            raise ContractError("local source snapshot handshake fingerprint mismatch")
     toolchain = manifest.get("toolchain")
     if not isinstance(toolchain, dict):
         raise ContractError("release contract has no toolchain identity")
@@ -447,6 +492,8 @@ def _parser() -> argparse.ArgumentParser:
     generate.add_argument("--repository-root", type=Path, required=True)
     generate.add_argument("--bindings", type=Path, required=True)
     generate.add_argument("--output", type=Path, required=True)
+    generate.add_argument("--local-snapshot", type=Path,
+                          help="Explicit local qualification from a verified uncommitted source snapshot")
     for name in (
         "windows-shim",
         "windows-shim-symbols",
@@ -461,6 +508,7 @@ def _parser() -> argparse.ArgumentParser:
     verify = subparsers.add_parser("verify")
     verify.add_argument("--manifest", type=Path, required=True)
     verify.add_argument("--bundle-root", type=Path, required=True)
+    verify.add_argument("--allow-local-qualification", action="store_true")
     return parser
 
 
@@ -468,7 +516,8 @@ def main() -> int:
     arguments = _parser().parse_args()
     try:
         if arguments.command == "verify":
-            verify_manifest_bytes(arguments.manifest.read_bytes(), arguments.bundle_root)
+            verify_manifest_bytes(arguments.manifest.read_bytes(), arguments.bundle_root,
+                                  allow_local_qualification=arguments.allow_local_qualification)
             return 0
         repository_root = arguments.repository_root.resolve()
         revision, dirty = _git_identity(repository_root)
@@ -479,6 +528,7 @@ def main() -> int:
             _cli_artifacts(arguments),
             revision,
             dirty,
+            local_snapshot=arguments.local_snapshot,
         )
         arguments.output.write_bytes(canonical_manifest_bytes(manifest))
         return 0

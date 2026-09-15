@@ -1,0 +1,491 @@
+{
+  "schema_version": 1,
+  "scope": "R2 functional qualification on the installed protocol-14 pair; no performance acceptance",
+  "native_artifact_revision": "6b6321b2c4a0658933b7529e1d732acfac9cc5a4",
+  "game_revision": "1604655c7fa4d5e2e4c466132acb2ae64bb389b3",
+  "post_compile_game_changes": "None for the final candidate.",
+  "patch": {
+    "path": "docs/patches/2026-09-14-meridian-frontier-journal.patch",
+    "sha256": "d4ebb590fc9569432314885c6de011847bce039bc03c4060d513c9699e51f53d",
+    "base": "Anchored game revision plus the separate R1 machinery-prefetch patch",
+    "reverse_apply_check": true
+  },
+  "game_source_sha256": {
+    ".github/workflows/run_linters.yml": "d684e67170b18e2e14a689a3bddf093abdfcd16bbe5bfe571e4a4da1d344f8bd",
+    "code/controllers/subsystem/air.dm": "adcc58abf45ca0ae0e702baafb632e4d6d0d7e5715039253acf35e2c3f031d0b",
+    "code/modules/atmospherics/environmental/LINDA_turf_tile.dm": "908bf0d78f8753be502c1b598c4abe639e837aaddcd4f184afd741e5b8c22ea7",
+    "code/modules/unit_tests/dogmos_active_turfs_bloat.dm": "e2912d2c6b7a2580f732fbe866f4c485d6926e1637dfdd27e32d3f98bf63fc7a",
+    "code/modules/unit_tests/dogmos_space_boundary_registration.dm": "06c94c9b6352b37afd482c01fb5bfab0f43add3eb16ebc4da5b21f3aed91ad45",
+    "code/modules/unit_tests/dogmos_ssair_recovery.dm": "414f5d31300aa713dee019cefffcd56480cf36efa4c0e68009680d72a78458f4",
+    "code/modules/unit_tests/unit_test.dm": "72b36fc695e8291c470dcacb3093b013a24f02147f3278ea917634f30bb6f531",
+    "modular_aphelion/master_files/code/game/turfs/turf.dm": "747123eea778ffb40b85d15ad6bf9d38f569b971c8b1f76d4b4e0ad60f97dd68",
+    "modular_aphelion/master_files/code/game/turfs/open/space/space.dm": "24c3c8027e7fba815203d076e877dd2c4c60550bc87348dcdbc04525fb80dbf9",
+    "modular_aphelion/modules/dogmos/code/service_backend.dm": "9d4fbbf1e26a49fa6b3f71a5df7d04ac6e31935a3d48bae770f74601bb675f47",
+    "modular_aphelion/modules/dogmos/code/service_backend_test.dm": "1a679d28cfb8b7bd99bc78eea5e09315c5dea02bc403db89d17af6a325b5cd0e",
+    "tools/ci/check_dogmos_frontier_writers.py": "607807daceb546d9c6599429aabae7905e16e8d09f2e6cca92581db0c22f8230",
+    "tools/ci/tests/test_dogmos_frontier_writers.py": "3a494e95a006b0ed571e54f614b675d6dd9147fb9bd3e90c39ef4b7fc8b26ec5"
+  },
+  "runs": [
+    {
+      "id": "20260914T100455Z-07f7cb6a",
+      "role": "missing_journal_red",
+      "status": "failed",
+      "passed": 0,
+      "failed": 1,
+      "runtimes": 0,
+      "tests": {
+        "/datum/unit_test/dogmos_runtime_frontier_journal": {
+          "status": 1,
+          "message": "\tFAILURE #1: Frontier publication has no bounded membership journal; unchanged cycles still discover changes by a full rescan. at modular_aphelion/modules/dogmos/code/service_backend_test.dm:1004",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal",
+          "runtimes": 0,
+          "duration": 0.1875
+        }
+      },
+      "artifacts": [
+        {
+          "path": "artifacts/compile/tgstation.dmb",
+          "size": 68385307,
+          "sha256": "e6a1603c1c7381aba8eebf442336aae4d8311d72b24b77d25e2f278ff50b108d",
+          "stage": "compile",
+          "freshness": "new"
+        },
+        {
+          "path": "artifacts/compile/tgstation.rsc",
+          "size": 233020282,
+          "sha256": "3113393424dfaa0c0083d66e06af3223ed460d232e8b58c315325a24691d77d1",
+          "stage": "compile",
+          "freshness": "new"
+        }
+      ],
+      "cleanup": {
+        "passed": true,
+        "leftovers": [],
+        "retained": []
+      },
+      "failures": [
+        {
+          "code": "unit_test_failed",
+          "stage": "test",
+          "message": "unit_test_failed: /datum/unit_test/dogmos_runtime_frontier_journal"
+        }
+      ],
+      "summary_sha256": "1229047c5d78826e051337d0bc0bb3f9b93b7441129311db2b5e688b89d3802d"
+    },
+    {
+      "id": "20260914T102439Z-1d55bc99",
+      "role": "candidate_with_invalid_focus_selection",
+      "status": "failed",
+      "passed": 8,
+      "failed": 3,
+      "runtimes": 0,
+      "tests": {
+        "/datum/unit_test/dogmos_active_turfs_bloat": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_active_turfs_bloat",
+          "runtimes": 0,
+          "duration": 0.375
+        },
+        "/datum/unit_test/dogmos_ssair_recovery": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_ssair_recovery",
+          "runtimes": 0,
+          "duration": 981.594
+        },
+        "/datum/unit_test/dogmos_runtime_frontier_journal": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal",
+          "runtimes": 0,
+          "duration": 0.21875
+        },
+        "/datum/unit_test/dogmos_runtime_frontier_journal/overflow": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal/overflow",
+          "runtimes": 0,
+          "duration": 0.21875
+        },
+        "/datum/unit_test/dogmos_runtime_frontier_journal/rejected_upload": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal/rejected_upload",
+          "runtimes": 0,
+          "duration": 0.1875
+        },
+        "/datum/unit_test/dogmos_runtime_prefetch": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_prefetch",
+          "runtimes": 0,
+          "duration": 4.125
+        },
+        "/datum/unit_test/dogmos_runtime_prefetch/oversized": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_prefetch/oversized",
+          "runtimes": 0,
+          "duration": 0.21875
+        },
+        "/datum/unit_test/dogmos_runtime_prefetch/leaker": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_prefetch/leaker",
+          "runtimes": 0,
+          "duration": 0.25
+        },
+        "/datum/unit_test/dogmos_service_frontier": {
+          "status": 1,
+          "message": "\tFAILURE #1: /datum/unit_test/dogmos_service_frontier/Run() called parent or not implemented at code/modules/unit_tests/unit_test.dm:108",
+          "name": "/datum/unit_test/dogmos_service_frontier",
+          "runtimes": 0,
+          "duration": 0.1875
+        },
+        "/datum/unit_test/dogmos_active_walk": {
+          "status": 1,
+          "message": "\tFAILURE #1: /datum/unit_test/dogmos_active_walk/Run() called parent or not implemented at code/modules/unit_tests/unit_test.dm:108",
+          "name": "/datum/unit_test/dogmos_active_walk",
+          "runtimes": 0,
+          "duration": 0.21875
+        },
+        "/datum/unit_test/dogmos_space_boundary": {
+          "status": 1,
+          "message": "\tFAILURE #1: /datum/unit_test/dogmos_space_boundary/Run() called parent or not implemented at code/modules/unit_tests/unit_test.dm:108",
+          "name": "/datum/unit_test/dogmos_space_boundary",
+          "runtimes": 0,
+          "duration": 0.1875
+        }
+      },
+      "artifacts": [
+        {
+          "path": "artifacts/compile/tgstation.dmb",
+          "size": 68400293,
+          "sha256": "a9ff6d2ae67bf3493cad290be72c0b8dd8d8e107aad832a354ef78af0d34443f",
+          "stage": "compile",
+          "freshness": "new"
+        },
+        {
+          "path": "artifacts/compile/tgstation.rsc",
+          "size": 233020282,
+          "sha256": "0356892df618087b52c4e58ebf8307d8ac557e1821a6042f5b37045422791d46",
+          "stage": "compile",
+          "freshness": "new"
+        }
+      ],
+      "cleanup": {
+        "passed": true,
+        "leftovers": [],
+        "retained": []
+      },
+      "failures": [
+        {
+          "code": "unit_test_failed",
+          "stage": "test",
+          "message": "unit_test_count_below_minimum: 11 < 15"
+        }
+      ],
+      "summary_sha256": "a90f2e64b35126a6f438cb214f9bee0aab15f3df36ce49584c66a2f4f72d8baa"
+    },
+    {
+      "id": "20260914T103414Z-059167c8",
+      "role": "reset_identity_red",
+      "status": "failed",
+      "passed": 0,
+      "failed": 1,
+      "runtimes": 0,
+      "tests": {
+        "/datum/unit_test/dogmos_runtime_frontier_journal/reset_identity": {
+          "status": 1,
+          "message": "\tFAILURE #1: Replacement after an identity reset did not reorder membership and invalidate a pending upload. at modular_aphelion/modules/dogmos/code/service_backend_test.dm:1114",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal/reset_identity",
+          "runtimes": 0,
+          "duration": 0.1875
+        }
+      },
+      "artifacts": [
+        {
+          "path": "artifacts/compile/tgstation.dmb",
+          "size": 68403962,
+          "sha256": "78b11f5ed0fa9cd14e884b678525d9d32e7b9f1efb6147d007b077c8e31766ad",
+          "stage": "compile",
+          "freshness": "new"
+        },
+        {
+          "path": "artifacts/compile/tgstation.rsc",
+          "size": 233020282,
+          "sha256": "bddf685b6fe3be97f6f649429d6e007b8d2a95ada61276318f184ee6c133f0bd",
+          "stage": "compile",
+          "freshness": "new"
+        }
+      ],
+      "cleanup": {
+        "passed": true,
+        "leftovers": [],
+        "retained": []
+      },
+      "failures": [
+        {
+          "code": "unit_test_failed",
+          "stage": "test",
+          "message": "unit_test_failed: /datum/unit_test/dogmos_runtime_frontier_journal/reset_identity"
+        }
+      ],
+      "summary_sha256": "6ab01748742c2322bf47e77a9b4389ab53b8773d16bb14674232beda25e10481"
+    },
+    {
+      "id": "20260914T104356Z-df5ac2c8",
+      "role": "final_focused_candidate",
+      "status": "passed",
+      "passed": 19,
+      "failed": 0,
+      "runtimes": 0,
+      "tests": {
+        "/datum/unit_test/dogmos_active_turfs_bloat": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_active_turfs_bloat",
+          "runtimes": 0,
+          "duration": 0.75
+        },
+        "/datum/unit_test/dogmos_space_boundary_registration": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_space_boundary_registration",
+          "runtimes": 0,
+          "duration": 924.812
+        },
+        "/datum/unit_test/dogmos_space_boundary_frontier_settlement": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_space_boundary_frontier_settlement",
+          "runtimes": 0,
+          "duration": 0.125
+        },
+        "/datum/unit_test/dogmos_ssair_recovery": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_ssair_recovery",
+          "runtimes": 0,
+          "duration": 38
+        },
+        "/datum/unit_test/dogmos_service_frontier_generation_identity": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_service_frontier_generation_identity",
+          "runtimes": 0,
+          "duration": 0.15625
+        },
+        "/datum/unit_test/dogmos_service_frontier_rejection_preserves_epoch": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_service_frontier_rejection_preserves_epoch",
+          "runtimes": 0,
+          "duration": 0.1875
+        },
+        "/datum/unit_test/dogmos_service_frontier_mutation_waits_for_pending_stage": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_service_frontier_mutation_waits_for_pending_stage",
+          "runtimes": 0,
+          "duration": 0.1875
+        },
+        "/datum/unit_test/dogmos_runtime_frontier_journal": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal",
+          "runtimes": 0,
+          "duration": 0.1875
+        },
+        "/datum/unit_test/dogmos_runtime_frontier_journal/reset_identity": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal/reset_identity",
+          "runtimes": 0,
+          "duration": 0.15625
+        },
+        "/datum/unit_test/dogmos_runtime_frontier_journal/native_replacement": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal/native_replacement",
+          "runtimes": 0,
+          "duration": 0.625
+        },
+        "/datum/unit_test/dogmos_runtime_frontier_journal/overflow": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal/overflow",
+          "runtimes": 0,
+          "duration": 0.25
+        },
+        "/datum/unit_test/dogmos_runtime_frontier_journal/rejected_upload": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal/rejected_upload",
+          "runtimes": 0,
+          "duration": 0.1875
+        },
+        "/datum/unit_test/dogmos_service_frontier_registration_catchup": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_service_frontier_registration_catchup",
+          "runtimes": 0,
+          "duration": 0.1875
+        },
+        "/datum/unit_test/dogmos_active_walk_full_cycle": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_active_walk_full_cycle",
+          "runtimes": 0,
+          "duration": 6.4375
+        },
+        "/datum/unit_test/dogmos_active_walk_removal_cursor": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_active_walk_removal_cursor",
+          "runtimes": 0,
+          "duration": 0.28125
+        },
+        "/datum/unit_test/dogmos_runtime_prefetch": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_prefetch",
+          "runtimes": 0,
+          "duration": 4.0625
+        },
+        "/datum/unit_test/dogmos_runtime_prefetch/oversized": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_prefetch/oversized",
+          "runtimes": 0,
+          "duration": 0.1875
+        },
+        "/datum/unit_test/dogmos_runtime_prefetch/leaker": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_prefetch/leaker",
+          "runtimes": 0,
+          "duration": 0.21875
+        },
+        "/datum/unit_test/dogmos_active_walk_failure_fence": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_active_walk_failure_fence",
+          "runtimes": 0,
+          "duration": 0.3125
+        }
+      },
+      "artifacts": [
+        {
+          "path": "artifacts/compile/tgstation.dmb",
+          "size": 68406977,
+          "sha256": "11b45719af954a6ea8f529a0006e8efb4051183ddf9a1d82058945996fc21646",
+          "stage": "compile",
+          "freshness": "new"
+        },
+        {
+          "path": "artifacts/compile/tgstation.rsc",
+          "size": 233020282,
+          "sha256": "1064455f18b764c363c9efcbc56c5d0bb0ac3748706dc5d6043b364c894f80ea",
+          "stage": "compile",
+          "freshness": "new"
+        }
+      ],
+      "cleanup": {
+        "passed": true,
+        "leftovers": [],
+        "retained": []
+      },
+      "failures": [],
+      "summary_sha256": "9ce63b0ebd739e8a826c38747eaeeef0a05cbd1c2d03a855a01e889693b99f56"
+    },
+    {
+      "id": "20260914T105752Z-40c3b37b",
+      "role": "additional_lifecycle_multiz_candidate",
+      "status": "passed",
+      "passed": 4,
+      "failed": 0,
+      "runtimes": 0,
+      "tests": {
+        "/datum/unit_test/dogmos_turf_lifecycle": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_turf_lifecycle",
+          "runtimes": 0,
+          "duration": 0.3125
+        },
+        "/datum/unit_test/dogmos_service_lifecycle": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_service_lifecycle",
+          "runtimes": 0,
+          "duration": 0.21875
+        },
+        "/datum/unit_test/dogmos_service_mixture_retirement_stage_barrier": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_service_mixture_retirement_stage_barrier",
+          "runtimes": 0,
+          "duration": 0.21875
+        },
+        "/datum/unit_test/dogmos_multiz_gas_adjacency": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_multiz_gas_adjacency",
+          "runtimes": 0,
+          "duration": 7.03125
+        }
+      },
+      "artifacts": [
+        {
+          "path": "artifacts/compile/tgstation.dmb",
+          "size": 68406977,
+          "sha256": "e92928968944c33eef1b3c4f9f56c293e2c19a66c4e88be482230b150a33932f",
+          "stage": "compile",
+          "freshness": "new"
+        },
+        {
+          "path": "artifacts/compile/tgstation.rsc",
+          "size": 233020282,
+          "sha256": "f8f9b094f066cf526040ff783ccb97d428a382ab49620fd95b62dc6e5ef7cbb1",
+          "stage": "compile",
+          "freshness": "new"
+        }
+      ],
+      "cleanup": {
+        "passed": true,
+        "leftovers": [],
+        "retained": []
+      },
+      "failures": [],
+      "summary_sha256": "14de986942e2ff7a08ae6d797c743030d1e6da36e23611ccbb8c4699d743755f"
+    }
+  ],
+  "source_checks": {
+    "writer_guard_tests": 5,
+    "writer_guard": "passed",
+    "git_diff_check": "passed",
+    "mcp_error_count": 127,
+    "changed_backend_error_count": 0,
+    "test_static_type_warnings": 3
+  },
+  "native_frontier_oracle": {
+    "rustc": "1.98.0 (88d9e12ae 2026-08-18)",
+    "test": "frontier_processing frontier_",
+    "windows_x64_passed": 17,
+    "windows_i686_passed": 17,
+    "strict_clippy": [
+      "x86_64-pc-windows-msvc",
+      "i686-pc-windows-msvc"
+    ],
+    "scope": "Before R3 production changes; R3 is a separate unqualified candidate"
+  },
+  "open_gates": [
+    "Full DM suite",
+    "Dedicated boot and 300-second soak",
+    "Linux BYOND loading",
+    "Matched main-server performance and numerical/event workload transcripts",
+    "R3-R6 and S1-S4 workplans"
+  ]
+}

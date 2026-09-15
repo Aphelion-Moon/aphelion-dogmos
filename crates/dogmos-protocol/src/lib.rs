@@ -3,18 +3,22 @@
 use std::{collections::BTreeSet, fmt};
 
 mod continuation_wire;
+mod job_telemetry;
 mod metadata_wire;
+mod stage_job;
 mod telemetry_wire;
 mod transport;
 
 pub use continuation_wire::*;
+pub use job_telemetry::*;
 pub use metadata_wire::*;
+pub use stage_job::*;
 pub use telemetry_wire::*;
 pub use transport::{read_frame_into, write_frame, TransportError};
 
 pub const DOGMOS_FRAME_MAGIC: u32 = 0x534d_4744;
 pub const DOGMOS_ABI_VERSION: u16 = 2;
-pub const DOGMOS_PROTOCOL_VERSION: u16 = 14;
+pub const DOGMOS_PROTOCOL_VERSION: u16 = 16;
 pub const PROTOCOL_HEADER_LEN: u16 = 48;
 pub const HANDSHAKE_PAYLOAD_LEN: usize = 176;
 pub const MAX_CONTROL_PAYLOAD: u32 = 1024 * 1024;
@@ -120,6 +124,10 @@ pub enum OperationKind {
 	MixtureStateUploadAbort = 46,
 	PipenetReconcile = 47,
 	MixtureSnapshotBatch = 48,
+	StageJobSubmit = 49,
+	StageJobPoll = 50,
+	StageJobCommit = 51,
+	StageJobCancel = 52,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -241,6 +249,10 @@ impl TryFrom<u16> for OperationKind {
 			46 => Ok(Self::MixtureStateUploadAbort),
 			47 => Ok(Self::PipenetReconcile),
 			48 => Ok(Self::MixtureSnapshotBatch),
+			49 => Ok(Self::StageJobSubmit),
+			50 => Ok(Self::StageJobPoll),
+			51 => Ok(Self::StageJobCommit),
+			52 => Ok(Self::StageJobCancel),
 			actual => Err(ProtocolError::UnknownOperationKind(actual)),
 		}
 	}
@@ -3107,6 +3119,11 @@ impl SimulationStageResponse {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProtocolError {
+	InvalidStageJobIdentity(&'static str),
+	InvalidStageJobQuantum(u32),
+	InvalidStageJobSeconds,
+	ReservedStageJobField(u32),
+	UnknownStageJobStatus(u16),
 	TruncatedHeader {
 		actual: u32,
 	},

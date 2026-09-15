@@ -1,4 +1,68 @@
+use crate::paged_vec::PagedVec;
 use crate::{metadata::TurfHandle, MixtureHandle};
+use std::{
+	collections::TryReserveError,
+	marker::PhantomData,
+	ops::{Index, IndexMut},
+};
+
+/// Both layouts share exactly the same generation and dense-position rules.
+/// Large captured records use fixed pages; small indices retain flat vectors.
+pub(crate) trait SlotValues<T>: Index<usize, Output = T> + IndexMut<usize> {
+	fn new() -> Self;
+	fn len(&self) -> usize;
+	fn get(&self, index: usize) -> Option<&T>;
+	fn try_push(&mut self, value: T) -> Result<(), TryReserveError>;
+	fn clear(&mut self);
+	fn capacity(&self) -> usize;
+}
+
+impl<T> SlotValues<T> for Vec<T> {
+	fn new() -> Self {
+		Vec::new()
+	}
+	fn len(&self) -> usize {
+		Vec::len(self)
+	}
+	fn get(&self, index: usize) -> Option<&T> {
+		self.as_slice().get(index)
+	}
+	fn try_push(&mut self, value: T) -> Result<(), TryReserveError> {
+		self.try_reserve(1)?;
+		self.push(value);
+		Ok(())
+	}
+	fn clear(&mut self) {
+		Vec::clear(self);
+	}
+	fn capacity(&self) -> usize {
+		Vec::capacity(self)
+	}
+}
+
+impl<T: Clone> SlotValues<T> for PagedVec<T> {
+	fn new() -> Self {
+		PagedVec::new()
+	}
+	fn len(&self) -> usize {
+		PagedVec::len(self)
+	}
+	fn get(&self, index: usize) -> Option<&T> {
+		PagedVec::get(self, index)
+	}
+	fn try_push(&mut self, value: T) -> Result<(), TryReserveError> {
+		PagedVec::try_push(self, value)
+	}
+	fn clear(&mut self) {
+		PagedVec::clear(self);
+	}
+	fn capacity(&self) -> usize {
+		PagedVec::capacity(self)
+	}
+}
+
+pub(crate) type SlotIndex<K, V> = SlotIndexStorage<K, V, Vec<(K, V)>>;
+pub(crate) type PagedSlotIndex<K, V> = SlotIndexStorage<K, V, PagedVec<(K, V)>>;
 
 pub(crate) trait SlotKey: Copy + Eq {
 	fn slot(self) -> usize;
@@ -23,16 +87,18 @@ impl SlotKey for MixtureHandle {
 }
 
 /// Reusable generation-checked lookup with records stored only for occupied slots.
-pub(crate) struct SlotIndex<K, V> {
+pub(crate) struct SlotIndexStorage<K, V, S> {
 	slots: Vec<usize>,
-	values: Vec<(K, V)>,
+	values: S,
+	record: PhantomData<(K, V)>,
 }
 
-impl<K: SlotKey, V> SlotIndex<K, V> {
+impl<K: SlotKey, V, S: SlotValues<(K, V)>> SlotIndexStorage<K, V, S> {
 	pub(crate) fn new() -> Self {
 		Self {
 			slots: Vec::new(),
-			values: Vec::new(),
+			values: S::new(),
+			record: PhantomData,
 		}
 	}
 	pub(crate) fn clear(&mut self) {
@@ -44,17 +110,23 @@ impl<K: SlotKey, V> SlotIndex<K, V> {
 		(stored.slot() == slot).then_some(index)
 	}
 	pub(crate) fn insert(&mut self, key: K, value: V) -> Option<V> {
+		self.try_insert(key, value)
+			.expect("slot index allocation failed")
+	}
+	pub(crate) fn try_insert(&mut self, key: K, value: V) -> Result<Option<V>, TryReserveError> {
 		let slot = key.slot();
 		if let Some(index) = self.entry_index(slot) {
 			let (old, previous) = std::mem::replace(&mut self.values[index], (key, value));
-			return (old == key).then_some(previous);
+			return Ok((old == key).then_some(previous));
 		}
 		if slot >= self.slots.len() {
+			self.slots.try_reserve(slot + 1 - self.slots.len())?;
 			self.slots.resize(slot + 1, usize::MAX);
 		}
-		self.slots[slot] = self.values.len();
-		self.values.push((key, value));
-		None
+		let position = self.values.len();
+		self.values.try_push((key, value))?;
+		self.slots[slot] = position;
+		Ok(None)
 	}
 	pub(crate) fn get(&self, key: &K) -> Option<&V> {
 		Some(&self.values[self.index_of(key)?].1)
@@ -74,7 +146,7 @@ impl<K: SlotKey, V> SlotIndex<K, V> {
 	}
 }
 
-impl<K: SlotKey, V> std::ops::Index<&K> for SlotIndex<K, V> {
+impl<K: SlotKey, V, S: SlotValues<(K, V)>> std::ops::Index<&K> for SlotIndexStorage<K, V, S> {
 	type Output = V;
 	fn index(&self, key: &K) -> &V {
 		self.get(key).expect("indexed slot must be present")
@@ -115,6 +187,41 @@ impl<K: SlotKey> FromIterator<K> for SlotSet<K> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	#[test]
+	fn paged_records_keep_their_addresses_and_reject_stale_generations() {
+		let mut index = PagedSlotIndex::new();
+		let first = MixtureHandle {
+			slot: 0,
+			generation: 1,
+		};
+		index.try_insert(first, [7_u8; 512]).unwrap();
+		let address = std::ptr::from_ref(index.get(&first).unwrap());
+		for slot in 1..2048 {
+			index
+				.try_insert(
+					MixtureHandle {
+						slot,
+						generation: 1,
+					},
+					[slot as u8; 512],
+				)
+				.unwrap();
+			assert_eq!(std::ptr::from_ref(index.get(&first).unwrap()), address);
+		}
+		let replacement = MixtureHandle {
+			generation: 2,
+			..first
+		};
+		assert_eq!(index.try_insert(replacement, [9; 512]).unwrap(), None);
+		assert_eq!(index.get(&first), None);
+		assert_eq!(index.index_of(&replacement), Some(0));
+		let capacity = index.capacity_bytes();
+		index.clear();
+		index.try_insert(first, [1; 512]).unwrap();
+		assert_eq!(index.get(&replacement), None);
+		assert_eq!(index.capacity_bytes(), capacity);
+		assert_eq!(std::ptr::from_ref(index.get(&first).unwrap()), address);
+	}
 	#[test]
 	fn dense_positions_reject_stale_keys_and_remain_stable_until_clear() {
 		let mut index = SlotIndex::new();

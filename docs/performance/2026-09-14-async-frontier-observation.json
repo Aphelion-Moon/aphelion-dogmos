@@ -1,0 +1,82 @@
+{
+  "cleanup": {
+    "leftovers": [],
+    "passed": true,
+    "retained": [
+      "workspace"
+    ]
+  },
+  "criteria": {
+    "async_selected_during_gameplay": true,
+    "clean_runtime_gate": true,
+    "multiple_complete_atmosphere_cycles": true,
+    "native_jobs_complete": true,
+    "owned_cleanup": true,
+    "rift_passed": true,
+    "service_ready_during_gameplay": true,
+    "three_wall_minutes_complete": true
+  },
+  "cumulative_counter_observations": {
+    "cancelled_jobs": {
+      "delta": 0,
+      "first": 0,
+      "last": 0
+    },
+    "commit_calls": {
+      "delta": 1349,
+      "first": 0,
+      "last": 1349
+    },
+    "completed_jobs": {
+      "delta": 421,
+      "first": 0,
+      "last": 421
+    },
+    "prepare_calls": {
+      "delta": 3643,
+      "first": 0,
+      "last": 3643
+    },
+    "publication_retries": {
+      "delta": 0,
+      "first": 0,
+      "last": 0
+    }
+  },
+  "first_air_cycles": 1,
+  "first_shift_seconds": 0,
+  "gameplay_samples": 107,
+  "largest_observed_active_job_age_ms": 2693.4678,
+  "last_air_cycles": 53,
+  "last_shift_seconds": 180.087,
+  "limitations": [
+    "No matched control",
+    "No injected five-phase scenario",
+    "No complete per-call durations or frame distributions",
+    "No populated main-server acceptance",
+    "Observer adds one native telemetry RPC per sample"
+  ],
+  "passed": true,
+  "performance_accepted": false,
+  "raw_observations": {
+    "bytes": 196352,
+    "path": "target/meridian-artifact-policy/data/rift-runs/20260914T173512Z-99791005/artifacts/data/logs/rift/dogmos-performance.jsonl",
+    "sha256": "4b69a9d17e94638e2ff9d9dc6eff49228eb3f63488b67096ac1d174a74cf95e9"
+  },
+  "run_id": "20260914T173512Z-99791005",
+  "runtime_signatures": [],
+  "samples": 134,
+  "schema_version": 1,
+  "scope": "Single busy-host real-map functional progress/liveness observation, not a matched performance workload",
+  "summary": {
+    "bytes": 18225,
+    "path": "target/meridian-artifact-policy/data/rift-runs/20260914T173512Z-99791005/summary.json",
+    "sha256": "7286644180f287586741c3ab20df8db923314ee03471be46a2929f9f68811fae"
+  },
+  "tests": {
+    "failed": 0,
+    "passed": 2,
+    "recorded": 2,
+    "skipped": 0
+  }
+}

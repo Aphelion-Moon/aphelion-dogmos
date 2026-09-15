@@ -91,8 +91,10 @@ binaries before its cleanup ran. Their pre-run hashes are recorded by the dirty 
 No matching local copy, symbol file, release bundle, repository object, or user-profile backup was
 found. A clean rebuild of the recorded source revision reproduced the artifact sizes and identity
 but not the PE/PDB-derived hashes. The protected lock manifest was not changed. Exact restoration
-therefore requires the original artifact pair, or explicit authorization to regenerate and install
-a coherent paired contract through the maintained release/sync tooling.
+therefore requires the original artifact pair. Regenerating and installing a coherent replacement
+contract through the maintained release/sync tooling is included in authorized work under the
+current root `AGENTS.md` policy for local development or test checkouts, without a separate
+protected-artifact approval. A replacement is not restoration of the original hashes.
 
 ## Unrun or externally blocked acceptance gates
 

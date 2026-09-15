@@ -1,5 +1,7 @@
 pub use crate::frontier::FrontierError;
+use crate::paged_vec::PagedVec;
 mod component;
+mod jobs;
 mod mixture_creation;
 mod ownership;
 mod scratch;
@@ -638,6 +640,8 @@ pub struct DogmosWorld {
 	frontier: FrontierState,
 	heat_active: Vec<TurfHandle>,
 	stage_cursor: Option<StageCursor>,
+	stage_job: Option<crate::stage_job::StageJobState>,
+	next_stage_job_unit: u64,
 	stage_diffusion: Option<StageDiffusionState>,
 	cached_diffusion: Option<StageDiffusionState>,
 	stage_heat: Option<StageHeatState>,
@@ -704,17 +708,14 @@ struct ReactionSequence {
 
 struct StageDiffusionState {
 	publication: Arc<Publication>,
-	publication_index: usize,
-	turfs: Vec<TurfHandle>,
-	mixtures: Vec<MixtureHandle>,
+	turfs: PagedVec<TurfHandle>,
+	mixtures: PagedVec<MixtureHandle>,
 	index_by_turf: SlotIndex<TurfHandle, usize>,
 	seen_mixtures: SlotSet<MixtureHandle>,
-	input: Vec<[f32; MAX_GAS_SLOTS]>,
-	output: Vec<[f32; MAX_GAS_SLOTS]>,
-	input_temperatures: Vec<f32>,
-	minimum_heat_capacities: Vec<f32>,
-	input_energy: Vec<f32>,
-	output_energy: Vec<f32>,
+	input: PagedVec<[f32; MAX_GAS_SLOTS]>,
+	input_temperatures: PagedVec<f32>,
+	minimum_heat_capacities: PagedVec<f32>,
+	input_energy: PagedVec<f32>,
 	specific_heats: [f32; MAX_GAS_SLOTS],
 	/// Gas slots the stencil actually has to visit.
 	///
@@ -733,12 +734,10 @@ struct StageHeatState {
 	staged_heat_active: Vec<TurfHandle>,
 	publication: Arc<Publication>,
 	publication_index: usize,
-	nodes: Vec<StageHeatNode>,
+	nodes: PagedVec<StageHeatNode>,
 	index_by_slot: SlotIndex<u32, u32>,
-	temperatures: Vec<f32>,
-	conductivities: Vec<f32>,
-	heat_capacities: Vec<f32>,
-	staged_mixtures: BTreeMap<MixtureHandle, MixtureRecord>,
+	staged_mixtures: PagedVec<(MixtureHandle, MixtureRecord)>,
+	next_staged_mixture: usize,
 	linked_mixtures: SlotSet<MixtureHandle>,
 	staged_events: Vec<WorldEvent>,
 	next_active_seed: usize,
@@ -749,7 +748,6 @@ struct StageHeatState {
 	/// are computed once at discovery (see advance_stage_heat_topology()) since they don't change
 	/// across conduction substeps.
 	edges: Vec<HeatEdge>,
-	row_sums: Vec<f32>,
 	conduction_substeps: Option<u32>,
 	conduction_substep: u32,
 	conduction_edge: usize,
@@ -758,6 +756,8 @@ struct StageHeatState {
 
 #[derive(Clone, Copy)]
 struct StageHeatNode {
+	temperature: f32,
+	row_sum: f32,
 	handle: TurfHandle,
 	heat: TurfHeatState,
 	mixture: Option<MixtureHandle>,
@@ -767,6 +767,8 @@ struct StageHeatNode {
 struct StageReactionState {
 	publication: Arc<Publication>,
 	publication_index: usize,
+	next_continuation: usize,
+	continuation_limit: usize,
 	targets: Vec<(TurfHandle, MixtureHandle)>,
 	active_continuations: SlotSet<MixtureHandle>,
 	seen_mixtures: SlotSet<MixtureHandle>,
@@ -875,12 +877,10 @@ impl StageHeatState {
 			staged_heat_active: Vec::new(),
 			publication: Publication::new(),
 			publication_index: 0,
-			nodes: Vec::new(),
+			nodes: PagedVec::new(),
 			index_by_slot: SlotIndex::new(),
-			temperatures: Vec::new(),
-			conductivities: Vec::new(),
-			heat_capacities: Vec::new(),
-			staged_mixtures: BTreeMap::new(),
+			staged_mixtures: PagedVec::new(),
+			next_staged_mixture: 0,
 			linked_mixtures: SlotSet::new(),
 			staged_events: Vec::new(),
 			next_active_seed: 0,
@@ -888,7 +888,6 @@ impl StageHeatState {
 			next_topology_node: 0,
 			next_topology_neighbor: 0,
 			edges: Vec::new(),
-			row_sums: Vec::new(),
 			conduction_substeps: None,
 			conduction_substep: 0,
 			conduction_edge: 0,
@@ -901,17 +900,14 @@ impl StageDiffusionState {
 	fn new(specific_heats: [f32; MAX_GAS_SLOTS], registered_gases: usize) -> Self {
 		Self {
 			publication: Publication::new(),
-			publication_index: 0,
-			turfs: Vec::new(),
-			mixtures: Vec::new(),
+			turfs: PagedVec::new(),
+			mixtures: PagedVec::new(),
 			index_by_turf: SlotIndex::new(),
 			seen_mixtures: SlotSet::new(),
-			input: Vec::new(),
-			output: Vec::new(),
-			input_temperatures: Vec::new(),
-			minimum_heat_capacities: Vec::new(),
-			input_energy: Vec::new(),
-			output_energy: Vec::new(),
+			input: PagedVec::new(),
+			input_temperatures: PagedVec::new(),
+			minimum_heat_capacities: PagedVec::new(),
+			input_energy: PagedVec::new(),
 			specific_heats,
 			gas_stride: registered_gases.clamp(1, MAX_GAS_SLOTS),
 			next_node: 0,
@@ -1010,6 +1006,8 @@ impl DogmosWorld {
 			frontier: FrontierState::default(),
 			heat_active: Vec::new(),
 			stage_cursor: None,
+			stage_job: None,
+			next_stage_job_unit: 0,
 			stage_diffusion: None,
 			cached_diffusion: None,
 			stage_heat: None,
@@ -1059,7 +1057,7 @@ impl DogmosWorld {
 	}
 
 	pub fn begin_frontier(&mut self, epoch: u64, expected: u32) -> Result<(), WorldError> {
-		if self.stage_cursor.is_some() {
+		if self.pending_stage_epoch().is_some() {
 			return Err(WorldError::StageConflict(
 				StageConflictReason::ActiveStageMutation {
 					operation: "begin frontier",
@@ -1084,7 +1082,7 @@ impl DogmosWorld {
 	}
 
 	pub fn commit_frontier(&mut self, epoch: u64) -> Result<u32, WorldError> {
-		if self.stage_cursor.is_some() {
+		if self.pending_stage_epoch().is_some() {
 			return Err(WorldError::StageConflict(
 				StageConflictReason::ActiveStageMutation {
 					operation: "commit frontier",
@@ -1102,7 +1100,7 @@ impl DogmosWorld {
 	/// Adds handles directly to the committed frontier - the incremental-sync counterpart to
 	/// begin/append/commit. See `FrontierState::add` for the rationale.
 	pub fn add_frontier(&mut self, epoch: u64, handles: &[TurfHandle]) -> Result<u32, WorldError> {
-		if self.stage_cursor.is_some() {
+		if self.pending_stage_epoch().is_some() {
 			return Err(WorldError::StageConflict(
 				StageConflictReason::ActiveStageMutation {
 					operation: "add frontier handles",
@@ -1125,7 +1123,7 @@ impl DogmosWorld {
 		epoch: u64,
 		handles: &[TurfHandle],
 	) -> Result<u32, WorldError> {
-		if self.stage_cursor.is_some() {
+		if self.pending_stage_epoch().is_some() {
 			return Err(WorldError::StageConflict(
 				StageConflictReason::ActiveStageMutation {
 					operation: "remove frontier handles",
@@ -1221,34 +1219,25 @@ impl DogmosWorld {
 				+ state.seen_mixtures.capacity_bytes()
 				+ (state.input_temperatures.capacity() + state.minimum_heat_capacities.capacity())
 					* std::mem::size_of::<f32>()
-				+ (state.input_energy.capacity() + state.output_energy.capacity())
-					* std::mem::size_of::<f32>();
+				+ state.input_energy.capacity() * std::mem::size_of::<f32>();
 			active_vec_capacity_bytes_lower_bound +=
 				state.turfs.capacity() * std::mem::size_of::<TurfHandle>();
 			active_vec_capacity_bytes_lower_bound +=
 				state.mixtures.capacity() * std::mem::size_of::<MixtureHandle>();
 			active_vec_capacity_bytes_lower_bound +=
 				state.input.capacity() * std::mem::size_of::<[f32; MAX_GAS_SLOTS]>();
-			active_vec_capacity_bytes_lower_bound +=
-				state.output.capacity() * std::mem::size_of::<[f32; MAX_GAS_SLOTS]>();
 		}
 		for state in self.stage_heat.iter().chain(self.cached_heat.iter()) {
 			active_vec_capacity_bytes_lower_bound += state.index_by_slot.capacity_bytes()
+				+ state.staged_mixtures.capacity()
+					* std::mem::size_of::<(MixtureHandle, MixtureRecord)>()
 				+ state.linked_mixtures.capacity_bytes()
 				+ state.staged_heat_active.capacity() * std::mem::size_of::<TurfHandle>()
 				+ state.staged_events.capacity() * std::mem::size_of::<WorldEvent>();
 			active_vec_capacity_bytes_lower_bound +=
 				state.nodes.capacity() * std::mem::size_of::<StageHeatNode>();
 			active_vec_capacity_bytes_lower_bound +=
-				state.temperatures.capacity() * std::mem::size_of::<f32>();
-			active_vec_capacity_bytes_lower_bound +=
-				state.conductivities.capacity() * std::mem::size_of::<f32>();
-			active_vec_capacity_bytes_lower_bound +=
-				state.heat_capacities.capacity() * std::mem::size_of::<f32>();
-			active_vec_capacity_bytes_lower_bound +=
 				state.edges.capacity() * std::mem::size_of::<HeatEdge>();
-			active_vec_capacity_bytes_lower_bound +=
-				state.row_sums.capacity() * std::mem::size_of::<f32>();
 		}
 		for state in self
 			.stage_reactions
@@ -1358,7 +1347,7 @@ impl DogmosWorld {
 				}
 				LifecycleAction::Unregister => true,
 			};
-			if self.stage_cursor.is_some() && conflicts_with_active_stage {
+			if self.pending_stage_epoch().is_some() && conflicts_with_active_stage {
 				return Err(WorldError::StageConflict(
 					StageConflictReason::ActiveStageMutation {
 						operation: "apply mixture lifecycle",
@@ -1492,7 +1481,7 @@ impl DogmosWorld {
 		&mut self,
 		mutations: &[TurfLifecycleMutation],
 	) -> Result<u32, WorldError> {
-		if self.stage_cursor.is_some() {
+		if self.pending_stage_epoch().is_some() {
 			return Err(WorldError::StageConflict(
 				StageConflictReason::ActiveStageMutation {
 					operation: "apply turf lifecycle",
@@ -1649,7 +1638,7 @@ impl DogmosWorld {
 	}
 
 	pub fn apply_turf_heat(&mut self, mutations: &[TurfHeatMutation]) -> Result<u32, WorldError> {
-		if self.stage_cursor.is_some() {
+		if self.pending_stage_epoch().is_some() {
 			return Err(WorldError::StageConflict(
 				StageConflictReason::ActiveStageMutation {
 					operation: "apply turf heat",
@@ -1707,7 +1696,7 @@ impl DogmosWorld {
 		&mut self,
 		mutations: &[TurfHeatAdjacencyMutation],
 	) -> Result<u32, WorldError> {
-		if self.stage_cursor.is_some() {
+		if self.pending_stage_epoch().is_some() {
 			return Err(WorldError::StageConflict(
 				StageConflictReason::ActiveStageMutation {
 					operation: "apply turf heat adjacency",
@@ -1743,7 +1732,7 @@ impl DogmosWorld {
 		&mut self,
 		mutations: &[TurfAdjacencyMutation],
 	) -> Result<u32, WorldError> {
-		if self.stage_cursor.is_some() {
+		if self.pending_stage_epoch().is_some() {
 			return Err(WorldError::StageConflict(
 				StageConflictReason::ActiveStageMutation {
 					operation: "apply turf adjacency",
@@ -1792,7 +1781,7 @@ impl DogmosWorld {
 		&mut self,
 		mutations: &[TurfFirelockMutation],
 	) -> Result<u32, WorldError> {
-		if self.stage_cursor.is_some() {
+		if self.pending_stage_epoch().is_some() {
 			return Err(WorldError::StageConflict(
 				StageConflictReason::ActiveStageMutation {
 					operation: "apply turf firelocks",
@@ -2706,7 +2695,15 @@ impl DogmosWorld {
 	}
 
 	pub fn pending_stage_epoch(&self) -> Option<u64> {
-		self.stage_cursor.as_ref().map(|cursor| cursor.stage_epoch)
+		self.stage_cursor
+			.as_ref()
+			.map(|cursor| cursor.stage_epoch)
+			.or_else(|| {
+				self.stage_job
+					.as_ref()
+					.filter(|job| !job.done)
+					.map(|job| job.spec.stage_epoch)
+			})
 	}
 
 	pub fn process_stage_chunk_cancellable(
@@ -2727,6 +2724,15 @@ impl DogmosWorld {
 		event_limit: u32,
 		mut should_cancel: impl FnMut() -> bool,
 	) -> Result<StageChunkResult, WorldError> {
+		if self.stage_job.as_ref().is_some_and(|job| !job.done) {
+			return Err(WorldError::State(
+				"an explicit-publication stage job owns the world".into(),
+			));
+		}
+		if self.stage_job.is_some() {
+			self.validate_stage_request(request)?;
+			self.stage_job = None;
+		}
 		let event_capacity = self.max_events.min(event_limit) as usize;
 		let result =
 			self.process_stage_chunk_cancellable_inner(request, event_capacity, &mut should_cancel);
@@ -2758,12 +2764,7 @@ impl DogmosWorld {
 		self.use_committed_frontier = false;
 	}
 
-	fn process_stage_chunk_cancellable_inner(
-		&mut self,
-		request: StageChunkRequest,
-		event_capacity: usize,
-		mut should_cancel: impl FnMut() -> bool,
-	) -> Result<StageChunkResult, WorldError> {
+	fn validate_stage_request(&self, request: StageChunkRequest) -> Result<(), WorldError> {
 		if request.work_limit == 0 || request.work_limit > MAX_STAGE_WORK_LIMIT {
 			return Err(WorldError::InvalidStageWorkLimit(request.work_limit));
 		}
@@ -2778,6 +2779,16 @@ impl DogmosWorld {
 				},
 			));
 		}
+		Ok(())
+	}
+
+	fn process_stage_chunk_cancellable_inner(
+		&mut self,
+		request: StageChunkRequest,
+		event_capacity: usize,
+		mut should_cancel: impl FnMut() -> bool,
+	) -> Result<StageChunkResult, WorldError> {
+		self.validate_stage_request(request)?;
 		match &self.stage_cursor {
 			Some(cursor) if !cursor.matches(request) => {
 				return Err(WorldError::StageConflict(
@@ -2853,13 +2864,7 @@ impl DogmosWorld {
 						.cached_reactions
 						.take()
 						.unwrap_or_else(StageReactionState::new);
-					for continuation in self
-						.continuations
-						.iter()
-						.filter_map(|slot| slot.continuation.as_ref())
-					{
-						state.active_continuations.insert(continuation.mixture);
-					}
+					state.continuation_limit = self.continuations.len();
 					state
 				});
 				self.stage_components = stage_components;
@@ -2884,6 +2889,34 @@ impl DogmosWorld {
 			return Err(WorldError::Cancelled);
 		}
 		let mut work_items = 0;
+		while self
+			.stage_reactions
+			.as_ref()
+			.is_some_and(|state| state.next_continuation < state.continuation_limit)
+			&& work_items < request.work_limit
+		{
+			if should_cancel() {
+				return Err(WorldError::Cancelled);
+			}
+			let state = self.stage_reactions.as_mut().unwrap();
+			if let Some(continuation) = &self.continuations[state.next_continuation].continuation {
+				state.active_continuations.insert(continuation.mixture);
+			}
+			state.next_continuation += 1;
+			work_items += 1;
+		}
+		if self
+			.stage_reactions
+			.as_ref()
+			.is_some_and(|state| state.next_continuation < state.continuation_limit)
+		{
+			return Ok(StageChunkResult {
+				work_items,
+				pending: true,
+				remaining_estimate: 1,
+				..StageChunkResult::default()
+			});
+		}
 		while self
 			.stage_cursor
 			.as_ref()
@@ -3014,6 +3047,13 @@ impl DogmosWorld {
 					..StageChunkResult::default()
 				});
 			}
+			if self.defer_job_publication()? {
+				return Ok(StageChunkResult {
+					work_items,
+					pending: true,
+					..StageChunkResult::default()
+				});
+			}
 			// commit_stage_diffusion()'s return is a count of committed FDM turf mixtures, not an
 			// equalize count - it used to be misreported here as produced_equalize_seeds, which
 			// would have collided with the real count now returned by the Equalize stage below.
@@ -3107,12 +3147,20 @@ impl DogmosWorld {
 				work_items += 1;
 			}
 			if self.stage_heat.as_ref().is_some_and(|state| {
-				!state.staged_mixtures.is_empty() || state.publication_index < state.nodes.len()
+				state.next_staged_mixture < state.staged_mixtures.len()
+					|| state.publication_index < state.nodes.len()
 			}) {
 				return Ok(StageChunkResult {
 					work_items,
 					pending: true,
 					remaining_estimate: 1,
+					..StageChunkResult::default()
+				});
+			}
+			if self.defer_job_publication()? {
+				return Ok(StageChunkResult {
+					work_items,
+					pending: true,
 					..StageChunkResult::default()
 				});
 			}
@@ -3171,6 +3219,13 @@ impl DogmosWorld {
 					..StageChunkResult::default()
 				});
 			}
+			if self.defer_job_publication()? {
+				return Ok(StageChunkResult {
+					work_items,
+					pending: true,
+					..StageChunkResult::default()
+				});
+			}
 			let Some((_, callback_events)) = self.commit_stage_reactions(event_capacity)? else {
 				// A gameplay write invalidated this entire atomic reaction attempt. Keep
 				// candidates, reserved continuations, and events invisible, then recollect
@@ -3218,12 +3273,43 @@ impl DogmosWorld {
 				}
 				work_items += 1;
 			}
-			if !self.stage_component_discovery_complete() {
+			let discovery_complete = self.stage_component_discovery_complete();
+			// Effect-free components can finish during preparation. Preserve cumulative
+			// receipt semantics with one final acknowledgement if no later real commit
+			// has already accounted for them. Poll must not advance committed totals.
+			let accounting_pending = discovery_complete
+				&& self.stage_job.as_ref().is_some_and(|job| {
+					let acknowledged = job.last_receipt.map_or(0, |(_, receipt)| {
+						if request.stage == WorldStage::Equalize {
+							receipt.produced_equalize_seeds
+						} else {
+							receipt.produced_group_seeds
+						}
+					});
+					self.stage_components.as_ref().unwrap().components_processed != acknowledged
+				}) && self.defer_job_publication()?;
+			if !discovery_complete || accounting_pending {
+				let (callback_events, components_processed) = if self.stage_job.is_some() {
+					let state = self.stage_components.as_ref().unwrap();
+					(state.callback_events, state.components_processed)
+				} else {
+					(0, 0)
+				};
 				return Ok(StageChunkResult {
 					work_items,
-					callback_events: 0,
+					callback_events,
+					produced_equalize_seeds: if request.stage == WorldStage::Equalize {
+						components_processed
+					} else {
+						0
+					},
+					produced_group_seeds: if request.stage == WorldStage::ExcitedGroups {
+						components_processed
+					} else {
+						0
+					},
 					pending: true,
-					remaining_estimate: 1,
+					remaining_estimate: u32::from(!discovery_complete),
 					..StageChunkResult::default()
 				});
 			}
@@ -3298,14 +3384,28 @@ impl DogmosWorld {
 			return Err(WorldError::RevisionExhausted(mixture_handle));
 		}
 		let index = state.turfs.len();
-		state.turfs.push(turf_handle);
-		state.mixtures.push(mixture_handle);
+		state
+			.turfs
+			.try_push(turf_handle)
+			.map_err(|_| world_allocation_failed())?;
+		state
+			.mixtures
+			.try_push(mixture_handle)
+			.map_err(|_| world_allocation_failed())?;
 		state.index_by_turf.insert(turf_handle, index);
 		state.widen_gas_stride(&gases);
-		state.input.push(gases);
-		state.output.push([0.0; MAX_GAS_SLOTS]);
-		state.input_temperatures.push(temperature);
-		state.minimum_heat_capacities.push(minimum_heat_capacity);
+		state
+			.input
+			.try_push(gases)
+			.map_err(|_| world_allocation_failed())?;
+		state
+			.input_temperatures
+			.try_push(temperature)
+			.map_err(|_| world_allocation_failed())?;
+		state
+			.minimum_heat_capacities
+			.try_push(minimum_heat_capacity)
+			.map_err(|_| world_allocation_failed())?;
 		let heat_capacity = gases
 			.iter()
 			.zip(state.specific_heats)
@@ -3313,8 +3413,10 @@ impl DogmosWorld {
 				specific_heat.mul_add(*amount, capacity)
 			})
 			.max(minimum_heat_capacity);
-		state.input_energy.push(heat_capacity * temperature);
-		state.output_energy.push(0.0);
+		state
+			.input_energy
+			.try_push(heat_capacity * temperature)
+			.map_err(|_| world_allocation_failed())?;
 		self.mixtures[mixture_handle.slot as usize]
 			.mixture
 			.prepare(&state.publication);
@@ -3376,8 +3478,6 @@ impl DogmosWorld {
 			.stage_diffusion
 			.as_mut()
 			.expect("process-turfs stage owns diffusion state");
-		state.output[index] = output;
-		state.output_energy[index] = output_energy;
 		let handle = state.mixtures[index];
 		let mut candidate = self.mixtures[handle.slot as usize]
 			.mixture
@@ -3388,7 +3488,9 @@ impl DogmosWorld {
 		if mixture.immutable {
 			return Ok(());
 		}
-		let mut gases = state.output[index];
+		// The versioned candidate owns the completed row. No second full-world
+		// output column is needed between this computation and atomic publication.
+		let mut gases = output;
 		canonicalize_gases(&mut gases);
 		let heat_capacity = gases
 			.iter()
@@ -3399,7 +3501,7 @@ impl DogmosWorld {
 			.max(state.minimum_heat_capacities[index]);
 		mixture.gases = gases;
 		mixture.temperature = if heat_capacity > MINIMUM_HEAT_CAPACITY {
-			(state.output_energy[index] / heat_capacity).max(MINIMUM_TEMPERATURE_K)
+			(output_energy / heat_capacity).max(MINIMUM_TEMPERATURE_K)
 		} else {
 			state.input_temperatures[index]
 		};
@@ -3468,17 +3570,18 @@ impl DogmosWorld {
 		}
 		let index = u32::try_from(state.nodes.len())
 			.map_err(|_| WorldError::State("turf heat count exceeds u32".into()))?;
-		state.nodes.push(StageHeatNode {
-			handle: turf_handle,
-			heat,
-			mixture,
-			can_continue,
-		});
+		state
+			.nodes
+			.try_push(StageHeatNode {
+				temperature: heat.temperature,
+				row_sum: 0.0,
+				handle: turf_handle,
+				heat,
+				mixture,
+				can_continue,
+			})
+			.map_err(|_| world_allocation_failed())?;
 		state.index_by_slot.insert(turf_handle.slot, index);
-		state.temperatures.push(heat.temperature);
-		state.conductivities.push(heat.thermal_conductivity);
-		state.heat_capacities.push(heat.heat_capacity);
-		state.row_sums.push(0.0);
 		self.turfs[turf_handle.slot as usize]
 			.turf
 			.prepare(&state.publication);
@@ -3505,7 +3608,7 @@ impl DogmosWorld {
 				node.handle,
 				node.heat,
 				node.mixture,
-				state.temperatures[index],
+				state.nodes[index].temperature,
 			)
 		};
 		let elapsed_heat_scale =
@@ -3572,7 +3675,8 @@ impl DogmosWorld {
 						.as_mut()
 						.expect("turf-heat stage owns heat state")
 						.staged_mixtures
-						.insert(mixture_handle, mixture);
+						.try_push((mixture_handle, mixture))
+						.map_err(|_| world_allocation_failed())?;
 				}
 			}
 		}
@@ -3581,7 +3685,7 @@ impl DogmosWorld {
 			.stage_heat
 			.as_mut()
 			.expect("turf-heat stage owns heat state");
-		state.temperatures[index] = temperature;
+		state.nodes[index].temperature = temperature;
 		if temperature > MINIMUM_TEMPERATURE_START_SUPERCONDUCTION_K
 			&& temperature > heat_state.heat_capacity
 		{
@@ -3630,28 +3734,28 @@ impl DogmosWorld {
 		let second_index = second as usize;
 		// Conductivities and heat capacities don't change across substeps, so these two
 		// weights are loop-invariant with respect to advance_stage_heat_conduction()'s
-		// per-substep loop - compute them once here (where row_sums already needs them) and
+		// per-substep loop - compute them once here (where row sums already need them) and
 		// carry them on the edge instead of recomputing from scratch every substep.
 		let first_weight = crate::numerics::conduction::heat_row_weight(
-			state.conductivities[first_index],
-			state.conductivities[second_index],
-			state.heat_capacities[first_index],
-			state.heat_capacities[second_index],
+			state.nodes[first_index].heat.thermal_conductivity,
+			state.nodes[second_index].heat.thermal_conductivity,
+			state.nodes[first_index].heat.heat_capacity,
+			state.nodes[second_index].heat.heat_capacity,
 		)
 		.map_err(|error| WorldError::State(error.to_string()))?;
 		let second_weight = crate::numerics::conduction::heat_row_weight(
-			state.conductivities[second_index],
-			state.conductivities[first_index],
-			state.heat_capacities[second_index],
-			state.heat_capacities[first_index],
+			state.nodes[second_index].heat.thermal_conductivity,
+			state.nodes[first_index].heat.thermal_conductivity,
+			state.nodes[second_index].heat.heat_capacity,
+			state.nodes[first_index].heat.heat_capacity,
 		)
 		.map_err(|error| WorldError::State(error.to_string()))?;
-		state.row_sums[first_index] += first_weight;
-		state.row_sums[second_index] += second_weight;
+		state.nodes[first_index].row_sum += first_weight;
+		state.nodes[second_index].row_sum += second_weight;
 		state.maximum_row_sum = state
 			.maximum_row_sum
-			.max(state.row_sums[first_index])
-			.max(state.row_sums[second_index]);
+			.max(state.nodes[first_index].row_sum)
+			.max(state.nodes[second_index].row_sum);
 		state
 			.edges
 			.push((first, second, first_weight, second_weight));
@@ -3702,11 +3806,12 @@ impl DogmosWorld {
 		let (first, second, first_weight, second_weight) = state.edges[state.conduction_edge];
 		let first_index = first as usize;
 		let second_index = second as usize;
-		let difference = state.temperatures[second_index] - state.temperatures[first_index];
+		let difference =
+			state.nodes[second_index].temperature - state.nodes[first_index].temperature;
 		let first_weight = first_weight * state.conduction_scale;
 		let second_weight = second_weight * state.conduction_scale;
-		state.temperatures[first_index] += difference * first_weight;
-		state.temperatures[second_index] -= difference * second_weight;
+		state.nodes[first_index].temperature += difference * first_weight;
+		state.nodes[second_index].temperature -= difference * second_weight;
 		state.conduction_edge += 1;
 		if state.conduction_edge == state.edges.len() {
 			state.conduction_edge = 0;
@@ -3725,7 +3830,15 @@ impl DogmosWorld {
 
 	fn advance_stage_heat_publication(&mut self) -> Result<bool, WorldError> {
 		let state = self.stage_heat.as_mut().expect("heat stage state");
-		if let Some((handle, mut mixture)) = state.staged_mixtures.pop_first() {
+		if let Some((handle, mut mixture)) = state
+			.staged_mixtures
+			.get(state.next_staged_mixture)
+			.cloned()
+		{
+			// Each mixture is unique (linked_mixtures checked it during computation).
+			// Staging order is private; publication still reveals the complete heat
+			// transaction and its original event order in one operation.
+			state.next_staged_mixture += 1;
 			canonicalize_gases(&mut mixture.gases);
 			mixture.revision += 1;
 			self.mixtures[handle.slot as usize]
@@ -3736,7 +3849,7 @@ impl DogmosWorld {
 		let Some(node) = state.nodes.get(state.publication_index).copied() else {
 			return Ok(false);
 		};
-		let temperature = state.temperatures[state.publication_index];
+		let temperature = state.nodes[state.publication_index].temperature;
 		let turf = self.turfs[node.handle.slot as usize]
 			.turf
 			.prepared_mut(&state.publication);
@@ -3810,7 +3923,9 @@ impl DogmosWorld {
 				capacity: u32::try_from(event_capacity).unwrap_or(u32::MAX),
 			});
 		}
-		if self.heat_active.try_reserve(state.nodes.len()).is_err() {
+		// The replacement active set is already fully allocated and will be swapped.
+		// Reserve the event destination that publication actually appends to instead.
+		if self.events.try_reserve(state.staged_events.len()).is_err() {
 			self.stage_heat = Some(state);
 			return Err(world_allocation_failed());
 		}
@@ -3858,6 +3973,15 @@ impl DogmosWorld {
 		if !should_process {
 			return Ok(());
 		}
+		// Eligibility and DM fallback selection read gas even when no native reaction
+		// writes it. Those reads must invalidate the complete transaction too.
+		self.mixtures[mixture.slot as usize].mixture.prepare(
+			&self
+				.stage_reactions
+				.as_ref()
+				.expect("reaction stage owns reaction state")
+				.publication,
+		);
 		let sequence = self.evaluate_reaction_sequence(turf.into(), mixture, 0, 0, None)?;
 		let state = self
 			.stage_reactions
@@ -3933,13 +4057,7 @@ impl DogmosWorld {
 		if !state.publication.publish() {
 			self.cancel_staged_reaction_continuations(&state)?;
 			state.clear();
-			for continuation in self
-				.continuations
-				.iter()
-				.filter_map(|slot| slot.continuation.as_ref())
-			{
-				state.active_continuations.insert(continuation.mixture);
-			}
+			state.continuation_limit = self.continuations.len();
 			self.stage_reactions = Some(state);
 			return Ok(None);
 		}
@@ -4106,7 +4224,6 @@ impl DogmosWorld {
 				.computation
 				.as_mut()
 				.unwrap()
-				.as_mut()
 				.poll(&mut std::task::Context::from_waker(std::task::Waker::noop()));
 			let std::task::Poll::Ready((mut kernel, transaction, events, result)) = result else {
 				self.stage_components = Some(state);
@@ -4170,6 +4287,14 @@ impl DogmosWorld {
 			self.stage_components = Some(state);
 			return result;
 		}
+		// No transaction entries and no events means this component only read gas.
+		// Its prepared records are unchanged clones, so completing it exposes no
+		// simulation effects. Every write candidate still requires explicit Commit.
+		let has_effects = state.publication_index != 0 || !state.staged_events.is_empty();
+		if has_effects && self.defer_job_publication()? {
+			self.stage_components = Some(state);
+			return Ok(());
+		}
 		let requested = self.events.len().saturating_add(state.staged_events.len());
 		if requested > event_capacity {
 			self.stage_components = Some(state);
@@ -4178,6 +4303,9 @@ impl DogmosWorld {
 				capacity: event_capacity.try_into().unwrap_or(u32::MAX),
 			});
 		}
+		self.events
+			.try_reserve(state.staged_events.len())
+			.map_err(|_| world_allocation_failed())?;
 		if !state.publication.publish() {
 			self.stage_components = Some(state);
 			return Err(WorldError::StageConflict(
@@ -4200,6 +4328,9 @@ impl DogmosWorld {
 		state.next_neighbor = 0;
 		state.component_ready = false;
 		state.components_processed += 1;
+		if let Some(job) = &mut self.stage_job {
+			job.unit_committed |= has_effects;
+		}
 		self.stage_components = Some(state);
 		Ok(())
 	}
@@ -4814,10 +4945,12 @@ impl DogmosWorld {
 				.ok_or(WorldError::ReactionContinuationCapacityExceeded)?;
 			entry.continuation = Some(continuation);
 			self.live_continuations += 1;
-			return Ok(ReactionContinuationToken {
+			let token = ReactionContinuationToken {
 				slot,
 				generation: entry.generation,
-			});
+			};
+			self.invalidate_reaction_preparation();
+			return Ok(token);
 		}
 		// With no reusable slot, every allocated slot is occupied or generation-exhausted.
 		// Counting the entire arena here would make a multi-target batch quadratic.
@@ -4831,6 +4964,7 @@ impl DogmosWorld {
 			continuation: Some(continuation),
 		});
 		self.live_continuations += 1;
+		self.invalidate_reaction_preparation();
 		Ok(ReactionContinuationToken {
 			slot,
 			generation: 1,
@@ -4873,10 +5007,12 @@ impl DogmosWorld {
 			.checked_add(1)
 			.ok_or(WorldError::ReactionContinuationCapacityExceeded)?;
 		slot.continuation = Some(continuation);
-		Ok(ReactionContinuationToken {
+		let next = ReactionContinuationToken {
 			slot: token.slot,
 			generation: slot.generation,
-		})
+		};
+		self.invalidate_reaction_preparation();
+		Ok(next)
 	}
 
 	fn complete_continuation(
@@ -4887,7 +5023,17 @@ impl DogmosWorld {
 		self.continuations[token.slot as usize].continuation = None;
 		self.free_continuations.push(token.slot);
 		self.live_continuations -= 1;
+		self.invalidate_reaction_preparation();
 		Ok(())
+	}
+
+	fn invalidate_reaction_preparation(&self) {
+		// Continuation ownership is part of reaction eligibility even without a gas
+		// mutation. Commit temporarily takes its own stage state, so its private
+		// reservations do not invalidate themselves. External changes force a retry.
+		if let Some(state) = &self.stage_reactions {
+			state.publication.invalidate();
+		}
 	}
 
 	fn invalidate_continuations(
@@ -5056,9 +5202,12 @@ impl DogmosWorld {
 			.into_values()
 			.filter_map(|(handle, can_continue)| {
 				let turf = self.require_turf_handle(handle).ok()?;
+				let heat = turf.heat?;
 				Some(StageHeatNode {
+					temperature: heat.temperature,
+					row_sum: 0.0,
 					handle,
-					heat: turf.heat?,
+					heat,
 					mixture: turf.mixture,
 					can_continue,
 				})
@@ -6459,11 +6608,14 @@ mod tests {
 		let mut world = DogmosWorld::new(1024 * 1024);
 		let before = world.reusable_workset_bytes();
 		let mut scratch = StageDiffusionState::new([20.0; MAX_GAS_SLOTS], MAX_GAS_SLOTS);
-		scratch.input.reserve_exact(3);
-		scratch.output.reserve_exact(5);
-		scratch.input_energy.reserve_exact(7);
-		let expected = (scratch.input.capacity() + scratch.output.capacity()) * MAX_GAS_SLOTS * 4
-			+ scratch.input_energy.capacity() * 4;
+		for _ in 0..3 {
+			scratch.input.try_push([0.0; MAX_GAS_SLOTS]).unwrap();
+		}
+		for _ in 0..7 {
+			scratch.input_energy.try_push(0.0).unwrap();
+		}
+		let expected =
+			scratch.input.capacity() * MAX_GAS_SLOTS * 4 + scratch.input_energy.capacity() * 4;
 		world.stage_diffusion = Some(scratch);
 		assert_eq!(world.reusable_workset_bytes() - before, expected as u64);
 		world.abort_stage();

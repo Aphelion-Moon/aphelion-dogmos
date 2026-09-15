@@ -1,7 +1,6 @@
 use crate::MixtureHandle;
 
 const UNUSED_INDEX: u32 = u32::MAX;
-const BITS_PER_WORD: usize = u64::BITS as usize;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TransactionError {
@@ -25,7 +24,6 @@ pub(crate) struct TransactionEntry<T> {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct IndexedTransaction<T> {
 	slot_to_index: Vec<u32>,
-	touched_bits: Vec<u64>,
 	entries: Vec<TransactionEntry<T>>,
 	max_entries: usize,
 }
@@ -37,21 +35,13 @@ impl<T: Clone> IndexedTransaction<T> {
 		max_entries: usize,
 	) -> Result<(), TransactionError> {
 		self.clear();
-		if max_entries >= UNUSED_INDEX as usize {
+		if max_entries >= UNUSED_INDEX as usize || slot_count >= UNUSED_INDEX as usize {
 			return Err(TransactionError::CapacityExceeded);
 		}
-		let words = slot_count
-			.checked_add(BITS_PER_WORD - 1)
-			.ok_or(TransactionError::CapacityExceeded)?
-			/ BITS_PER_WORD;
 		self.slot_to_index
 			.try_reserve(slot_count.saturating_sub(self.slot_to_index.len()))
 			.map_err(|_| TransactionError::AllocationFailed)?;
 		self.slot_to_index.resize(slot_count, UNUSED_INDEX);
-		self.touched_bits
-			.try_reserve(words.saturating_sub(self.touched_bits.len()))
-			.map_err(|_| TransactionError::AllocationFailed)?;
-		self.touched_bits.resize(words, 0);
 		self.entries
 			.try_reserve(max_entries)
 			.map_err(|_| TransactionError::AllocationFailed)?;
@@ -59,24 +49,14 @@ impl<T: Clone> IndexedTransaction<T> {
 		Ok(())
 	}
 	pub(crate) fn try_new(slot_count: usize, max_entries: usize) -> Result<Self, TransactionError> {
-		if max_entries >= UNUSED_INDEX as usize {
+		if max_entries >= UNUSED_INDEX as usize || slot_count >= UNUSED_INDEX as usize {
 			return Err(TransactionError::CapacityExceeded);
 		}
-		let bit_words = slot_count
-			.checked_add(BITS_PER_WORD - 1)
-			.ok_or(TransactionError::CapacityExceeded)?
-			/ BITS_PER_WORD;
-
 		let mut slot_to_index = Vec::new();
 		slot_to_index
 			.try_reserve_exact(slot_count)
 			.map_err(|_| TransactionError::AllocationFailed)?;
 		slot_to_index.resize(slot_count, UNUSED_INDEX);
-		let mut touched_bits = Vec::new();
-		touched_bits
-			.try_reserve_exact(bit_words)
-			.map_err(|_| TransactionError::AllocationFailed)?;
-		touched_bits.resize(bit_words, 0);
 		let mut entries = Vec::new();
 		entries
 			.try_reserve_exact(max_entries)
@@ -84,7 +64,6 @@ impl<T: Clone> IndexedTransaction<T> {
 
 		Ok(Self {
 			slot_to_index,
-			touched_bits,
 			entries,
 			max_entries,
 		})
@@ -114,7 +93,13 @@ impl<T: Clone> IndexedTransaction<T> {
 		let Some(&dense_index) = self.slot_to_index.get(slot) else {
 			return Err(TransactionError::CapacityExceeded);
 		};
-		if dense_index != UNUSED_INDEX {
+		// Like SlotIndex, validate the dense entry's slot as well as its position.
+		// Old index values can then survive clear without a scan of every touched slot.
+		if self
+			.entries
+			.get(dense_index as usize)
+			.is_some_and(|entry| entry.handle.slot == handle.slot)
+		{
 			let entry = &mut self.entries[dense_index as usize];
 			if entry.handle != handle {
 				return Err(TransactionError::HandleConflict {
@@ -136,7 +121,6 @@ impl<T: Clone> IndexedTransaction<T> {
 			candidate: initial.clone(),
 		});
 		self.slot_to_index[slot] = dense_index;
-		self.touched_bits[slot / BITS_PER_WORD] |= 1 << (slot % BITS_PER_WORD);
 		Ok(&mut self.entries[dense_index as usize].candidate)
 	}
 
@@ -175,17 +159,12 @@ impl<T: Clone> IndexedTransaction<T> {
 
 	#[cfg(test)]
 	pub(crate) fn rollback_to(&mut self, checkpoint: usize) {
-		for entry in self.entries.drain(checkpoint..) {
-			let slot = entry.handle.slot as usize;
-			self.slot_to_index[slot] = UNUSED_INDEX;
-			self.touched_bits[slot / BITS_PER_WORD] &= !(1 << (slot % BITS_PER_WORD));
-		}
+		self.entries.truncate(checkpoint);
 	}
 
 	pub(crate) fn retire(&mut self, index: usize) {
 		let slot = self.entries[index].handle.slot as usize;
 		self.slot_to_index[slot] = UNUSED_INDEX;
-		self.touched_bits[slot / BITS_PER_WORD] &= !(1 << (slot % BITS_PER_WORD));
 	}
 
 	pub(crate) fn clear_retired(&mut self) {
@@ -193,7 +172,7 @@ impl<T: Clone> IndexedTransaction<T> {
 	}
 
 	pub(crate) fn clear(&mut self) {
-		drop(self.drain_entries());
+		self.entries.clear();
 	}
 
 	#[cfg(debug_assertions)]
@@ -208,29 +187,20 @@ impl<T: Clone> IndexedTransaction<T> {
 		&self.entries
 	}
 
+	#[cfg(any(test, debug_assertions))]
 	pub(crate) fn drain_entries(&mut self) -> std::vec::Drain<'_, TransactionEntry<T>> {
-		for entry in &self.entries {
-			let slot = entry.handle.slot as usize;
-			self.slot_to_index[slot] = UNUSED_INDEX;
-			self.touched_bits[slot / BITS_PER_WORD] &= !(1 << (slot % BITS_PER_WORD));
-		}
 		self.entries.drain(..)
 	}
 
 	pub(crate) fn capacity_bytes_lower_bound(&self) -> usize {
 		self.slot_to_index.capacity() * std::mem::size_of::<u32>()
-			+ self.touched_bits.capacity() * std::mem::size_of::<u64>()
 			+ self.entries.capacity() * std::mem::size_of::<TransactionEntry<T>>()
 	}
 
 	fn entry_index(&self, handle: MixtureHandle) -> Option<usize> {
 		let slot = handle.slot as usize;
-		let word = *self.touched_bits.get(slot / BITS_PER_WORD)?;
-		if word & (1 << (slot % BITS_PER_WORD)) == 0 {
-			return None;
-		}
 		let index = *self.slot_to_index.get(slot)?;
-		if index == UNUSED_INDEX || self.entries[index as usize].handle != handle {
+		if self.entries.get(index as usize)?.handle != handle {
 			return None;
 		}
 		Some(index as usize)
@@ -298,6 +268,34 @@ mod tests {
 		assert_eq!(transaction.touch(handle(0, 2), 7, &40), Ok(&mut 40));
 		assert_eq!(transaction.touch(handle(3, 6), 8, &50), Ok(&mut 50));
 		assert_eq!(transaction.capacity_bytes_lower_bound(), allocated_bytes);
+	}
+
+	#[test]
+	fn dense_reuse_cannot_revive_a_cleared_or_retired_handle() {
+		let mut transaction = IndexedTransaction::try_new(16, 8).unwrap();
+		for round in 1..100 {
+			transaction.touch(handle(12, round), 0, &12).unwrap();
+			transaction.touch(handle(3, round), 0, &3).unwrap();
+			transaction.retire(0);
+			assert!(!transaction.contains(handle(12, round)));
+			assert_eq!(transaction.candidate(handle(3, round)), Some(&3));
+			transaction.clear();
+			transaction.touch(handle(9, round), 0, &9).unwrap();
+			assert!(!transaction.contains(handle(12, round)));
+			assert!(!transaction.contains(handle(3, round)));
+			assert_eq!(
+				transaction.touch(handle(12, round + 1), 0, &20),
+				Ok(&mut 20)
+			);
+			assert!(!transaction.contains(handle(12, round)));
+			assert_eq!(transaction.candidate(handle(9, round)), Some(&9));
+			transaction.rollback_to(1);
+			transaction.touch(handle(3, round + 1), 0, &30).unwrap();
+			assert!(!transaction.contains(handle(12, round + 1)));
+			assert_eq!(transaction.candidate(handle(3, round + 1)), Some(&30));
+			assert_eq!(transaction.drain_entries().count(), 2);
+			assert!(!transaction.contains(handle(9, round)));
+		}
 	}
 
 	#[test]

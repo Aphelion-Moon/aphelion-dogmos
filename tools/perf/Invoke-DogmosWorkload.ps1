@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
 	[switch]$ValidateOnly,
-	[string]$WorkloadDirectory = (Join-Path $PSScriptRoot '..\..\docs\performance\workloads'),
+	[string]$WorkloadDirectory,
 	[string]$WorkloadPath,
 	[string]$OutputDirectory,
 	[string]$Revision,
@@ -11,6 +11,9 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+if(-not $WorkloadDirectory) {
+	$WorkloadDirectory = Join-Path $PSScriptRoot '..\..\docs\performance\workloads'
+}
 
 function Get-Sha256Hex {
 	param([Parameter(Mandatory)][string]$Path)
@@ -44,6 +47,20 @@ function Read-DogmosWorkload {
 	if(-not $document.expected_markers -or -not $document.correctness_assertions) {
 		throw "Workload '$resolved' must define markers and correctness assertions."
 	}
+	$phases = @()
+	if($document.id -eq 'runtime_isolation') {
+		$names = @('idle', 'machinery', 'breach_fire', 'topology', 'recovery')
+		if(-not $document.PSObject.Properties['phases'] -or @($document.phases).Count -ne 5 -or $document.duration_seconds -ne 300) {
+			throw 'Runtime isolation requires five contiguous 60-second phases.'
+		}
+		$phases = @($document.phases)
+		for($index = 0; $index -lt $names.Count; $index++) {
+			$phase = $phases[$index]
+			if($phase.id -cne $names[$index] -or $phase.start_seconds -ne $index * 60 -or $phase.duration_seconds -ne 60) {
+				throw "Runtime isolation phase '$($names[$index])' has an invalid order or window."
+			}
+		}
+	}
 	[pscustomobject]@{
 		id = [string]$document.id
 		path = $resolved
@@ -52,6 +69,7 @@ function Read-DogmosWorkload {
 		duration_seconds = [double]$document.duration_seconds
 		map = [string]$document.map
 		driver = $document.driver
+		phases = $phases
 		expected_markers = @($document.expected_markers)
 		correctness_assertions = @($document.correctness_assertions)
 	}
@@ -72,6 +90,9 @@ if(-not $OutputDirectory) { throw '-OutputDirectory is required for a workload r
 if(-not $Revision) { throw '-Revision is required for a workload run.' }
 
 $workload = Read-DogmosWorkload -Path $WorkloadPath
+if($workload.id -eq 'runtime_isolation') {
+	throw 'Runtime isolation is not executable yet: bind and implement the representative-map fixture and ordered commands before preparing a run.'
+}
 $output = [IO.Path]::GetFullPath($OutputDirectory)
 New-Item -ItemType Directory -Path $output -Force | Out-Null
 $identity = [ordered]@{

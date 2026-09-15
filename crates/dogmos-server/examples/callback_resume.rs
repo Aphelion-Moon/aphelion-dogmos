@@ -1,4 +1,10 @@
 #[allow(dead_code)]
+#[path = "../src/job_observations.rs"]
+mod job_observations;
+#[allow(dead_code)]
+#[path = "../src/jobs.rs"]
+mod jobs;
+#[allow(dead_code)]
 #[path = "../src/state.rs"]
 mod state;
 

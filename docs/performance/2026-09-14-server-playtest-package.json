@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "scope": "Archived locally qualified candidate; subsequent interactive playtest found atmosphere performance and fire concerns",
+  "candidate": {
+    "delivery_filename": "dogmos-server-playtest-20260914.zip",
+    "local_build_path": "target/r6-server-playtest-candidate.zip",
+    "bytes": 18186870,
+    "sha256": "7c722e2b2cee766034d17b3790f544fed9621b797cdf84eb9b895b542b9b5e1f",
+    "verified_payload_files": 47,
+    "delivery_copy_hash_verified": true
+  },
+  "profiler": {
+    "filename": "dogmos-server-profiler-20260910.zip",
+    "bytes": 1704163,
+    "sha256": "97ea4ab44c475348b025587be8f0b3db284307382cd913292daf1a8db3416e15",
+    "main_server_attachment": "not run",
+    "local_live_attachment": "Tracy launch failed with 0xc0000409; cause unconfirmed; built-in BYOND profiling used for interactive test"
+  },
+  "qualification": "docs/performance/2026-09-14-frontier-upload-evidence.json",
+  "instructions": "docs/performance/2026-09-14-server-playtest-handoff.md",
+  "changes_committed": false,
+  "release_published": false,
+  "live_deployment_changed": false,
+  "main_server_performance_accepted": false,
+  "interactive_playtest": "docs/performance/2026-09-14-interactive-playtest.md"
+}

@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "id": "runtime_isolation",
+  "seed": 29051994,
+  "duration_seconds": 300,
+  "map": "_maps/map_files/MetaStation/MetaStation.dmm",
+  "driver": {
+    "kind": "recorded_fixture_pending",
+    "execution_ready": false,
+    "reason": "Bind fixed representative-map coordinates and an executable ordered action transcript before running either cohort. Existing shift-start observation does not inject these actions."
+  },
+  "phases": [
+    {"id": "idle", "start_seconds": 0, "duration_seconds": 60},
+    {"id": "machinery", "start_seconds": 60, "duration_seconds": 60},
+    {"id": "breach_fire", "start_seconds": 120, "duration_seconds": 60},
+    {"id": "topology", "start_seconds": 180, "duration_seconds": 60},
+    {"id": "recovery", "start_seconds": 240, "duration_seconds": 60}
+  ],
+  "expected_markers": ["DOGMOS_RUNTIME_WORKLOAD_STARTED", "DOGMOS_RUNTIME_WORKLOAD_COMPLETE"],
+  "correctness_assertions": [
+    "same map bytes, seed, settings, phase schedule and executed commands per pair",
+    "equivalent final numerical state and ordered critical events",
+    "no loss of completed cycles or growing atmosphere and callback backlog",
+    "DreamDaemon and dogmosd resource samples remain separate"
+  ]
+}

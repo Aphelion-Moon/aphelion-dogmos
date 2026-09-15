@@ -22,3 +22,23 @@ replace signed or otherwise trusted release-manifest provenance.
 Follow [AGENTS.md](../../AGENTS.md) for authorization and change ownership. When changing release
 workflows, artifact tooling, dependency manifests, lock/toolchain files or deployment scripts, review
 their effects on the complete artifact pair and run the relevant contract and build gates.
+
+Rebuilds, generated bindings/contract defines/manifests/artifact lock updates, and verified local
+artifact synchronization are included in authorized implementation and verification work. Do not
+ask for another exact-file approval merely because these outputs are protected. Necessary in-scope
+protocol or generator changes use the same task authorization. Keep full-pair validation and atomic
+installation; live deployment, production restarts, release publication and unrelated infrastructure
+changes are separate operations.
+
+For uncommitted local qualification, use `tools/build_local_qualification.ps1`. It builds both
+platform pairs with the pinned toolchain, captures and rechecks a canonical raw-byte source
+inventory, and binds that snapshot into the shim/service handshake fingerprint. The base Git
+revision remains explicit; `qualification.kind = local-source-snapshot-v1` distinguishes these
+bundles from production releases. Outputs and logs stay under a new `target/` directory.
+
+Release generation still rejects dirty source by default, and release verification rejects local
+qualification unless explicitly selected. The game synchronizer requires `-AllowLocalQualification`
+and independently compares the complete source inventory before staging and installation. Its
+installed-contract check supports local test runners and verifies the matching binaries, lock,
+bindings and generated defines. A changed source inventory requires another build; do not relabel
+or hand-edit the old snapshot. Keep the snapshot/archive and the complete previous artifact set.

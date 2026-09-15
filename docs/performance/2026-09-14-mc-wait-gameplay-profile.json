@@ -1,0 +1,224 @@
+{
+  "run_id": "20260914T203236Z-e60d915f",
+  "scope": "One gameplay-only BYOND profile from an opt-in unpopulated CI observation; not a matched performance comparison or fire replay",
+  "source": {
+    "path": "target/meridian-artifact-policy/data/rift-runs/20260914T203236Z-e60d915f/artifacts/data/logs/rift/dogmos-gameplay-profile.json",
+    "sha256": "a3e6baf52263eeed1fcfdda8f74471f83d235541c86aa4f872308922531933a5",
+    "bytes": 693645
+  },
+  "units": "calls and cumulative seconds since the explicit gameplay profile restart; inclusive rows overlap",
+  "duplicate_names": {
+    "/datum/controller/subsystem/verb_manager/input/fire": 2,
+    "/datum/controller/subsystem/timer/runechat/fire": 2,
+    "/datum/reagent/blood/on_new": 2,
+    "/datum/station_alert/New": 2,
+    "/datum/component/grillable/Initialize": 2,
+    "/datum/component/jousting/Initialize": 2,
+    "/datum/port/input/set_datatype": 2,
+    "/atom/movable/Move": 2,
+    "/turf/open/misc/snow/Initialize": 2,
+    "/mob/living/carbon/Move": 2,
+    "/mob/living/basic/Initialize": 2,
+    "/mob/living/basic/Life": 2,
+    "/mob/living/ghostize": 2,
+    "/mob/living/Move": 2,
+    "/mob/living/on_changed_z_level": 2,
+    "/mob/living/CanAllowThrough": 2,
+    "/mob/living/send_speech": 2,
+    "/mob/Destroy": 2,
+    "/mob/Initialize": 2,
+    "/obj/item/clothing/shoes/jackboots/Initialize": 2,
+    "/obj/item/clothing/mask/leatherwhip/Initialize": 2,
+    "/obj/item/clothing/suit/toggle/labcoat/cmo/Initialize": 2,
+    "/obj/item/clothing/suit/toggle/labcoat/paramedic/Initialize": 2,
+    "/obj/item/clothing/neck/tie/update_icon": 2,
+    "/obj/item/clothing/neck/mind_collar/Initialize": 2,
+    "/obj/item/clothing/glasses/hypno/Initialize": 2,
+    "/obj/item/gun/ballistic/Initialize": 2,
+    "/obj/item/gun/energy/recharge/kinetic_accelerator/Initialize": 2,
+    "/obj/item/gun/energy/Initialize": 2,
+    "/obj/item/gun/magic/Initialize": 2,
+    "/obj/item/gun/Initialize": 2,
+    "/obj/item/storage/box/papersack/Initialize": 2,
+    "/obj/item/storage/box/papersack/update_desc": 2,
+    "/obj/item/melee/baton/Initialize": 2,
+    "/obj/item/mod/control/Initialize": 2,
+    "/obj/item/toy/crayon/Initialize": 2,
+    "/obj/item/stack/sheet/mineral/wood/get_main_recipes": 2,
+    "/obj/item/stack/sheet/iron/get_main_recipes": 2,
+    "/obj/item/stack/sheet/plasteel/get_main_recipes": 2,
+    "/obj/item/stack/sheet/cloth/get_main_recipes": 2,
+    "/obj/item/stack/rods/get_main_recipes": 2,
+    "/obj/item/organ/lungs/Initialize": 2,
+    "/obj/item/organ/tongue/Initialize": 2,
+    "/obj/item/organ/brain/on_life": 2,
+    "/obj/item/organ/stomach/on_life": 2,
+    "/obj/item/reagent_containers/hypospray/medipen/Initialize": 2,
+    "/obj/item/reagent_containers/Initialize": 2,
+    "/obj/item/mop/Initialize": 2,
+    "/obj/item/extinguisher/Initialize": 2,
+    "/obj/item/weldingtool/Initialize": 3,
+    "/obj/item/coupon/update_name": 2,
+    "/obj/item/kinetic_crusher/Initialize": 2,
+    "/obj/item/mind_controller/Initialize": 2,
+    "/obj/item/condom_pack/Initialize": 2,
+    "/obj/machinery/door/airlock/Initialize": 2,
+    "/obj/machinery/door/Initialize": 2,
+    "/obj/machinery/door/CanAllowThrough": 2,
+    "/obj/machinery/power/apc/update_appearance": 2,
+    "/obj/machinery/vending/cola/Initialize": 2,
+    "/obj/machinery/vending/snack/Initialize": 2,
+    "/obj/machinery/vending/Initialize": 2,
+    "/obj/machinery/vending/dorms/Initialize": 2,
+    "/obj/machinery/computer/Initialize": 2,
+    "/obj/machinery/washing_machine/process": 2,
+    "/obj/machinery/light/Initialize": 2,
+    "/obj/machinery/airalarm/update_appearance": 2,
+    "/obj/machinery/microwave/power_change": 2,
+    "/obj/machinery/modular_computer/Initialize": 2,
+    "/obj/machinery/chem_dispenser/drinks/Initialize": 2,
+    "/obj/effect/spawner/structure/window/Initialize": 2,
+    "/obj/effect/particle_effect/sparks/Destroy": 2,
+    "/obj/structure/bonfire/process": 2,
+    "/obj/structure/lattice/Initialize": 2,
+    "/obj/structure/mineral_door/Initialize": 2,
+    "/obj/structure/rack/Initialize": 2,
+    "/obj/structure/window/Initialize": 2,
+    "/obj/structure/window/reinforced/plasma/fulltile/Initialize": 2,
+    "/obj/structure/window/reinforced/fulltile/Initialize": 2,
+    "/obj/structure/water_source/puddle/item_interaction": 2,
+    "/obj/structure/reagent_dispensers/Initialize": 2,
+    "/obj/structure/stripper_pole/Initialize": 2
+  },
+  "selected": [
+    {
+      "name": "/datum/controller/subsystem/air/proc/dogmos_defer_stage_for_budget",
+      "calls": 4,
+      "self": 0,
+      "total": 0
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/dogmos_run_async_stage",
+      "calls": 820,
+      "self": 0.016,
+      "total": 0.525
+    },
+    {
+      "name": "/datum/controller/subsystem/air/fire",
+      "calls": 4112,
+      "self": 0.029,
+      "total": 24.352
+    },
+    {
+      "name": "/datum/controller/master/proc/RunQueue",
+      "calls": 2008,
+      "self": 0.763,
+      "total": 64.779
+    },
+    {
+      "name": "/proc/dogmos_stage_job_commit",
+      "calls": 669,
+      "self": 0.176,
+      "total": 0.176
+    },
+    {
+      "name": "/proc/dogmos_stage_job_poll",
+      "calls": 669,
+      "self": 0.194,
+      "total": 0.194
+    }
+  ],
+  "top_self": [
+    {
+      "name": "/datum/controller/subsystem/dbcore/proc/Connect",
+      "calls": 30,
+      "self": 61.28,
+      "total": 61.3
+    },
+    {
+      "name": "/icon/proc/Blend",
+      "calls": 26583,
+      "self": 9.972,
+      "total": 9.977
+    },
+    {
+      "name": "/proc/dogmos_mixture_snapshot",
+      "calls": 42789,
+      "self": 6.39,
+      "total": 6.392
+    },
+    {
+      "name": "/proc/dogmos_turf_heat_snapshot",
+      "calls": 32817,
+      "self": 4.927,
+      "total": 4.929
+    },
+    {
+      "name": "/proc/dogmos_turf_lifecycle_batch",
+      "calls": 42792,
+      "self": 4.917,
+      "total": 4.922
+    },
+    {
+      "name": "/proc/dogmos_turf_heat_batch",
+      "calls": 39389,
+      "self": 4.248,
+      "total": 4.25
+    },
+    {
+      "name": "/proc/getFlatIcon",
+      "calls": 14997,
+      "self": 3.426,
+      "total": 5.926
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/stop_processing_machine",
+      "calls": 12765,
+      "self": 3.41,
+      "total": 3.449
+    },
+    {
+      "name": "/turf/proc/__update_auxtools_turf_adjacency_info",
+      "calls": 222985,
+      "self": 3.367,
+      "total": 12.745
+    },
+    {
+      "name": "/turf/proc/update_air_ref",
+      "calls": 187066,
+      "self": 2.559,
+      "total": 19.521
+    },
+    {
+      "name": "/proc/REF",
+      "calls": 64755,
+      "self": 1.785,
+      "total": 1.787
+    },
+    {
+      "name": "/datum/light_source/proc/update_corners",
+      "calls": 14626,
+      "self": 1.731,
+      "total": 3.668
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/flush_turf_registration_batch",
+      "calls": 85151,
+      "self": 1.495,
+      "total": 18.686
+    },
+    {
+      "name": "/world/proc/preloader_load",
+      "calls": 6068,
+      "self": 1.484,
+      "total": 1.485
+    },
+    {
+      "name": "/proc/dogmos_mixture_command",
+      "calls": 10447,
+      "self": 1.427,
+      "total": 1.427
+    }
+  ],
+  "performance_accepted": false
+}

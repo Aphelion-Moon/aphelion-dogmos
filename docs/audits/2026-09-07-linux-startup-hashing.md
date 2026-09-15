@@ -55,11 +55,11 @@ These are uncommitted candidate/debug artifacts with the baseline revision as a 
 
 ## Remaining integration gates
 
-The user authorized the native source repair and requires separate approval before installing protected artifacts. No game binaries, generated bindings, lockfiles or workflows were changed. The user subsequently authorized committing the native fix and preparing the release; installation still requires separate approval.
+At this historical checkpoint, the user authorized the native source repair, then committing the native fix and preparing the release. Separate installation approval was required at that time. No game binaries, generated bindings, lockfiles or workflows were changed. The current root `AGENTS.md` artifact rebuild policy supersedes that additional approval gate for authorized rebuilds, regeneration and verified local synchronization; publication and live production operations retain their own authorization requirements.
 
 1. Commit the six reviewed native source/test/dependency/documentation files under the subsequent user authorization.
 2. Build and validate a complete paired release from that clean commit using the maintained release tooling; record fresh hashes and symbols.
-3. Obtain separate approval to install the resulting seven-file game contract set: `dogmos.dll`, `dogmosd.exe`, `libdogmos.so`, `dogmosd`, `dogmos.lock.json`, `code/__DEFINES/dogmos_bindings.dm` and `code/__DEFINES/dogmos_contract.dm`. Use the maintained synchronizer; no hand-edited generated output or single-library replacement.
+3. Install the resulting seven-file game contract set into the authorized local development or test checkout: `dogmos.dll`, `dogmosd.exe`, `libdogmos.so`, `dogmosd`, `dogmos.lock.json`, `code/__DEFINES/dogmos_bindings.dm` and `code/__DEFINES/dogmos_contract.dm`. No separate protected-artifact approval is required. Use the maintained synchronizer; no hand-edited generated output or single-library replacement.
 4. Rerun Linux BYOND initialization and the CI map suite on the updated PR. Native tests and the process probe do not establish hosted DM success.
 5. Bring forward the DM startup-abort containment from game commit `7c6b5c78cae21c3080449e005d86306bedfc925a` under separately authorized Git integration. That commit is not an ancestor of PR head, and direct source comparison confirms its `abort_startup()` path is absent. The containment stops the secondary cascade but cannot implement native Linux hashing.
 

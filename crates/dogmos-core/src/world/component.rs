@@ -1,22 +1,38 @@
 use super::*;
+use crate::slot_index::PagedSlotIndex;
 use std::{
 	future::Future,
 	pin::Pin,
+	sync::atomic::{AtomicBool, Ordering},
 	task::{Context, Poll},
 };
 
-pub(super) type Computation = Pin<
-	Box<
-		dyn Future<
-				Output = (
-					ComponentKernel,
-					IndexedTransaction<MixtureRecord>,
-					Vec<WorldEvent>,
-					Result<StageResult, WorldError>,
-				),
-			> + Send,
-	>,
->;
+type ComputationOutput = (
+	ComponentKernel,
+	IndexedTransaction<MixtureRecord>,
+	Vec<WorldEvent>,
+	Result<StageResult, WorldError>,
+);
+
+pub(super) struct Computation {
+	future: Pin<Box<dyn Future<Output = ComputationOutput> + Send>>,
+	cancelled: Arc<AtomicBool>,
+}
+
+impl Computation {
+	pub(super) fn poll(&mut self, context: &mut Context<'_>) -> Poll<ComputationOutput> {
+		self.future.as_mut().poll(context)
+	}
+	pub(super) fn cancel(mut self) -> ComputationOutput {
+		// Every suspension point checks this flag before doing more kernel work.
+		// Return owned scratch to the stage instead of deallocating it with the future.
+		self.cancelled.store(true, Ordering::Relaxed);
+		match self.poll(&mut Context::from_waker(std::task::Waker::noop())) {
+			Poll::Ready(output) => output,
+			Poll::Pending => unreachable!("cancelled component must return at its next suspension"),
+		}
+	}
+}
 
 struct Yield(bool);
 impl Future for Yield {
@@ -30,28 +46,37 @@ impl Future for Yield {
 		}
 	}
 }
-async fn cooperate() {
+async fn cooperate(cancelled: &AtomicBool) -> Result<(), WorldError> {
+	if cancelled.load(Ordering::Relaxed) {
+		return Err(WorldError::Cancelled);
+	}
 	Yield(false).await;
+	if cancelled.load(Ordering::Relaxed) {
+		return Err(WorldError::Cancelled);
+	}
+	Ok(())
 }
 
 pub(super) fn compute(
-	kernel: ComponentKernel,
+	mut kernel: ComponentKernel,
 	mut transaction: IndexedTransaction<MixtureRecord>,
 	mut events: Vec<WorldEvent>,
 	stage: WorldStage,
 ) -> Computation {
-	Box::pin(async move {
+	let cancelled = Arc::clone(&kernel.cancelled);
+	let future = Box::pin(async move {
 		let result = match stage {
 			WorldStage::Equalize => kernel.compute_equalize(&mut transaction, &mut events).await,
 			WorldStage::ExcitedGroups => kernel.compute_excited_groups(&mut transaction).await,
 			_ => unreachable!("component stage"),
 		};
 		(kernel, transaction, events, result)
-	})
+	});
+	Computation { future, cancelled }
 }
 
 struct ComponentTopology(
-	SlotIndex<TurfHandle, [Option<crate::topology::TopologyNeighbor>; MAX_TURF_NEIGHBORS]>,
+	PagedSlotIndex<TurfHandle, [Option<crate::topology::TopologyNeighbor>; MAX_TURF_NEIGHBORS]>,
 );
 impl ComponentTopology {
 	fn gas_neighbors(
@@ -66,18 +91,86 @@ impl ComponentTopology {
 }
 
 pub(super) struct ComponentKernel {
+	cancelled: Arc<AtomicBool>,
 	handles: Vec<TurfHandle>,
 	handles_by_slot: SlotIndex<u32, TurfHandle>,
-	turfs: SlotIndex<TurfHandle, TurfRecord>,
-	mixtures: SlotIndex<MixtureHandle, MixtureRecord>,
+	turfs: PagedSlotIndex<TurfHandle, TurfRecord>,
+	mixtures: PagedSlotIndex<MixtureHandle, MixtureRecord>,
 	topology: ComponentTopology,
 	gas_registry: Option<GasMetadataRegistry>,
 	equalize_hard_turf_limit: u32,
+	group_nodes: PagedVec<GroupNode>,
+	group_sort_scratch: PagedVec<GroupNode>,
+}
+
+type GroupNode = (u32, TurfHandle, MixtureHandle);
+
+/// Stable slot order without a node-per-turf tree or an uninterruptible full sort.
+/// Each sorting quantum examines or copies at most 64 small records.
+async fn sort_group_nodes(
+	nodes: &mut PagedVec<GroupNode>,
+	scratch: &mut PagedVec<GroupNode>,
+	cancelled: &AtomicBool,
+) -> Result<(), WorldError> {
+	let mut sorted = true;
+	for index in 1..nodes.len() {
+		if (index - 1).is_multiple_of(64) {
+			cooperate(cancelled).await?;
+		}
+		sorted &= nodes[index - 1].0 <= nodes[index].0;
+	}
+	if sorted {
+		return Ok(());
+	}
+	let mut width = 1;
+	while width < nodes.len() {
+		scratch.clear();
+		for start in (0..nodes.len()).step_by(width * 2) {
+			let middle = (start + width).min(nodes.len());
+			let end = (middle + width).min(nodes.len());
+			let (mut left, mut right) = (start, middle);
+			while left < middle || right < end {
+				if scratch.len().is_multiple_of(64) {
+					cooperate(cancelled).await?;
+				}
+				let next = if right == end || (left < middle && nodes[left].0 <= nodes[right].0) {
+					let next = nodes[left];
+					left += 1;
+					next
+				} else {
+					let next = nodes[right];
+					right += 1;
+					next
+				};
+				scratch
+					.try_push(next)
+					.map_err(|_| world_allocation_failed())?;
+			}
+		}
+		std::mem::swap(nodes, scratch);
+		width *= 2;
+	}
+	Ok(())
+}
+
+fn group_position(nodes: &PagedVec<GroupNode>, slot: u32) -> Option<usize> {
+	let (mut low, mut high) = (0, nodes.len());
+	while low < high {
+		let middle = low + (high - low) / 2;
+		match nodes[middle].0.cmp(&slot) {
+			std::cmp::Ordering::Less => low = middle + 1,
+			std::cmp::Ordering::Greater => high = middle,
+			std::cmp::Ordering::Equal => return Some(middle),
+		}
+	}
+	None
 }
 
 impl ComponentKernel {
 	pub(super) fn capacity_bytes(&self) -> usize {
 		self.handles.capacity() * std::mem::size_of::<TurfHandle>()
+			+ (self.group_nodes.capacity() + self.group_sort_scratch.capacity())
+				* std::mem::size_of::<GroupNode>()
 			+ self.handles_by_slot.capacity_bytes()
 			+ self.turfs.capacity_bytes()
 			+ self.mixtures.capacity_bytes()
@@ -85,13 +178,16 @@ impl ComponentKernel {
 	}
 	pub(super) fn new(world: &DogmosWorld) -> Self {
 		Self {
+			cancelled: Arc::new(AtomicBool::new(false)),
 			handles: Vec::new(),
 			handles_by_slot: SlotIndex::new(),
-			turfs: SlotIndex::new(),
-			mixtures: SlotIndex::new(),
-			topology: ComponentTopology(SlotIndex::new()),
+			turfs: PagedSlotIndex::new(),
+			mixtures: PagedSlotIndex::new(),
+			topology: ComponentTopology(PagedSlotIndex::new()),
 			gas_registry: world.gas_registry.clone(),
 			equalize_hard_turf_limit: world.equalize_hard_turf_limit,
+			group_nodes: PagedVec::new(),
+			group_sort_scratch: PagedVec::new(),
 		}
 	}
 	pub(super) fn capture(
@@ -102,24 +198,33 @@ impl ComponentKernel {
 		let turf = world.require_turf_handle(handle)?.clone();
 		if let Some(mixture) = turf.mixture {
 			self.mixtures
-				.insert(mixture, world.require_handle(mixture)?.clone());
+				.try_insert(mixture, world.require_handle(mixture)?.clone())
+				.map_err(|_| world_allocation_failed())?;
 		}
-		self.turfs.insert(handle, turf);
+		self.turfs
+			.try_insert(handle, turf)
+			.map_err(|_| world_allocation_failed())?;
 		self.handles.push(handle);
 		self.handles_by_slot.insert(handle.slot, handle);
 		let mut row = [None; MAX_TURF_NEIGHBORS];
 		for (entry, neighbor) in row.iter_mut().zip(world.topology.gas_neighbors(handle)) {
 			*entry = Some(neighbor);
 		}
-		self.topology.0.insert(handle, row);
+		self.topology
+			.0
+			.try_insert(handle, row)
+			.map_err(|_| world_allocation_failed())?;
 		Ok(())
 	}
 	pub(super) fn clear(&mut self) {
+		self.cancelled.store(false, Ordering::Relaxed);
 		self.handles.clear();
 		self.handles_by_slot.clear();
 		self.turfs.clear();
 		self.mixtures.clear();
 		self.topology.0.clear();
+		self.group_nodes.clear();
+		self.group_sort_scratch.clear();
 	}
 	fn stage_turf_handles(&self) -> Cow<'_, [TurfHandle]> {
 		Cow::Borrowed(&self.handles)
@@ -150,34 +255,35 @@ impl ComponentKernel {
 			.ok_or(WorldError::TurfMissingMixture(turf_handle))
 	}
 	pub(super) async fn compute_excited_groups(
-		&self,
+		&mut self,
 		transaction: &mut IndexedTransaction<MixtureRecord>,
 	) -> Result<StageResult, WorldError> {
-		cooperate().await;
-		let mut ordered = BTreeMap::new();
-		for &handle in self.stage_turf_handles().iter() {
-			cooperate().await;
+		cooperate(&self.cancelled).await?;
+		self.group_nodes.clear();
+		for index in 0..self.handles.len() {
+			cooperate(&self.cancelled).await?;
+			let handle = self.handles[index];
 			if let Some(mixture) = self
 				.require_turf_handle(handle)
 				.ok()
 				.and_then(|turf| turf.mixture)
 			{
-				ordered.insert(handle.slot, (handle, mixture));
+				self.group_nodes
+					.try_push((handle.slot, handle, mixture))
+					.map_err(|_| world_allocation_failed())?;
 			}
 		}
-		let mut nodes = Vec::with_capacity(ordered.len());
-		for (slot, (handle, mixture)) in ordered {
-			cooperate().await;
-			nodes.push((slot, handle, mixture));
-		}
-		if nodes.is_empty() {
+		sort_group_nodes(
+			&mut self.group_nodes,
+			&mut self.group_sort_scratch,
+			&self.cancelled,
+		)
+		.await?;
+		let nodes = &self.group_nodes;
+		if nodes.len() == 0 {
 			return Ok(StageResult { work_items: 0 });
 		}
-		let position_of = |slot: u32| -> Option<usize> {
-			nodes
-				.binary_search_by_key(&slot, |&(candidate, _, _)| candidate)
-				.ok()
-		};
+		let position_of = |slot| group_position(nodes, slot);
 		let specific_heats = self
 			.gas_registry
 			.as_ref()
@@ -192,7 +298,7 @@ impl ComponentKernel {
 		let mut accepted: Vec<usize> = Vec::new();
 		let mut work_items = 0_u32;
 		for initial_position in 0..nodes.len() {
-			cooperate().await;
+			cooperate(&self.cancelled).await?;
 			if found[initial_position]
 				|| !self
 					.topology
@@ -203,7 +309,7 @@ impl ComponentKernel {
 					}) {
 				continue;
 			}
-			cooperate().await;
+			cooperate(&self.cancelled).await?;
 			let initial_mixture = self.require_handle(nodes[initial_position].2)?;
 			if initial_mixture.immutable {
 				continue;
@@ -217,7 +323,7 @@ impl ComponentKernel {
 			accepted.clear();
 			found[initial_position] = true;
 			while queue_index < queue.len() && accepted.len() < 2500 {
-				cooperate().await;
+				cooperate(&self.cancelled).await?;
 				let position = queue[queue_index];
 				queue_index += 1;
 				let mixture = self.require_handle(nodes[position].2)?;
@@ -250,7 +356,7 @@ impl ComponentKernel {
 			let mut total_capacity = 0.0;
 			let mut total_energy = 0.0;
 			for &position in &accepted {
-				cooperate().await;
+				cooperate(&self.cancelled).await?;
 				let handle = nodes[position].2;
 				let mixture = self.require_handle(handle)?;
 				if transaction.contains(handle) {
@@ -279,7 +385,7 @@ impl ComponentKernel {
 				MINIMUM_TEMPERATURE_K
 			};
 			for &position in &accepted {
-				cooperate().await;
+				cooperate(&self.cancelled).await?;
 				let handle = nodes[position].2;
 				let candidate = transaction
 					.candidate_mut(handle)
@@ -291,7 +397,7 @@ impl ComponentKernel {
 					.ok_or_else(|| WorldError::State("excited turf count exceeds u32".into()))?;
 			}
 		}
-		cooperate().await;
+		cooperate(&self.cancelled).await?;
 		Ok(StageResult { work_items })
 	}
 	pub(super) async fn compute_equalize(
@@ -299,7 +405,7 @@ impl ComponentKernel {
 		transaction: &mut IndexedTransaction<MixtureRecord>,
 		staged_events: &mut Vec<WorldEvent>,
 	) -> Result<StageResult, WorldError> {
-		cooperate().await;
+		cooperate(&self.cancelled).await?;
 		let turf_handles = self.stage_turf_handles();
 		if turf_handles.is_empty() {
 			return Ok(StageResult { work_items: 0 });
@@ -320,19 +426,19 @@ impl ComponentKernel {
 		let mut visited = vec![false; turf_handles.len()];
 		let mut work_items = 0_u32;
 		for &start in turf_handles.iter() {
-			cooperate().await;
+			cooperate(&self.cancelled).await?;
 			let start_index = self.turfs.index_of(&start).expect("captured turf");
 			if self.require_turf_handle(start)?.mixture.is_none()
 				|| std::mem::replace(&mut visited[start_index], true)
 			{
 				continue;
 			}
-			cooperate().await;
+			cooperate(&self.cancelled).await?;
 			let mut component = vec![start.slot];
 			let mut parents = vec![0_usize];
 			let mut queue_index = 0;
 			while queue_index < component.len() {
-				cooperate().await;
+				cooperate(&self.cancelled).await?;
 				let current = component[queue_index];
 				queue_index += 1;
 				for neighbor in self.topology.gas_neighbors(active_by_slot[&current]) {
@@ -356,7 +462,7 @@ impl ComponentKernel {
 			let mut maximum_moles = 0.0_f32;
 			let mut immutable_turfs = BTreeSet::new();
 			for turf_slot in &component {
-				cooperate().await;
+				cooperate(&self.cancelled).await?;
 				let mixture_handle = self.current_turf_mixture(*turf_slot)?;
 				let mixture = self.require_handle(mixture_handle)?;
 				if mixture.immutable {
@@ -401,7 +507,7 @@ impl ComponentKernel {
 			let average_moles = component_moles / component.len() as f32;
 			let mut subtree_balance = Vec::with_capacity(component.len());
 			for slot in &component {
-				cooperate().await;
+				cooperate(&self.cancelled).await?;
 				let handle = self.current_turf_mixture(*slot)?;
 				subtree_balance.push(
 					total_moles(transaction.candidate(handle).expect("component mixture"))
@@ -410,14 +516,14 @@ impl ComponentKernel {
 			}
 			let mut flows = Vec::<(u32, u32, f32)>::new();
 			for child_index in (1..component.len()).rev() {
-				cooperate().await;
+				cooperate(&self.cancelled).await?;
 				let parent_index = parents[child_index];
 				let balance = subtree_balance[child_index];
 				flows.push((component[child_index], component[parent_index], balance));
 				subtree_balance[parent_index] += balance;
 			}
 			for &(child, parent, balance) in flows.iter().filter(|(_, _, balance)| *balance > 0.0) {
-				cooperate().await;
+				cooperate(&self.cancelled).await?;
 				self.stage_equalization_transfer(
 					child,
 					parent,
@@ -430,7 +536,7 @@ impl ComponentKernel {
 			for &(child, parent, balance) in
 				flows.iter().rev().filter(|(_, _, balance)| *balance < 0.0)
 			{
-				cooperate().await;
+				cooperate(&self.cancelled).await?;
 				self.stage_equalization_transfer(
 					parent,
 					child,
@@ -444,7 +550,7 @@ impl ComponentKernel {
 				.checked_add(component.len() as u32)
 				.ok_or_else(|| WorldError::State("equalized turf count exceeds u32".into()))?;
 		}
-		cooperate().await;
+		cooperate(&self.cancelled).await?;
 		Ok(StageResult { work_items })
 	}
 	async fn stage_decompression_component(
@@ -457,20 +563,20 @@ impl ComponentKernel {
 	) -> Result<(), WorldError> {
 		let mut component_slots = BTreeSet::new();
 		for &slot in component {
-			cooperate().await;
+			cooperate(&self.cancelled).await?;
 			component_slots.insert(slot);
 		}
 		let mut queue = Vec::new();
 		let mut reached = BTreeSet::new();
 		for &slot in immutable_turfs {
-			cooperate().await;
+			cooperate(&self.cancelled).await?;
 			queue.push(slot);
 			reached.insert(slot);
 		}
 		let mut parents = BTreeMap::<u32, u32>::new();
 		let mut queue_index = 0;
 		while queue_index < queue.len() {
-			cooperate().await;
+			cooperate(&self.cancelled).await?;
 			let current = queue[queue_index];
 			queue_index += 1;
 			let current_handle = self.current_turf_handle(current)?;
@@ -500,7 +606,7 @@ impl ComponentKernel {
 		// The component set preserves the old slot-sorted mutable traversal. Charge
 		// skipped immutable turfs too so a long boundary cannot monopolize a poll.
 		for &turf_slot in &component_slots {
-			cooperate().await;
+			cooperate(&self.cancelled).await?;
 			if immutable_turfs.contains(&turf_slot) {
 				continue;
 			}
@@ -527,7 +633,7 @@ impl ComponentKernel {
 			));
 		}
 		for left in component_slots.iter().copied() {
-			cooperate().await;
+			cooperate(&self.cancelled).await?;
 			let left_handle = self.current_turf_handle(left)?;
 			for neighbor in self.topology.gas_neighbors(left_handle).filter(|neighbor| {
 				neighbor.firelock
@@ -549,7 +655,7 @@ impl ComponentKernel {
 		}
 
 		for &source_slot in queue.iter().rev() {
-			cooperate().await;
+			cooperate(&self.cancelled).await?;
 			if immutable_turfs.contains(&source_slot) {
 				continue;
 			}
@@ -610,5 +716,114 @@ impl ComponentKernel {
 			});
 		}
 		Ok(())
+	}
+}
+
+#[cfg(test)]
+mod sort_tests {
+	use super::*;
+
+	fn rows(slots: impl IntoIterator<Item = u32>) -> PagedVec<GroupNode> {
+		let mut result = PagedVec::new();
+		for slot in slots {
+			result
+				.try_push((
+					slot,
+					TurfHandle {
+						slot,
+						generation: 2,
+					},
+					MixtureHandle {
+						slot,
+						generation: 3,
+					},
+				))
+				.unwrap();
+		}
+		result
+	}
+
+	#[test]
+	fn cooperative_sort_matches_independent_slot_order_across_pages() {
+		for count in [0, 1, 17, 513] {
+			let slots: Vec<_> = (0..count).map(|index| (index * 137) % 1021).collect();
+			let mut expected = slots.clone();
+			expected.sort_unstable();
+			let mut nodes = rows(slots);
+			let mut scratch = PagedVec::new();
+			let cancelled = AtomicBool::new(false);
+			{
+				let mut sort =
+					std::pin::pin!(sort_group_nodes(&mut nodes, &mut scratch, &cancelled));
+				let mut polls = 0;
+				loop {
+					polls += 1;
+					assert!(polls < 1000, "bounded fixture exceeded sorting work");
+					if let Poll::Ready(result) = sort
+						.as_mut()
+						.poll(&mut Context::from_waker(std::task::Waker::noop()))
+					{
+						result.unwrap();
+						break;
+					}
+				}
+			}
+			for (index, slot) in expected.into_iter().enumerate() {
+				assert_eq!(
+					nodes[index],
+					(
+						slot,
+						TurfHandle {
+							slot,
+							generation: 2
+						},
+						MixtureHandle {
+							slot,
+							generation: 3
+						}
+					)
+				);
+				assert_eq!(group_position(&nodes, slot), Some(index));
+			}
+			assert_eq!(group_position(&nodes, 2048), None);
+		}
+	}
+
+	#[test]
+	fn sorting_cancellation_returns_at_every_suspension_without_freeing_pages() {
+		for cutoff in 0..100 {
+			let mut nodes = rows([6, 3, 11, 0, 2]);
+			let mut scratch = PagedVec::new();
+			let cancelled = AtomicBool::new(false);
+			let capacity = nodes.capacity();
+			let mut finished = false;
+			{
+				let mut sort =
+					std::pin::pin!(sort_group_nodes(&mut nodes, &mut scratch, &cancelled));
+				for _ in 0..cutoff {
+					if let Poll::Ready(result) = sort
+						.as_mut()
+						.poll(&mut Context::from_waker(std::task::Waker::noop()))
+					{
+						result.unwrap();
+						finished = true;
+						break;
+					}
+				}
+				if !finished {
+					cancelled.store(true, Ordering::Relaxed);
+					assert!(matches!(
+						sort.as_mut()
+							.poll(&mut Context::from_waker(std::task::Waker::noop())),
+						Poll::Ready(Err(WorldError::Cancelled))
+					));
+				}
+			}
+			assert!(nodes.capacity() >= capacity);
+			if finished {
+				return;
+			}
+		}
+		panic!("sorting never completed");
 	}
 }

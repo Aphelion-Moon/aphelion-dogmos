@@ -1,0 +1,591 @@
+{
+  "artifacts": [
+    {
+      "architecture": "x86_64",
+      "file": "linux/dogmosd",
+      "format": "elf",
+      "platform": "linux",
+      "role": "service",
+      "sha256": "ad74b5b733fc788406ceaa377bc8d49ded666863ca71f11ed3f86af913901799",
+      "size": 1378968,
+      "symbols": {
+        "file": "linux/dogmosd.debug",
+        "sha256": "b5c196bba6f34713cf559802c94b19869ccd124f0c951f8bca91063f414133e5",
+        "size": 15428848
+      },
+      "target": "x86_64-unknown-linux-gnu"
+    },
+    {
+      "architecture": "i686",
+      "file": "linux/libdogmos.so",
+      "format": "elf",
+      "platform": "linux",
+      "role": "shim",
+      "sha256": "53343b75744cdc1f1e0f881c9ceb35a9377b4f515579275bffca40fbd112124a",
+      "size": 1199620,
+      "symbols": {
+        "file": "linux/libdogmos.so.debug",
+        "sha256": "3093fc94093ebb82151be63ee5a6fdb0dd79351cbdd782bd6409713a3d600ad3",
+        "size": 10833036
+      },
+      "target": "i686-unknown-linux-gnu"
+    },
+    {
+      "architecture": "x86_64",
+      "file": "windows/dogmosd.exe",
+      "format": "pe",
+      "platform": "windows",
+      "role": "service",
+      "sha256": "600c52b348649dca7e828b6301057fd9af93a726f586b0bdd569fba506fbc849",
+      "size": 1085440,
+      "symbols": {
+        "file": "windows/dogmosd.pdb",
+        "sha256": "3ab38493cc22d706456f5b2f46a18b9e01c9fa21c482fc49b96681af14473c9a",
+        "size": 16445440
+      },
+      "target": "x86_64-pc-windows-msvc"
+    },
+    {
+      "architecture": "i686",
+      "file": "windows/dogmos.dll",
+      "format": "pe",
+      "platform": "windows",
+      "role": "shim",
+      "sha256": "1363911d9f8013808032bce6ce0e9678b106a940c99b8e8007403031508bcb0f",
+      "size": 690176,
+      "symbols": {
+        "file": "windows/dogmos.pdb",
+        "sha256": "a9a0342569f29f03107032bfc2a4ac24e48af3c6654c80c4890e2016c23c384a",
+        "size": 9818112
+      },
+      "target": "i686-pc-windows-msvc"
+    }
+  ],
+  "bindings_unchanged_from_protocol15": true,
+  "dm_absent_decoder_red": {
+    "cause": "undefined decode_job_observations",
+    "errors": 8,
+    "run_id": "20260914T151104Z-0b4d0207",
+    "summary": {
+      "bytes": 2646,
+      "path": "target/meridian-artifact-policy/data/rift-runs/20260914T151104Z-0b4d0207/summary.json",
+      "sha256": "de1468f4c4bea45e85027a526fc1f51d5d235aece992dcd91b5b61deb822e485"
+    },
+    "warnings": 2
+  },
+  "dm_focused_run": {
+    "cache_witnesses": [
+      "[2026-09-14 15:29:50.195] RUNTIME: Native cache fixture witness: epoch 57 -> 57, target 26150:6, bucket 1574:1, resident 0."
+    ],
+    "cleanup": {
+      "leftovers": [],
+      "passed": true,
+      "retained": []
+    },
+    "compile_errors": 0,
+    "compile_warnings": 2,
+    "compiled_artifacts": [
+      {
+        "bytes": 68453631,
+        "path": "target/meridian-artifact-policy/data/rift-runs/20260914T152004Z-94dcf941/artifacts/compile/tgstation.dmb",
+        "sha256": "8d70c0be4ed4acdba8b1fe89a884cb58959bb09b85949723dcb0cb330cb8928a"
+      },
+      {
+        "bytes": 233020282,
+        "path": "target/meridian-artifact-policy/data/rift-runs/20260914T152004Z-94dcf941/artifacts/compile/tgstation.rsc",
+        "sha256": "5678e1fcab7838f7a8b9717e81fb152b7fc149c64268781840bf151f621e73c9"
+      }
+    ],
+    "dreamdaemon": [
+      {
+        "exit_code": 64,
+        "termination": "natural"
+      }
+    ],
+    "failures": [],
+    "runner_test_summary": {
+      "failed": 0,
+      "passed": 15,
+      "recorded": 15,
+      "skipped": 0
+    },
+    "runtime_error_trace_count": 0,
+    "runtime_log": {
+      "bytes": 31610,
+      "path": "target/meridian-artifact-policy/data/rift-runs/20260914T152004Z-94dcf941/artifacts/data/logs/rift/runtime.log",
+      "sha256": "828a28d3f210065be70868be27b7ab5b18682669c4bf31da160558273bf69859"
+    },
+    "runtime_signatures": [],
+    "status": "passed",
+    "summary": {
+      "bytes": 17658,
+      "path": "target/meridian-artifact-policy/data/rift-runs/20260914T152004Z-94dcf941/summary.json",
+      "sha256": "5cf54705878afe7d6b022a6c842ca25af5ec8ff05cf235a259d42bb9dc2cd4c6"
+    },
+    "test_records": {
+      "/datum/unit_test/dogmos_job_observations": {
+        "duration": 0.25,
+        "message": "",
+        "name": "/datum/unit_test/dogmos_job_observations",
+        "runtimes": 0,
+        "status": 0
+      },
+      "/datum/unit_test/dogmos_runtime_frontier_journal": {
+        "duration": 0.25,
+        "message": "",
+        "name": "/datum/unit_test/dogmos_runtime_frontier_journal",
+        "runtimes": 0,
+        "status": 0
+      },
+      "/datum/unit_test/dogmos_runtime_frontier_journal/native_replacement": {
+        "duration": 0.6875,
+        "message": "",
+        "name": "/datum/unit_test/dogmos_runtime_frontier_journal/native_replacement",
+        "runtimes": 0,
+        "status": 0
+      },
+      "/datum/unit_test/dogmos_runtime_frontier_journal/overflow": {
+        "duration": 0.3125,
+        "message": "",
+        "name": "/datum/unit_test/dogmos_runtime_frontier_journal/overflow",
+        "runtimes": 0,
+        "status": 0
+      },
+      "/datum/unit_test/dogmos_runtime_frontier_journal/rejected_upload": {
+        "duration": 0.25,
+        "message": "",
+        "name": "/datum/unit_test/dogmos_runtime_frontier_journal/rejected_upload",
+        "runtimes": 0,
+        "status": 0
+      },
+      "/datum/unit_test/dogmos_runtime_frontier_journal/reset_identity": {
+        "duration": 0.1875,
+        "message": "",
+        "name": "/datum/unit_test/dogmos_runtime_frontier_journal/reset_identity",
+        "runtimes": 0,
+        "status": 0
+      },
+      "/datum/unit_test/dogmos_runtime_prefetch": {
+        "duration": 4.3125,
+        "message": "",
+        "name": "/datum/unit_test/dogmos_runtime_prefetch",
+        "runtimes": 0,
+        "status": 0
+      },
+      "/datum/unit_test/dogmos_runtime_prefetch/leaker": {
+        "duration": 0.25,
+        "message": "",
+        "name": "/datum/unit_test/dogmos_runtime_prefetch/leaker",
+        "runtimes": 0,
+        "status": 0
+      },
+      "/datum/unit_test/dogmos_runtime_prefetch/oversized": {
+        "duration": 0.25,
+        "message": "",
+        "name": "/datum/unit_test/dogmos_runtime_prefetch/oversized",
+        "runtimes": 0,
+        "status": 0
+      },
+      "/datum/unit_test/dogmos_runtime_scheduling": {
+        "duration": 12.0625,
+        "message": "",
+        "name": "/datum/unit_test/dogmos_runtime_scheduling",
+        "runtimes": 0,
+        "status": 0
+      },
+      "/datum/unit_test/dogmos_runtime_scheduling/failures": {
+        "duration": 0.25,
+        "message": "",
+        "name": "/datum/unit_test/dogmos_runtime_scheduling/failures",
+        "runtimes": 0,
+        "status": 0
+      },
+      "/datum/unit_test/dogmos_runtime_scheduling/native_cache": {
+        "duration": 6,
+        "message": "",
+        "name": "/datum/unit_test/dogmos_runtime_scheduling/native_cache",
+        "runtimes": 0,
+        "status": 0
+      },
+      "/datum/unit_test/dogmos_runtime_scheduling/receipts": {
+        "duration": 0.25,
+        "message": "",
+        "name": "/datum/unit_test/dogmos_runtime_scheduling/receipts",
+        "runtimes": 0,
+        "status": 0
+      },
+      "/datum/unit_test/dogmos_runtime_scheduling/recovery_phases": {
+        "duration": 0.3125,
+        "message": "",
+        "name": "/datum/unit_test/dogmos_runtime_scheduling/recovery_phases",
+        "runtimes": 0,
+        "status": 0
+      },
+      "/datum/unit_test/dogmos_ssair_recovery": {
+        "duration": 1109.5,
+        "message": "",
+        "name": "/datum/unit_test/dogmos_ssair_recovery",
+        "runtimes": 0,
+        "status": 0
+      }
+    },
+    "test_results": {
+      "bytes": 2577,
+      "path": "target/meridian-artifact-policy/data/rift-runs/20260914T152004Z-94dcf941/artifacts/data/unit_tests.json",
+      "sha256": "0a8a259898d144c1fe3aecf54e5d8345facffb51e67b41c2311c2fc6f81df737"
+    },
+    "tests": {
+      "failed": 0,
+      "passed": 15,
+      "recorded": 15,
+      "skipped": 0
+    }
+  },
+  "dm_parser": {
+    "baseline_errors": 127,
+    "baseline_warnings": 3,
+    "changed_module_errors": 0,
+    "changed_module_warnings": 3,
+    "generation": 16,
+    "new_helper_diagnostics": 0
+  },
+  "dm_source_checkpoint": {
+    "archive": {
+      "bytes": 143619,
+      "path": "target/r5-protocol16-dm-source.zip",
+      "sha256": "2893e64ae2c072c5b3ed11a41f46650eac886616270d11920fc7a38206213598"
+    },
+    "files": [
+      {
+        "bytes": 24106,
+        "path": "code/controllers/configuration/entries/general.dm",
+        "sha256": "37bc2873d1a4e1fd946c682adb498f29f75e476b580fc4985a5325ff6365cc9b"
+      },
+      {
+        "bytes": 71764,
+        "path": "code/controllers/subsystem/air.dm",
+        "sha256": "06d02a7138c76bfdd646a8a22c3aea2d207dcb73672c561ea9f30085404d3214"
+      },
+      {
+        "bytes": 20018,
+        "path": "code/modules/atmospherics/environmental/LINDA_turf_tile.dm",
+        "sha256": "908bf0d78f8753be502c1b598c4abe639e837aaddcd4f184afd741e5b8c22ea7"
+      },
+      {
+        "bytes": 3695,
+        "path": "code/modules/unit_tests/dogmos_active_turfs_bloat.dm",
+        "sha256": "e2912d2c6b7a2580f732fbe866f4c485d6926e1637dfdd27e32d3f98bf63fc7a"
+      },
+      {
+        "bytes": 7557,
+        "path": "code/modules/unit_tests/dogmos_space_boundary_registration.dm",
+        "sha256": "06c94c9b6352b37afd482c01fb5bfab0f43add3eb16ebc4da5b21f3aed91ad45"
+      },
+      {
+        "bytes": 20326,
+        "path": "code/modules/unit_tests/dogmos_ssair_recovery.dm",
+        "sha256": "ed1bdcd965827a78c88c53093c8f9504f4cd50642f2b5bfea1e68dc4f6c9b21a"
+      },
+      {
+        "bytes": 30437,
+        "path": "code/modules/unit_tests/unit_test.dm",
+        "sha256": "72b36fc695e8291c470dcacb3093b013a24f02147f3278ea917634f30bb6f531"
+      },
+      {
+        "bytes": 835,
+        "path": "modular_aphelion/master_files/code/game/turfs/open/space/space.dm",
+        "sha256": "24c3c8027e7fba815203d076e877dd2c4c60550bc87348dcdbc04525fb80dbf9"
+      },
+      {
+        "bytes": 4042,
+        "path": "modular_aphelion/master_files/code/game/turfs/turf.dm",
+        "sha256": "747123eea778ffb40b85d15ad6bf9d38f569b971c8b1f76d4b4e0ad60f97dd68"
+      },
+      {
+        "bytes": 146139,
+        "path": "modular_aphelion/modules/dogmos/code/service_backend.dm",
+        "sha256": "981546af6039462d97cc432483fe3bed0aefec6a695608f5bc9dc34b300ffa5a"
+      },
+      {
+        "bytes": 303516,
+        "path": "modular_aphelion/modules/dogmos/code/service_backend_test.dm",
+        "sha256": "425144ba9ff426ae5f293b1fe0e640477534e1e5e6d6ca65c3feae22f23735ef"
+      }
+    ],
+    "patch": {
+      "bytes": 123163,
+      "path": "docs/patches/2026-09-14-meridian-runtime-r1-r2-r5-protocol16.patch",
+      "sha256": "e56162982da26cb555e5ba3d3ce415beafbb4a4080d2eef753497fc6eaef8874"
+    },
+    "qualification": "passed fifteen-test run; source captured after compile and before the later observer-only extension",
+    "run_id": "20260914T152004Z-94dcf941"
+  },
+  "dme_includes": {
+    "bytes": 192,
+    "path": "target/r5-telemetry-ticked-dme.log",
+    "sha256": "40b8b617e9bf5a1a0726dc18c2d5281c7db253b870a69ee8972e58172b1225c2"
+  },
+  "feature_matrix": [
+    {
+      "configurations": 12,
+      "log": {
+        "bytes": 2887,
+        "path": "target/r5-telemetry-features-windows.log",
+        "sha256": "910ac12cdf95361fef27e933e1a6d2c0f2e29311bc8b3c93844ff0c2421e8b41"
+      },
+      "target": "i686-pc-windows-msvc"
+    },
+    {
+      "configurations": 12,
+      "log": {
+        "bytes": 7825,
+        "path": "target/r5-telemetry-features-linux-retry.log",
+        "sha256": "f2ba92a45f50256902709b88e60fa5eef62eb080d1f6b8691fba0ededecdf247"
+      },
+      "target": "i686-unknown-linux-gnu"
+    }
+  ],
+  "full_linux_matrix": {
+    "log": {
+      "bytes": 99417,
+      "path": "target/r6-native-linux-matrix.log",
+      "sha256": "7b407b07ce03711e750abc85910de40e282a6d1896a25d6737043ce2d3d761d5"
+    },
+    "targets": [
+      {
+        "failed": 0,
+        "ignored": 2,
+        "passed": 543,
+        "result_groups": 72,
+        "scope": "full workspace",
+        "target": "i686-unknown-linux-gnu"
+      },
+      {
+        "failed": 0,
+        "ignored": 0,
+        "passed": 406,
+        "result_groups": 46,
+        "scope": "core, protocol and server",
+        "target": "x86_64-unknown-linux-gnu"
+      }
+    ]
+  },
+  "full_windows_i686_workspace": {
+    "failed": 0,
+    "ignored": 2,
+    "log": {
+      "bytes": 61618,
+      "path": "target/r6-workspace-windows-i686.log",
+      "sha256": "2303e257dc5bddfdb9d17f3dfc7f19bf9267756b67fd8160f8c67919d403a63d"
+    },
+    "passed": 560,
+    "result_groups": 72
+  },
+  "full_windows_x64_service_core": {
+    "failed": 0,
+    "ignored": 0,
+    "log": {
+      "bytes": 41556,
+      "path": "target/r6-native-windows-x64.log",
+      "sha256": "ef7350b12047aa8e862cfd04e1d48afd208aab105e702e00300c331efebe1935"
+    },
+    "passed": 406,
+    "result_groups": 46
+  },
+  "identity": {
+    "capabilities": {
+      "feature_fingerprint": "3032f5ce9ffdaead677c912765e44c87bf9b729b415b148dbd9e653f08e7e004",
+      "features": [
+        "aphelion_reactions",
+        "katmos",
+        "katmos_slow_decompression",
+        "superconductivity",
+        "turf_processing"
+      ]
+    },
+    "qualification": {
+      "kind": "local-source-snapshot-v1",
+      "source_snapshot": {
+        "file": "dogmos-source-snapshot.json",
+        "sha256": "916f62439ee365e52109479ce3b8fca7659c50c67057162ec29864757d4674f4",
+        "size": 49085
+      }
+    },
+    "source_revision": "6b6321b2c4a0658933b7529e1d732acfac9cc5a4",
+    "versions": {
+      "abi": 2,
+      "dogmos-byond": "2.3.0",
+      "dogmos-server": "2.3.0",
+      "protocol": 16,
+      "workspace": "2.3.0"
+    }
+  },
+  "installed_pair_protocol_at_checkpoint": 16,
+  "limitations": [
+    "Wall-clock observations include descheduling",
+    "No per-call history or distributions",
+    "Publication retries do not identify revision conflicts",
+    "Completed jobs are stages, not MC cycles",
+    "Dedicated paired DM, full-suite, soak, Linux BYOND and main-server gates remain open"
+  ],
+  "linux_byond": {
+    "reason": "No DreamDaemon/DreamMaker on WSL PATH or in standard /usr/local/byond, /opt/byond, /opt/BYOND, /usr/local/bin/byond locations",
+    "status": "not_run"
+  },
+  "manifest": {
+    "bytes": 3010,
+    "path": "target/r5-local-qualification-04/bundle/dogmos-release-manifest.json",
+    "sha256": "0bc61e42989a9d69628c7ef1ba87bc14d0b6ce1389d98e93705b41eac0d82a44"
+  },
+  "native_tests": [
+    {
+      "failed": 0,
+      "ignored": 0,
+      "log": {
+        "bytes": 18037,
+        "path": "target/r5-telemetry-native-windows-x64-final.log",
+        "sha256": "3b5a37d68e904a1dd6ee89adce221d1678083afb2daa7d60e18511e441eb3afb"
+      },
+      "nonempty_groups": 16,
+      "passed": 159,
+      "result_groups": 26,
+      "target": "x86_64-pc-windows-msvc"
+    },
+    {
+      "failed": 0,
+      "ignored": 0,
+      "log": {
+        "bytes": 27972,
+        "path": "target/r5-telemetry-native-windows-i686.log",
+        "sha256": "3256d9e064e8efe7ac40d7532750a1ea512adf0eaab3b2a3f36d5eb152e8e96a"
+      },
+      "nonempty_groups": 30,
+      "passed": 225,
+      "result_groups": 35,
+      "target": "i686-pc-windows-msvc"
+    },
+    {
+      "failed": 0,
+      "ignored": 0,
+      "log": {
+        "bytes": 42245,
+        "path": "target/r5-telemetry-native-linux.log",
+        "sha256": "b95086897467182517ec8081208a0797af0493478f48c00f59ce32d79b68665d"
+      },
+      "nonempty_groups": 16,
+      "passed": 159,
+      "result_groups": 26,
+      "target": "x86_64-unknown-linux-gnu"
+    },
+    {
+      "failed": 0,
+      "ignored": 0,
+      "log": {
+        "bytes": 42245,
+        "path": "target/r5-telemetry-native-linux.log",
+        "sha256": "b95086897467182517ec8081208a0797af0493478f48c00f59ce32d79b68665d"
+      },
+      "nonempty_groups": 23,
+      "passed": 208,
+      "result_groups": 35,
+      "target": "i686-unknown-linux-gnu"
+    }
+  ],
+  "performance_accepted": false,
+  "platform_gated_empty_groups_are_coverage": false,
+  "profiler_preflight": {
+    "capture_launched": false,
+    "hook_installed": false,
+    "log": {
+      "bytes": 417,
+      "path": "target/r5-telemetry-profiler-complete-preflight.log",
+      "sha256": "1a8929853418086fd8eecee7605168c8315bdc0feb995ee032379c15aacaaf4f"
+    },
+    "operator_bundle": "dogmos-server-profiler-20260910.zip",
+    "passed": true,
+    "retained_initial_failure": {
+      "log": {
+        "bytes": 1024,
+        "path": "target/r5-telemetry-profiler-preflight.log",
+        "sha256": "e96a087f52f3297cad5b1c4effa7e095aaa53ee2600c3c2ba5959e21a1be3148"
+      },
+      "reason": "RIFT runtime workspace intentionally lacked dogmos.lock.json"
+    },
+    "round_armed": false,
+    "scope": "Windows PowerShell 5.1, bundle hashes, empty collector startup, protocol-16 pair/lock and fresh DMB deployment fixture; engine attachment remains a main-server gate",
+    "verified_sha256": "97ea4ab44c475348b025587be8f0b3db284307382cd913292daf1a8db3416e15"
+  },
+  "protocol": 16,
+  "release_service_cross_bitness": {
+    "failed": 0,
+    "log": {
+      "bytes": 1546,
+      "path": "target/r5-telemetry-release-cross-bitness.log",
+      "sha256": "b79442746e57a433bab121167cfd19ff3150991c4cd0bdeac43ba08e664ba7aa"
+    },
+    "passed": 3,
+    "scope": "i686 client, PE-verified release x64 service using test handshake; actual production identity handshake is a separate DM gate"
+  },
+  "reviewed_manifest_golden": {
+    "bytes": 1230,
+    "path": "target/r5-telemetry-golden-review.json",
+    "sha256": "18f6777498f23e7c38ad6bb99c8908e72d2b4dc5a271531996d88116cf51561f"
+  },
+  "rollback": {
+    "bytes": 1048,
+    "path": "target/r5-protocol15-rollback/rollback-files.json",
+    "sha256": "f4c5e31f1d6dc8f5009714670b621ae9466e477e4584774a5dc79942d2e9b4ac"
+  },
+  "schema_version": 1,
+  "scope": "Protocol-16 bounded job observations; complete local pair and fifteen focused DM regressions passed; R6 qualification continues",
+  "source_archive": {
+    "bytes": 912912,
+    "path": "target/r5-local-qualification-04/source.zip",
+    "sha256": "3e7fd19f4339010a17daeeac8a9fb48753bf126873e60d1bab35f51bc9979e22",
+    "source_files": 279
+  },
+  "static_gates": [
+    {
+      "bytes": 0,
+      "path": "target/r5-telemetry-fmt.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 672,
+      "path": "target/r5-telemetry-clippy-windows.log",
+      "sha256": "24eb7a6846342db90baa013ff524fc950f4d20c7954fe2b6b63cabe533e34cb1"
+    },
+    {
+      "bytes": 897,
+      "path": "target/r5-telemetry-clippy-linux.log",
+      "sha256": "ade01253547d46fd7828cd42c7273857fa9cc58365147ace8de474018901e79e"
+    }
+  ],
+  "sync": {
+    "bytes": 44,
+    "path": "target/r5-telemetry-sync.log",
+    "sha256": "982ad9bf57c9427429e36ec456720d0025b723755399eb027ee0459bab1c9931"
+  },
+  "test_packages": {
+    "i686": [
+      "dogmos-protocol",
+      "dogmos-server",
+      "dogmos-byond"
+    ],
+    "x86_64": [
+      "dogmos-protocol",
+      "dogmos-server"
+    ]
+  },
+  "tooling": {
+    "log": {
+      "bytes": 9794,
+      "path": "target/r5-telemetry-tooling.log",
+      "sha256": "0fc77619f085675b300a702b5c323356e3b54c78147b18075e614725e9e462bd"
+    },
+    "passed": 53,
+    "run": 54,
+    "skip_reason": "Windows does not permit symlinks",
+    "skipped": 1
+  }
+}

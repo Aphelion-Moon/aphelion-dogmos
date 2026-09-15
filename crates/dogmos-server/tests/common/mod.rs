@@ -31,7 +31,24 @@ pub fn start(
 		.unwrap()
 		.as_nanos();
 	let endpoint = format!("dogmos-server-test-{}-{unique}", std::process::id());
-	let service_path = std::path::Path::new(env!("CARGO_BIN_EXE_dogmosd"));
+	let service_path = std::env::var_os("DOGMOSD_PATH")
+		.map(std::path::PathBuf::from)
+		.unwrap_or_else(|| env!("CARGO_BIN_EXE_dogmosd").into());
+	if std::env::var_os("DOGMOSD_PATH").is_some() {
+		let bytes = std::fs::read(&service_path).expect("read the separately built x64 service");
+		assert_eq!(&bytes[..2], b"MZ");
+		let pe = u32::from_le_bytes(bytes[0x3c..0x40].try_into().unwrap()) as usize;
+		assert_eq!(&bytes[pe..pe + 4], b"PE\0\0");
+		assert_eq!(
+			u16::from_le_bytes(bytes[pe + 4..pe + 6].try_into().unwrap()),
+			0x8664,
+			"DOGMOSD_PATH must identify the x64 service"
+		);
+		println!(
+			"cross-bitness: i686 client -> x64 dogmosd; digest={:?}",
+			dogmos_identity::sha256_file(&service_path).unwrap()
+		);
+	}
 	let handshake = HandshakePayload {
 		auth_token: [0x6d; 32],
 		identity: BuildIdentity {
@@ -39,7 +56,7 @@ pub fn start(
 			protocol_version: DOGMOS_PROTOCOL_VERSION,
 			source_revision: [0x11; 20],
 			feature_fingerprint: [0x22; 32],
-			executable_digest: dogmos_identity::sha256_file(service_path).unwrap(),
+			executable_digest: dogmos_identity::sha256_file(&service_path).unwrap(),
 		},
 		capacities: CapacityLimits {
 			max_control_payload: MAX_CONTROL_PAYLOAD,
@@ -56,7 +73,7 @@ pub fn start(
 		world_generation: 7,
 		world_nonce: 0x1234_5678_90ab_cdef,
 	};
-	let mut child = Command::new(service_path)
+	let mut child = Command::new(&service_path)
 		.arg("--echo-server")
 		.arg(&endpoint)
 		.stdin(Stdio::piped())

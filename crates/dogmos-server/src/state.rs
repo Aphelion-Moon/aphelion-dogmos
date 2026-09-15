@@ -1,3 +1,4 @@
+use crate::jobs::{JobError, StageJobController};
 use dogmos_core::{
 	frontier::FrontierError,
 	metadata::{
@@ -29,12 +30,13 @@ use dogmos_protocol::{
 	ContinuationToken, GasMetadataRegistration, LifecycleAction, LifecycleMutation,
 	MixtureAdjustment, MixtureCommandRequest, MixtureCommandResponse, MixtureSnapshot,
 	MixtureStateMutation, PipenetReconcileSnapshot, ReactionMetadataRegistration, ScalarValue,
-	ServiceTelemetry, SimulationStage, TurfAdjacencyMutation, TurfDestructionReason,
-	TurfHeatAdjacencyMutation, TurfHeatMutation, TurfHeatSnapshot, TurfHeatState,
-	TurfLifecycleMutation, WireFireProducts, WireGasFireRole, WireHandle, WireReactionExecution,
-	CALLBACK_BATCH_HEADER_LEN, CALLBACK_EVENT_KIND_COUNT, CALLBACK_EVENT_LEN,
-	CONTINUATION_TICK_MILLIS, DEFAULT_CONTINUATION_TIMEOUT_TICKS, MAX_GAS_SLOTS,
-	SERVICE_PROCESS_CPU_AVAILABLE, SERVICE_PROCESS_RSS_AVAILABLE,
+	ServiceTelemetry, SimulationStage, StageJobCommit, StageJobResponse, StageJobStatus,
+	StageJobSubmit, TurfAdjacencyMutation, TurfDestructionReason, TurfHeatAdjacencyMutation,
+	TurfHeatMutation, TurfHeatSnapshot, TurfHeatState, TurfLifecycleMutation, WireFireProducts,
+	WireGasFireRole, WireHandle, WireReactionExecution, CALLBACK_BATCH_HEADER_LEN,
+	CALLBACK_EVENT_KIND_COUNT, CALLBACK_EVENT_LEN, CONTINUATION_TICK_MILLIS,
+	DEFAULT_CONTINUATION_TIMEOUT_TICKS, MAX_GAS_SLOTS, SERVICE_PROCESS_CPU_AVAILABLE,
+	SERVICE_PROCESS_RSS_AVAILABLE,
 };
 use std::{
 	collections::{BTreeMap, BTreeSet, VecDeque},
@@ -44,6 +46,10 @@ use std::{
 };
 
 const _: () = assert!(MAX_GAS_SLOTS == dogmos_core::MAX_GAS_SLOTS);
+
+fn elapsed_nanoseconds(started_at: Instant) -> u64 {
+	started_at.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64
+}
 
 #[derive(Debug, PartialEq)]
 pub enum StateError {
@@ -87,6 +93,8 @@ pub enum StateError {
 	MixtureStateUploadIncomplete,
 	MixtureStateUploadIdExhausted,
 	StageConflict(String),
+	StageJobBusy,
+	StageJobPublicationFailed(String),
 	ContinuationCapacityExceeded,
 	ContinuationIdExhausted,
 	ContinuationDeadlineExhausted,
@@ -209,6 +217,9 @@ struct PendingMixtureStateUpload {
 
 pub struct ServiceState {
 	world: DogmosWorld,
+	jobs: StageJobController,
+	job_observations: crate::job_observations::JobObservations,
+	job_publication_failed: bool,
 	general_callbacks: VecDeque<QueuedCallback>,
 	reaction_callbacks: BTreeMap<u64, ReactionCallbackQueue>,
 	pending_callback_count: u32,
@@ -265,6 +276,9 @@ impl ServiceState {
 		world_generation: u32,
 	) -> Self {
 		Self {
+			jobs: StageJobController::default(),
+			job_observations: crate::job_observations::JobObservations::default(),
+			job_publication_failed: false,
 			world: DogmosWorld::new_with_capacities(
 				max_world_bytes,
 				max_callback_events,
@@ -388,6 +402,9 @@ impl ServiceState {
 			topology_revision: self.world.topology_revision(),
 			reusable_workset_bytes: self.world.reusable_workset_bytes(),
 			packed_topology_bytes: self.world.packed_topology_bytes(),
+			stage_jobs: self
+				.job_observations
+				.snapshot(self.observation_now_nanoseconds()),
 		}
 	}
 
@@ -1533,6 +1550,146 @@ impl ServiceState {
 		self.process_stage_cancellable_at(stage, seconds_per_tick, now_ticks, should_cancel)
 	}
 
+	pub fn submit_stage_job(
+		&mut self,
+		request: StageJobSubmit,
+	) -> Result<StageJobResponse, StateError> {
+		self.ensure_job_publication_healthy()?;
+		let response = self
+			.jobs
+			.submit(&mut self.world, request)
+			.map_err(map_job_error)?;
+		self.job_observations
+			.admit(response.job, self.observation_now_nanoseconds());
+		Ok(response)
+	}
+
+	pub fn poll_stage_job(&self, job: u64) -> Result<StageJobResponse, StateError> {
+		self.ensure_job_publication_healthy()?;
+		self.jobs.poll(job).map_err(map_job_error)
+	}
+
+	pub fn stage_job_runnable(&self) -> bool {
+		!self.job_publication_failed && self.jobs.runnable()
+	}
+
+	pub fn run_stage_job_quantum(
+		&mut self,
+		should_cancel: impl FnMut() -> bool,
+	) -> Result<StageJobResponse, StateError> {
+		let quantum = self
+			.jobs
+			.quantum()
+			.ok_or_else(|| StateError::InvalidRequest("no admitted stage job".into()))?;
+		let started_at = Instant::now();
+		self.prepare_stage_job(|| started_at.elapsed() >= quantum, should_cancel)
+	}
+
+	pub fn prepare_stage_job(
+		&mut self,
+		should_yield: impl FnMut() -> bool,
+		should_cancel: impl FnMut() -> bool,
+	) -> Result<StageJobResponse, StateError> {
+		self.ensure_job_publication_healthy()?;
+		let runnable = self.jobs.runnable();
+		let started_at = Instant::now();
+		let result = self
+			.jobs
+			.prepare(&mut self.world, should_yield, should_cancel)
+			.map_err(map_job_error);
+		if runnable {
+			self.job_observations
+				.record_prepare(elapsed_nanoseconds(started_at));
+		}
+		self.observe_job_status();
+		result
+	}
+
+	pub fn commit_stage_job(
+		&mut self,
+		request: StageJobCommit,
+	) -> Result<StageJobResponse, StateError> {
+		// Include capacity reservation, publication, event enqueue, rejected calls and replays.
+		let started_at = Instant::now();
+		let result = self.commit_stage_job_inner(request);
+		let retried = result
+			.as_ref()
+			.is_ok_and(|response| response.status == StageJobStatus::Retrying);
+		self.job_observations
+			.record_commit(elapsed_nanoseconds(started_at), retried);
+		self.observe_job_status();
+		result
+	}
+
+	fn commit_stage_job_inner(
+		&mut self,
+		request: StageJobCommit,
+	) -> Result<StageJobResponse, StateError> {
+		self.ensure_job_publication_healthy()?;
+		if let Some(receipt) = self.jobs.replay(request).map_err(map_job_error)? {
+			return Ok(receipt);
+		}
+		let event_limit = self
+			.max_callback_events
+			.checked_sub(self.pending_callback_count)
+			.ok_or(StateError::CallbackBackpressure)?;
+		self.reserve_world_event_enqueue_capacity(event_limit, CallbackScope::General, 0)?;
+		let response = self
+			.jobs
+			.commit(&mut self.world, request, event_limit)
+			.map_err(map_job_error)?;
+		if self.jobs.replay(request).ok().flatten().is_some() {
+			let now_ticks = self.current_ticks();
+			if let Err(error) =
+				self.enqueue_world_events_at(event_limit, now_ticks, CallbackScope::General, 0)
+			{
+				// Core publication has happened. Never acknowledge/replay it without its events.
+				self.job_publication_failed = true;
+				return Err(StateError::StageJobPublicationFailed(error.to_string()));
+			}
+		}
+		Ok(response)
+	}
+
+	pub fn cancel_stage_job(&mut self, job: u64) -> Result<StageJobResponse, StateError> {
+		self.ensure_job_publication_healthy()?;
+		let result = self
+			.jobs
+			.cancel(&mut self.world, job)
+			.map_err(map_job_error);
+		self.observe_job_status();
+		result
+	}
+
+	fn observation_now_nanoseconds(&self) -> u64 {
+		elapsed_nanoseconds(self.session_started_at)
+	}
+
+	fn observe_job_status(&mut self) {
+		let job = self.job_observations.job_id();
+		if job == 0 {
+			return;
+		}
+		if self.job_publication_failed {
+			self.job_observations.status(
+				StageJobStatus::Cancelled,
+				self.observation_now_nanoseconds(),
+			);
+		} else if let Ok(response) = self.jobs.poll(job) {
+			self.job_observations
+				.status(response.status, self.observation_now_nanoseconds());
+		}
+	}
+
+	fn ensure_job_publication_healthy(&self) -> Result<(), StateError> {
+		if self.job_publication_failed {
+			return Err(StateError::StageJobPublicationFailed(
+				"stage publication previously failed; session must close".into(),
+			));
+		}
+		Ok(())
+	}
+
 	pub fn process_stage_chunk_cancellable(
 		&mut self,
 		stage: SimulationStage,
@@ -1542,6 +1699,11 @@ impl ServiceState {
 		seconds_per_tick: f64,
 		should_cancel: impl FnMut() -> bool,
 	) -> Result<StageResult, StateError> {
+		if self.jobs.active() {
+			return Err(StateError::StageConflict(
+				"asynchronous stage job owns the world".into(),
+			));
+		}
 		let now_ticks = self.current_ticks();
 		let stage = simulation_stage(stage);
 		let event_limit = self
@@ -2475,7 +2637,17 @@ fn map_world_error(error: WorldError) -> StateError {
 	}
 }
 
-fn simulation_stage(stage: SimulationStage) -> WorldStage {
+fn map_job_error(error: JobError) -> StateError {
+	match error {
+		JobError::Core(error) => map_world_error(error),
+		JobError::Busy => StateError::StageJobBusy,
+		JobError::StaleStageEpoch => StateError::StageConflict(error.to_string()),
+		JobError::IdentityExhausted => StateError::State(error.to_string()),
+		_ => StateError::InvalidRequest(error.to_string()),
+	}
+}
+
+pub(super) fn simulation_stage(stage: SimulationStage) -> WorldStage {
 	match stage {
 		SimulationStage::ProcessTurfs => WorldStage::ProcessTurfs,
 		SimulationStage::ProcessTurfEqualize => WorldStage::Equalize,
@@ -2523,6 +2695,200 @@ mod tests {
 
 	fn handle(slot: u32, generation: u32) -> WireHandle {
 		WireHandle { slot, generation }
+	}
+
+	fn job_reaction_fixture() -> (ServiceState, dogmos_protocol::StageJobSubmit, WireHandle) {
+		let (mut state, mixture, _) = dm_reaction_state();
+		state
+			.apply_turf_lifecycle(&[WireTurfLifecycleMutation {
+				action: LifecycleAction::Register,
+				turf: handle(0, 1),
+				mixture: Some(mixture),
+			}])
+			.unwrap();
+		state
+			.world
+			.add_frontier(1, &[core_turf_handle(handle(0, 1))])
+			.unwrap();
+		let request = dogmos_protocol::StageJobSubmit {
+			stage: SimulationStage::ProcessReactions,
+			work_limit: 1,
+			frontier_epoch: 1,
+			stage_epoch: 1,
+			seconds_per_tick: ScalarValue(0.5),
+			quantum_us: 1000,
+		};
+		(state, request, mixture)
+	}
+
+	fn prepare_job_ready(state: &mut ServiceState) -> dogmos_protocol::StageJobResponse {
+		for _ in 0..1000 {
+			let response = state.prepare_stage_job(|| false, || false).unwrap();
+			if response.status == dogmos_protocol::StageJobStatus::Ready {
+				return response;
+			}
+		}
+		panic!("reaction fixture exceeded preparation work bound");
+	}
+
+	#[test]
+	fn stage_job_callbacks_are_published_once_and_only_after_commit() {
+		let (mut state, request, mixture) = job_reaction_fixture();
+		let before = state.snapshot(mixture).unwrap();
+		let accepted = state.submit_stage_job(request).unwrap();
+		assert_eq!(state.poll_stage_job(accepted.job).unwrap(), accepted);
+		let ready = prepare_job_ready(&mut state);
+		assert_eq!(state.snapshot(mixture).unwrap(), before);
+		assert_eq!(state.pending_callback_count, 0);
+		assert_eq!(state.pending_continuation_count(), 0);
+		let commit = dogmos_protocol::StageJobCommit {
+			job: ready.job,
+			unit: ready.unit,
+		};
+		let receipt = state.commit_stage_job(commit).unwrap();
+		assert_eq!(receipt.callback_events, 1);
+		assert_eq!(receipt.committed_units, 1);
+		assert_eq!(state.pending_callback_count, 1);
+		assert_eq!(state.pending_continuation_count(), 1);
+		let callback = state.general_callbacks.front().unwrap().event;
+		assert_eq!(callback.kind, CallbackEventKind::RunDmReaction);
+		assert!(callback.continuation.is_some());
+		state.fail_next_callback_enqueue_at(CallbackEnqueueCheckpoint::ContinuationReserve);
+		assert_eq!(state.commit_stage_job(commit).unwrap(), receipt);
+		assert_eq!(state.pending_callback_count, 1);
+		assert_eq!(state.pending_continuation_count(), 1);
+		assert_eq!(state.cancel_stage_job(ready.job).unwrap(), receipt);
+	}
+
+	#[test]
+	fn stage_job_callback_preflight_failure_retains_ready_work_for_retry() {
+		let (mut state, request, mixture) = job_reaction_fixture();
+		let before = state.snapshot(mixture).unwrap();
+		state.submit_stage_job(request).unwrap();
+		let ready = prepare_job_ready(&mut state);
+		let commit = dogmos_protocol::StageJobCommit {
+			job: ready.job,
+			unit: ready.unit,
+		};
+		state.fail_next_callback_enqueue_at(CallbackEnqueueCheckpoint::ContinuationReserve);
+		assert!(matches!(
+			state.commit_stage_job(commit),
+			Err(StateError::AllocationFailed(_))
+		));
+		assert_eq!(state.poll_stage_job(ready.job).unwrap(), ready);
+		assert_eq!(state.snapshot(mixture).unwrap(), before);
+		assert_eq!(state.pending_callback_count, 0);
+		assert_eq!(state.world.pending_reaction_continuations(), 0);
+		assert_eq!(state.commit_stage_job(commit).unwrap().committed_units, 1);
+	}
+
+	#[test]
+	fn job_telemetry_tracks_actor_work_without_counting_poll_as_preparation() {
+		let (mut state, request, _) = job_reaction_fixture();
+		let admitted = state.submit_stage_job(request).unwrap();
+		let first = state.telemetry().stage_jobs;
+		assert_eq!(first.job, admitted.job);
+		assert_eq!(first.status, StageJobStatus::Accepted as u16);
+		assert_eq!(first.prepare_calls, 0);
+		assert_eq!(first.commit_calls, 0);
+		let ready = prepare_job_ready(&mut state);
+		let prepared = state.telemetry().stage_jobs;
+		assert!(prepared.prepare_calls > 0);
+		assert_eq!(prepared.status, StageJobStatus::Ready as u16);
+		assert_eq!(prepared.completed_jobs, 0);
+		for _ in 0..8 {
+			assert_eq!(state.poll_stage_job(admitted.job).unwrap(), ready);
+		}
+		assert_eq!(state.prepare_stage_job(|| false, || false).unwrap(), ready);
+		assert_eq!(
+			state.telemetry().stage_jobs.prepare_calls,
+			prepared.prepare_calls
+		);
+		let commit = StageJobCommit {
+			job: ready.job,
+			unit: ready.unit,
+		};
+		let receipt = state.commit_stage_job(commit).unwrap();
+		assert_eq!(receipt.status, StageJobStatus::Done);
+		let completed = state.telemetry().stage_jobs;
+		assert_eq!(completed.completed_jobs, 1);
+		assert_eq!(completed.cancelled_jobs, 0);
+		assert_eq!(completed.commit_calls, 1);
+		assert_eq!(completed.publication_retries, 0);
+		assert_eq!(state.commit_stage_job(commit).unwrap(), receipt);
+		let replayed = state.telemetry().stage_jobs;
+		assert_eq!(replayed.completed_jobs, 1);
+		assert_eq!(replayed.commit_calls, 2); // A replay still has a measured control-call cost.
+		assert_eq!(replayed.age_nanoseconds, completed.age_nanoseconds);
+		assert!(replayed.prepare_max_nanoseconds <= replayed.prepare_total_nanoseconds);
+		assert!(replayed.commit_max_nanoseconds <= replayed.commit_total_nanoseconds);
+		assert_eq!(state.pending_callback_count, 1);
+	}
+
+	#[test]
+	fn stage_job_rejects_mixed_execution_without_aborting_preparation() {
+		let (mut state, request, _) = job_reaction_fixture();
+		let accepted = state.submit_stage_job(request).unwrap();
+		assert!(matches!(
+			state.process_stage_chunk_cancellable(request.stage, 1, 2, 1, 0.5, || false),
+			Err(StateError::StageConflict(_))
+		));
+		assert_eq!(state.poll_stage_job(accepted.job).unwrap(), accepted);
+		assert!(state.world.pending_stage_epoch().is_some());
+		assert_eq!(
+			prepare_job_ready(&mut state).status,
+			dogmos_protocol::StageJobStatus::Ready
+		);
+	}
+
+	#[test]
+	fn stage_job_post_publication_failure_never_replays_an_unacknowledged_receipt() {
+		let (mut state, request, _) = job_reaction_fixture();
+		state.submit_stage_job(request).unwrap();
+		let ready = prepare_job_ready(&mut state);
+		let commit = dogmos_protocol::StageJobCommit {
+			job: ready.job,
+			unit: ready.unit,
+		};
+		state.fail_next_callback_enqueue_at(CallbackEnqueueCheckpoint::Commit);
+		assert!(matches!(
+			state.commit_stage_job(commit),
+			Err(StateError::StageJobPublicationFailed(_))
+		));
+		assert_eq!(state.pending_callback_count, 0);
+		assert_eq!(state.world.pending_events(8).len(), 1);
+		assert!(!state.stage_job_runnable());
+		assert!(matches!(
+			state.commit_stage_job(commit),
+			Err(StateError::StageJobPublicationFailed(_))
+		));
+		assert!(state.poll_stage_job(ready.job).is_err());
+		assert!(state.cancel_stage_job(ready.job).is_err());
+		let observations = state.telemetry().stage_jobs;
+		assert_eq!(observations.status, StageJobStatus::Cancelled as u16);
+		assert_eq!(observations.completed_jobs, 0);
+		assert_eq!(observations.cancelled_jobs, 1);
+		assert_eq!(observations.commit_calls, 2);
+	}
+
+	#[test]
+	fn stage_job_rechecks_callback_capacity_changed_after_preparation() {
+		let (mut state, request, mixture) = job_reaction_fixture();
+		let original = state.snapshot(mixture).unwrap();
+		state.submit_stage_job(request).unwrap();
+		let ready = prepare_job_ready(&mut state);
+		state.enqueue_diagnostic_callbacks(8).unwrap();
+		let error = state
+			.commit_stage_job(StageJobCommit {
+				job: ready.job,
+				unit: ready.unit,
+			})
+			.unwrap_err();
+		assert_eq!(error, StateError::CallbackBackpressure);
+		assert_eq!(state.snapshot(mixture).unwrap(), original);
+		assert_eq!(state.pending_callback_count, 8);
+		assert_eq!(state.pending_continuation_count(), 0);
+		assert_eq!(state.world.pending_reaction_continuations(), 0);
 	}
 
 	#[test]

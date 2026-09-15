@@ -1,0 +1,5070 @@
+{
+  "kind": "exploratory_single_playtest",
+  "profile_identity": "Rows with duplicate display names summed per name; source implementations may differ.",
+  "profile_units": "seconds; cumulative counters subtracted after the startup reset; inclusive rows overlap",
+  "units_source": "https://www.byond.com/forum/post/2564440",
+  "interval": {
+    "start_game_seconds": 60,
+    "end_game_seconds": 840
+  },
+  "snapshot_count": 17,
+  "inventory": [
+    {
+      "file": "profiler-0.json",
+      "sha256": "f9c9cbb5c2bdb9602f9f2dacd7ea194d411626946d690dd0088e806fe797907b"
+    },
+    {
+      "file": "profiler-20.json",
+      "sha256": "adbfba9cd592f424b93ccbb10c0c9970100dbb9c88372298490d8e969b409356"
+    },
+    {
+      "file": "profiler-40.json",
+      "sha256": "49dac33b99ad881804683d577c3d5c5d415570eb7f59f2beeb357442ee040673"
+    },
+    {
+      "file": "profiler-60.json",
+      "sha256": "6bc6654440160e09d611b5e841a6c290e8dce031cff0d07b9185353b709997b8"
+    },
+    {
+      "file": "profiler-120.json",
+      "sha256": "7c11b47f2d1972953b994b7b2de901e5e60b1cdea2688c3d01cbfcf7673f3b50"
+    },
+    {
+      "file": "profiler-180.json",
+      "sha256": "affeabb5113fa5f0035763075ae4f100240c5c7270b68ef4732ae148ad4b7558"
+    },
+    {
+      "file": "profiler-240.json",
+      "sha256": "5ff5c8dd3798a1365bbee45e54a85c8f0440112994b2820d49437d3f516b69e3"
+    },
+    {
+      "file": "profiler-300.json",
+      "sha256": "de5231a4614b31d7a0d9e91e0e33b350a35bbfcfba463b577febc1734803e0a2"
+    },
+    {
+      "file": "profiler-360.json",
+      "sha256": "294e0fce6b3d68ada282c7da79428e791f5170d140e714be6ed003d6ad748c17"
+    },
+    {
+      "file": "profiler-420.json",
+      "sha256": "88baca2fe3a8e524802da2cd97768897b3ec4a55143344fdddde704ef6f320b9"
+    },
+    {
+      "file": "profiler-480.json",
+      "sha256": "de266113bbae45a387e2957e2bb41cc1760ab22d5b10dc95d4d8a90840655906"
+    },
+    {
+      "file": "profiler-540.json",
+      "sha256": "17ce8602e7ec34fcf63f5c8bb21348974419f90d45870712d1cde09c38ffad9c"
+    },
+    {
+      "file": "profiler-600.json",
+      "sha256": "90a0247a4c92e214e85fdc57977c48bb181103d42d1be4a9a48f505f5ec16aef"
+    },
+    {
+      "file": "profiler-660.json",
+      "sha256": "05997952a6cb993eefde217813fc3a8a78867e80c0881d50b7260d7f190711e6"
+    },
+    {
+      "file": "profiler-720.json",
+      "sha256": "9c74ae4c9a7b14928e3191937097475c497cb2018d04968beb03e077fb5ed153"
+    },
+    {
+      "file": "profiler-780.json",
+      "sha256": "394bd4556411b7b69838bbdffca0c9c0956eec653b090eb2f9aa1ebc5f19e9ab"
+    },
+    {
+      "file": "profiler-840.json",
+      "sha256": "e881fb2b8e737c40d40d2259d46d64e1fd2c1f6bc4a47d671e3920741defed92"
+    }
+  ],
+  "intervals": [
+    {
+      "start": 0,
+      "end": 20,
+      "reset_count": 0,
+      "reset_examples": [],
+      "top_self": [
+        {
+          "name": "/proc/dogmos_mixture_command",
+          "self": 5.012,
+          "total": 5.015,
+          "real": 5.033,
+          "over": 2.508,
+          "calls": 56039
+        },
+        {
+          "name": "/datum/proc/RegisterSignal",
+          "self": 1.843,
+          "total": 1.876,
+          "real": 2.003,
+          "over": 0.912,
+          "calls": 577992
+        },
+        {
+          "name": "/datum/controller/subsystem/processing/greyscale/proc/GetColoredIconByType",
+          "self": 1.799,
+          "total": 1.799,
+          "real": 1.805,
+          "over": 1.358,
+          "calls": 5749
+        },
+        {
+          "name": "/datum/controller/subsystem/atoms/proc/InitAtom",
+          "self": 1.754,
+          "total": 37.815,
+          "real": 37.889,
+          "over": 0.857,
+          "calls": 523744
+        },
+        {
+          "name": "/proc/REF",
+          "self": 1.399,
+          "total": 1.404,
+          "real": 1.396,
+          "over": 1.155,
+          "calls": 94975
+        },
+        {
+          "name": "/proc/dogmos_mixture_snapshot",
+          "self": 1.105,
+          "total": 1.105,
+          "real": 1.124,
+          "over": 0.711,
+          "calls": 9823
+        },
+        {
+          "name": "/atom/movable/Initialize",
+          "self": 1.005,
+          "total": 4.364,
+          "real": 4.349,
+          "over": 0.629,
+          "calls": 53453
+        },
+        {
+          "name": "/turf/Initialize",
+          "self": 0.981,
+          "total": 2.291,
+          "real": 2.32,
+          "over": 0.471,
+          "calls": 92016
+        },
+        {
+          "name": "/datum/controller/subsystem/atoms/proc/CreateAtoms",
+          "self": 0.776,
+          "total": 32.378,
+          "real": 32.806,
+          "over": 0.391,
+          "calls": 1
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/register_mixture",
+          "self": 0.531,
+          "total": 5.795,
+          "real": 5.803,
+          "over": 0.256,
+          "calls": 55112
+        },
+        {
+          "name": "/datum/controller/subsystem/processing/dcs/proc/GetIdFromArguments",
+          "self": 0.513,
+          "total": 0.831,
+          "real": 0.896,
+          "over": 0.245,
+          "calls": 59362
+        },
+        {
+          "name": "/turf/open/space/Initialize",
+          "self": 0.465,
+          "total": 0.496,
+          "real": 0.566,
+          "over": 0.225,
+          "calls": 364202
+        }
+      ],
+      "dogmos": [
+        {
+          "name": "/proc/dogmos_mixture_command",
+          "self": 5.012,
+          "total": 5.015,
+          "real": 5.033,
+          "over": 2.508,
+          "calls": 56039
+        },
+        {
+          "name": "/proc/dogmos_mixture_snapshot",
+          "self": 1.105,
+          "total": 1.105,
+          "real": 1.124,
+          "over": 0.711,
+          "calls": 9823
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/register_mixture",
+          "self": 0.531,
+          "total": 5.795,
+          "real": 5.803,
+          "over": 0.256,
+          "calls": 55112
+        },
+        {
+          "name": "/proc/dogmos_mixture_lifecycle_batch",
+          "self": 0.444,
+          "total": 0.445,
+          "real": 0.488,
+          "over": 0.237,
+          "calls": 2997
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/parse_gas_string",
+          "self": 0.257,
+          "total": 6.385,
+          "real": 6.383,
+          "over": 0.117,
+          "calls": 53501
+        },
+        {
+          "name": "/proc/dogmos_turf_heat_batch",
+          "self": 0.254,
+          "total": 0.254,
+          "real": 0.264,
+          "over": 0.154,
+          "calls": 3030
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/lookup_mixture_snapshot_cache",
+          "self": 0.234,
+          "total": 0.265,
+          "real": 0.29,
+          "over": 0.136,
+          "calls": 79552
+        },
+        {
+          "name": "/proc/dogmos_turf_lifecycle_batch",
+          "self": 0.19,
+          "total": 0.19,
+          "real": 0.2,
+          "over": 0.102,
+          "calls": 2240
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/finalize_mixture_registration",
+          "self": 0.181,
+          "total": 0.183,
+          "real": 0.186,
+          "over": 0.084,
+          "calls": 55112
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/mixture_identity_matches",
+          "self": 0.18,
+          "total": 0.185,
+          "real": 0.16,
+          "over": 0.088,
+          "calls": 54969
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/mixture_snapshot",
+          "self": 0.169,
+          "total": 1.581,
+          "real": 1.605,
+          "over": 0.105,
+          "calls": 79552
+        },
+        {
+          "name": "/datum/gas_mixture/proc/dogmos_snapshot",
+          "self": 0.101,
+          "total": 1.684,
+          "real": 1.711,
+          "over": 0.056,
+          "calls": 79552
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/flush_turf_registration_batch",
+          "self": 0.05,
+          "total": 0.496,
+          "real": 0.505,
+          "over": 0.024,
+          "calls": 3356
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/store_mixture_snapshot_cache",
+          "self": 0.037,
+          "total": 0.043,
+          "real": 0.035,
+          "over": 0.014,
+          "calls": 9823
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/mixture_snapshot_cache_bucket",
+          "self": 0.036,
+          "total": 0.04,
+          "real": 0.065,
+          "over": 0.018,
+          "calls": 93371
+        }
+      ]
+    },
+    {
+      "start": 20,
+      "end": 40,
+      "reset_count": 936,
+      "reset_examples": [
+        "/world/proc/get_world_state_for_logging",
+        "/world/Tick",
+        "/world/Profile",
+        "/datum/controller/subsystem/proc/ignite"
+      ],
+      "top_self": [
+        {
+          "name": "/datum/asset/spritesheet_batched/proc/realize_spritesheets",
+          "self": 0.051,
+          "total": 0.111,
+          "real": 1.567,
+          "over": 0.003,
+          "calls": 13
+        },
+        {
+          "name": "/proc/dogmos_turf_heat_snapshot",
+          "self": 0.048,
+          "total": 0.048,
+          "real": 0.038,
+          "over": 0.048,
+          "calls": 263
+        },
+        {
+          "name": "/datum/controller/subsystem/area_contents/fire",
+          "self": 0.034,
+          "total": 0.034,
+          "real": 0.033,
+          "over": 0,
+          "calls": 4
+        },
+        {
+          "name": "/datum/asset/spritesheet_batched/proc/read_from_cache",
+          "self": 0.032,
+          "total": 0.033,
+          "real": 0.032,
+          "over": 0,
+          "calls": 10
+        },
+        {
+          "name": "/proc/getFlatIcon",
+          "self": 0.019,
+          "total": -0.033,
+          "real": -0.035,
+          "over": 0.018,
+          "calls": 0
+        },
+        {
+          "name": "/turf/proc/__update_auxtools_turf_adjacency_info",
+          "self": 0.015,
+          "total": 0.077,
+          "real": 0.079,
+          "over": 0.015,
+          "calls": 1112
+        },
+        {
+          "name": "/datum/asset/spritesheet_batched/should_refresh",
+          "self": 0.013,
+          "total": 0.014,
+          "real": 0.735,
+          "over": 0,
+          "calls": 13
+        },
+        {
+          "name": "/icon/proc/Blend",
+          "self": 0.012,
+          "total": 0.012,
+          "real": 0.015,
+          "over": 0.004,
+          "calls": -167
+        },
+        {
+          "name": "/datum/asset/spritesheet_batched/proc/write_cache_meta",
+          "self": 0.01,
+          "total": 0.01,
+          "real": 0.012,
+          "over": 0,
+          "calls": 7
+        },
+        {
+          "name": "/proc/dogmos_turf_adjacency_batch",
+          "self": 0.009,
+          "total": 0.009,
+          "real": 0.014,
+          "over": 0.009,
+          "calls": 109
+        },
+        {
+          "name": "/datum/controller/subsystem/mapping/fire",
+          "self": 0.008,
+          "total": 0.039,
+          "real": 0.04,
+          "over": 0,
+          "calls": 4
+        },
+        {
+          "name": "/atom/proc/bitmask_smooth",
+          "self": 0.008,
+          "total": 0.013,
+          "real": 0.016,
+          "over": 0,
+          "calls": 501
+        }
+      ],
+      "dogmos": [
+        {
+          "name": "/proc/dogmos_turf_heat_snapshot",
+          "self": 0.048,
+          "total": 0.048,
+          "real": 0.038,
+          "over": 0.048,
+          "calls": 263
+        },
+        {
+          "name": "/proc/dogmos_turf_adjacency_batch",
+          "self": 0.009,
+          "total": 0.009,
+          "real": 0.014,
+          "over": 0.009,
+          "calls": 109
+        },
+        {
+          "name": "/proc/dogmos_turf_heat_adjacency_batch",
+          "self": 0.007,
+          "total": 0.007,
+          "real": 0.007,
+          "over": 0.007,
+          "calls": 109
+        },
+        {
+          "name": "/turf/proc/sync_dogmos_adjacency",
+          "self": 0.005,
+          "total": 0.128,
+          "real": 0.128,
+          "over": 0.005,
+          "calls": 700
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/update_template_border",
+          "self": 0.002,
+          "total": 0.097,
+          "real": 0.097,
+          "over": 0.002,
+          "calls": 1
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/index_pending_edge",
+          "self": 0.002,
+          "total": 0.002,
+          "real": 0.001,
+          "over": 0.002,
+          "calls": 1052
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/add_to_active",
+          "self": 0.001,
+          "total": 0.002,
+          "real": 0.002,
+          "over": 0,
+          "calls": 484
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/unindex_pending_edge",
+          "self": 0.001,
+          "total": 0.001,
+          "real": 0.003,
+          "over": 0.001,
+          "calls": 1052
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/remove_pending_gas_edge",
+          "self": 0.001,
+          "total": 0.001,
+          "real": 0.001,
+          "over": 0.001,
+          "calls": 263
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/remove_pending_heat_edge",
+          "self": 0.001,
+          "total": 0.002,
+          "real": 0.002,
+          "over": 0.001,
+          "calls": 263
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/increment_u64_words",
+          "self": 0.001,
+          "total": 0.001,
+          "real": 0,
+          "over": 0,
+          "calls": 276
+        },
+        {
+          "name": "/turf/open/space/sync_dogmos_adjacency",
+          "self": 0.001,
+          "total": 0.003,
+          "real": 0.009,
+          "over": 0.001,
+          "calls": 343
+        },
+        {
+          "name": "/turf/proc/dogmos_service_slot",
+          "self": 0.001,
+          "total": 0.001,
+          "real": -0.003,
+          "over": 0.003,
+          "calls": -1260
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/setup_template_machinery",
+          "self": 0,
+          "total": 0,
+          "real": 0,
+          "over": 0,
+          "calls": 1
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_add_frontier_member",
+          "self": 0,
+          "total": 0.001,
+          "real": 0.001,
+          "over": 0,
+          "calls": 139
+        }
+      ]
+    },
+    {
+      "start": 40,
+      "end": 60,
+      "reset_count": 0,
+      "reset_examples": [],
+      "top_self": [
+        {
+          "name": "/icon/proc/Blend",
+          "self": 2.639,
+          "total": 2.641,
+          "real": 2.659,
+          "over": 0.662,
+          "calls": 5462
+        },
+        {
+          "name": "/proc/REF",
+          "self": 1.62,
+          "total": 1.622,
+          "real": 1.672,
+          "over": 1.41,
+          "calls": 13918
+        },
+        {
+          "name": "/proc/dogmos_turf_lifecycle_batch",
+          "self": 1.409,
+          "total": 1.41,
+          "real": 1.429,
+          "over": 1.006,
+          "calls": 15008
+        },
+        {
+          "name": "/proc/dogmos_turf_heat_batch",
+          "self": 1.132,
+          "total": 1.132,
+          "real": 1.14,
+          "over": 0.814,
+          "calls": 13355
+        },
+        {
+          "name": "/proc/getFlatIcon",
+          "self": 0.79,
+          "total": 1.652,
+          "real": 1.609,
+          "over": 0.168,
+          "calls": 3451
+        },
+        {
+          "name": "/datum/light_source/proc/update_corners",
+          "self": 0.483,
+          "total": 1.08,
+          "real": 1.097,
+          "over": 0,
+          "calls": 2701
+        },
+        {
+          "name": "/datum/proc/RegisterSignal",
+          "self": 0.479,
+          "total": 0.488,
+          "real": 0.5,
+          "over": 0.008,
+          "calls": 137411
+        },
+        {
+          "name": "/proc/icon_metadata",
+          "self": 0.426,
+          "total": 0.426,
+          "real": 0.423,
+          "over": 0.256,
+          "calls": 269
+        },
+        {
+          "name": "/datum/controller/subsystem/processing/greyscale/proc/GetColoredIconByType",
+          "self": 0.417,
+          "total": 0.417,
+          "real": 0.417,
+          "over": 0.153,
+          "calls": 1832
+        },
+        {
+          "name": "/proc/dogmos_mixture_lifecycle_batch",
+          "self": 0.388,
+          "total": 0.388,
+          "real": 0.373,
+          "over": 0,
+          "calls": 1556
+        },
+        {
+          "name": "/datum/light_source/proc/impacted_corners",
+          "self": 0.376,
+          "total": 0.403,
+          "real": 0.378,
+          "over": 0,
+          "calls": 2170
+        },
+        {
+          "name": "/proc/dogmos_turf_heat_snapshot",
+          "self": 0.354,
+          "total": 0.354,
+          "real": 0.34,
+          "over": 0.128,
+          "calls": 2454
+        }
+      ],
+      "dogmos": [
+        {
+          "name": "/proc/dogmos_turf_lifecycle_batch",
+          "self": 1.409,
+          "total": 1.41,
+          "real": 1.429,
+          "over": 1.006,
+          "calls": 15008
+        },
+        {
+          "name": "/proc/dogmos_turf_heat_batch",
+          "self": 1.132,
+          "total": 1.132,
+          "real": 1.14,
+          "over": 0.814,
+          "calls": 13355
+        },
+        {
+          "name": "/proc/dogmos_mixture_lifecycle_batch",
+          "self": 0.388,
+          "total": 0.388,
+          "real": 0.373,
+          "over": 0,
+          "calls": 1556
+        },
+        {
+          "name": "/proc/dogmos_turf_heat_snapshot",
+          "self": 0.354,
+          "total": 0.354,
+          "real": 0.34,
+          "over": 0.128,
+          "calls": 2454
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/flush_turf_registration_batch",
+          "self": 0.33,
+          "total": 3.194,
+          "real": 3.209,
+          "over": 0.246,
+          "calls": 17494
+        },
+        {
+          "name": "/proc/dogmos_mixture_command",
+          "self": 0.284,
+          "total": 0.284,
+          "real": 0.329,
+          "over": 0.0,
+          "calls": 2018
+        },
+        {
+          "name": "/proc/dogmos_mixture_snapshot",
+          "self": 0.086,
+          "total": 0.086,
+          "real": 0.079,
+          "over": 0.0,
+          "calls": 442
+        },
+        {
+          "name": "/proc/dogmos_turf_heat_adjacency_batch",
+          "self": 0.067,
+          "total": 0.067,
+          "real": 0.077,
+          "over": 0.012,
+          "calls": 823
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_remove_frontier_member",
+          "self": 0.065,
+          "total": 0.076,
+          "real": 0.057,
+          "over": 0.034,
+          "calls": 21481
+        },
+        {
+          "name": "/turf/proc/dogmos_service_slot",
+          "self": 0.064,
+          "total": 0.067,
+          "real": 0.105,
+          "over": 0.053,
+          "calls": 72640
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/discard_pending_turf_adjacencies",
+          "self": 0.057,
+          "total": 0.078,
+          "real": 0.08,
+          "over": 0.039,
+          "calls": 22068
+        },
+        {
+          "name": "/turf/proc/__dogmos_heat_temperature",
+          "self": 0.055,
+          "total": 0.423,
+          "real": 0.419,
+          "over": 0.038,
+          "calls": 15015
+        },
+        {
+          "name": "/proc/dogmos_turf_adjacency_batch",
+          "self": 0.05,
+          "total": 0.05,
+          "real": 0.045,
+          "over": 0.016,
+          "calls": 498
+        },
+        {
+          "name": "/turf/open/space/register_dogmos_air",
+          "self": 0.046,
+          "total": 2.415,
+          "real": 2.392,
+          "over": 0.035,
+          "calls": 11983
+        },
+        {
+          "name": "/turf/proc/dogmos_service_generation",
+          "self": 0.037,
+          "total": 0.039,
+          "real": 0.051,
+          "over": 0.025,
+          "calls": 50568
+        }
+      ]
+    },
+    {
+      "start": 60,
+      "end": 120,
+      "reset_count": 0,
+      "reset_examples": [],
+      "top_self": [
+        {
+          "name": "/icon/proc/Blend",
+          "self": 5.906,
+          "total": 5.907,
+          "real": 5.97,
+          "over": 0.866,
+          "calls": 14849
+        },
+        {
+          "name": "/proc/dogmos_turf_heat_snapshot",
+          "self": 2.994,
+          "total": 2.994,
+          "real": 3.063,
+          "over": 0.57,
+          "calls": 20388
+        },
+        {
+          "name": "/proc/dogmos_turf_lifecycle_batch",
+          "self": 2.809,
+          "total": 2.81,
+          "real": 2.74,
+          "over": 1.868,
+          "calls": 28459
+        },
+        {
+          "name": "/turf/proc/__update_auxtools_turf_adjacency_info",
+          "self": 2.452,
+          "total": 8.131,
+          "real": 8.195,
+          "over": 0.554,
+          "calls": 170291
+        },
+        {
+          "name": "/proc/dogmos_turf_heat_batch",
+          "self": 2.429,
+          "total": 2.432,
+          "real": 2.469,
+          "over": 1.653,
+          "calls": 26221
+        },
+        {
+          "name": "/proc/dogmos_mixture_snapshot",
+          "self": 2.263,
+          "total": 2.263,
+          "real": 2.249,
+          "over": 0.009,
+          "calls": 13208
+        },
+        {
+          "name": "/proc/getFlatIcon",
+          "self": 1.798,
+          "total": 3.205,
+          "real": 3.131,
+          "over": 0.275,
+          "calls": 8143
+        },
+        {
+          "name": "/turf/proc/update_air_ref",
+          "self": 1.746,
+          "total": 12.435,
+          "real": 12.278,
+          "over": 0.571,
+          "calls": 131742
+        },
+        {
+          "name": "/world/proc/preloader_load",
+          "self": 1.492,
+          "total": 1.493,
+          "real": 1.518,
+          "over": 0.047,
+          "calls": 4856
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/stop_processing_machine",
+          "self": 1.043,
+          "total": 1.045,
+          "real": 1.049,
+          "over": 0,
+          "calls": 3984
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/flush_turf_registration_batch",
+          "self": 0.933,
+          "total": 11.62,
+          "real": 11.527,
+          "over": 0.57,
+          "calls": 46787
+        },
+        {
+          "name": "/datum/light_source/proc/update_corners",
+          "self": 0.895,
+          "total": 1.848,
+          "real": 1.854,
+          "over": 0,
+          "calls": 8719
+        }
+      ],
+      "dogmos": [
+        {
+          "name": "/proc/dogmos_turf_heat_snapshot",
+          "self": 2.994,
+          "total": 2.994,
+          "real": 3.063,
+          "over": 0.57,
+          "calls": 20388
+        },
+        {
+          "name": "/proc/dogmos_turf_lifecycle_batch",
+          "self": 2.809,
+          "total": 2.81,
+          "real": 2.74,
+          "over": 1.868,
+          "calls": 28459
+        },
+        {
+          "name": "/proc/dogmos_turf_heat_batch",
+          "self": 2.429,
+          "total": 2.432,
+          "real": 2.469,
+          "over": 1.653,
+          "calls": 26221
+        },
+        {
+          "name": "/proc/dogmos_mixture_snapshot",
+          "self": 2.263,
+          "total": 2.263,
+          "real": 2.249,
+          "over": 0.009,
+          "calls": 13208
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/stop_processing_machine",
+          "self": 1.043,
+          "total": 1.045,
+          "real": 1.049,
+          "over": 0,
+          "calls": 3984
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/flush_turf_registration_batch",
+          "self": 0.933,
+          "total": 11.62,
+          "real": 11.527,
+          "over": 0.57,
+          "calls": 46787
+        },
+        {
+          "name": "/proc/dogmos_mixture_command",
+          "self": 0.694,
+          "total": 0.694,
+          "real": 0.687,
+          "over": 0.029,
+          "calls": 5305
+        },
+        {
+          "name": "/turf/proc/dogmos_service_slot",
+          "self": 0.597,
+          "total": 0.635,
+          "real": 0.76,
+          "over": 0.183,
+          "calls": 615431
+        },
+        {
+          "name": "/proc/dogmos_mixture_lifecycle_batch",
+          "self": 0.575,
+          "total": 0.575,
+          "real": 0.627,
+          "over": 0.002,
+          "calls": 2702
+        },
+        {
+          "name": "/turf/proc/__dogmos_heat_temperature",
+          "self": 0.509,
+          "total": 3.59,
+          "real": 3.592,
+          "over": 0.146,
+          "calls": 109701
+        },
+        {
+          "name": "/turf/proc/dogmos_air_registration_is_current",
+          "self": 0.383,
+          "total": 0.4,
+          "real": 0.486,
+          "over": 0.07,
+          "calls": 254123
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/discard_pending_turf_adjacencies",
+          "self": 0.337,
+          "total": 0.473,
+          "real": 0.534,
+          "over": 0.109,
+          "calls": 131742
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/lookup_mixture_snapshot_cache",
+          "self": 0.333,
+          "total": 0.377,
+          "real": 0.361,
+          "over": 0.004,
+          "calls": 127683
+        },
+        {
+          "name": "/proc/dogmos_turf_heat_adjacency_batch",
+          "self": 0.304,
+          "total": 0.304,
+          "real": 0.314,
+          "over": 0.068,
+          "calls": 2698
+        },
+        {
+          "name": "/turf/proc/dogmos_service_generation",
+          "self": 0.301,
+          "total": 0.323,
+          "real": 0.426,
+          "over": 0.089,
+          "calls": 463866
+        }
+      ]
+    },
+    {
+      "start": 120,
+      "end": 180,
+      "reset_count": 0,
+      "reset_examples": [],
+      "top_self": [
+        {
+          "name": "/datum/controller/master/proc/RunQueue",
+          "self": 7.519,
+          "total": 39.868,
+          "real": 39.949,
+          "over": 0.0,
+          "calls": 1075
+        },
+        {
+          "name": "/datum/controller/subsystem/air/fire",
+          "self": 4.684,
+          "total": 20.368,
+          "real": 20.675,
+          "over": 0,
+          "calls": 1119616
+        },
+        {
+          "name": "/proc/dogmos_mixture_snapshot",
+          "self": 3.797,
+          "total": 3.8,
+          "real": 3.957,
+          "over": 0.016,
+          "calls": 27470
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_stage",
+          "self": 3.25,
+          "total": 7.024,
+          "real": 7.293,
+          "over": 0,
+          "calls": 1119509
+        },
+        {
+          "name": "/datum/controller/subsystem/proc/ignite",
+          "self": 2.23,
+          "total": 32.312,
+          "real": 32.609,
+          "over": 0,
+          "calls": 1152330
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_async_stage",
+          "self": 1.908,
+          "total": 2.86,
+          "real": 3.101,
+          "over": 0,
+          "calls": 1119475
+        },
+        {
+          "name": "/icon/proc/Blend",
+          "self": 1.561,
+          "total": 1.563,
+          "real": 1.549,
+          "over": 0.19,
+          "calls": 6169
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_high_pressure_delta",
+          "self": 1.127,
+          "total": 5.057,
+          "real": 5.166,
+          "over": 0,
+          "calls": 507759
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_excited_groups",
+          "self": 0.947,
+          "total": 4.91,
+          "real": 4.973,
+          "over": 0,
+          "calls": 515043
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_work_limit_for_budget",
+          "self": 0.898,
+          "total": 0.964,
+          "real": 1.216,
+          "over": 0,
+          "calls": 1119621
+        },
+        {
+          "name": "/proc/getFlatIcon",
+          "self": 0.83,
+          "total": 1.529,
+          "real": 1.551,
+          "over": 0.177,
+          "calls": 3403
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_excited_groups_auxtools",
+          "self": 0.537,
+          "total": 3.717,
+          "real": 3.803,
+          "over": 0,
+          "calls": 515043
+        }
+      ],
+      "dogmos": [
+        {
+          "name": "/datum/controller/subsystem/air/fire",
+          "self": 4.684,
+          "total": 20.368,
+          "real": 20.675,
+          "over": 0,
+          "calls": 1119616
+        },
+        {
+          "name": "/proc/dogmos_mixture_snapshot",
+          "self": 3.797,
+          "total": 3.8,
+          "real": 3.957,
+          "over": 0.016,
+          "calls": 27470
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_stage",
+          "self": 3.25,
+          "total": 7.024,
+          "real": 7.293,
+          "over": 0,
+          "calls": 1119509
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_async_stage",
+          "self": 1.908,
+          "total": 2.86,
+          "real": 3.101,
+          "over": 0,
+          "calls": 1119475
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_high_pressure_delta",
+          "self": 1.127,
+          "total": 5.057,
+          "real": 5.166,
+          "over": 0,
+          "calls": 507759
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_excited_groups",
+          "self": 0.947,
+          "total": 4.91,
+          "real": 4.973,
+          "over": 0,
+          "calls": 515043
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_work_limit_for_budget",
+          "self": 0.898,
+          "total": 0.964,
+          "real": 1.216,
+          "over": 0,
+          "calls": 1119621
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_excited_groups_auxtools",
+          "self": 0.537,
+          "total": 3.717,
+          "real": 3.803,
+          "over": 0,
+          "calls": 515043
+        },
+        {
+          "name": "/proc/dogmos_mixture_command",
+          "self": 0.532,
+          "total": 0.532,
+          "real": 0.521,
+          "over": 0.018,
+          "calls": 3562
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_turf_equalize_auxtools",
+          "self": 0.51,
+          "total": 3.708,
+          "real": 3.879,
+          "over": 0,
+          "calls": 507759
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/mixture_snapshot",
+          "self": 0.398,
+          "total": 4.754,
+          "real": 4.838,
+          "over": 0.0,
+          "calls": 137654
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/lookup_mixture_snapshot_cache",
+          "self": 0.396,
+          "total": 0.435,
+          "real": 0.431,
+          "over": 0.003,
+          "calls": 137654
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_health_preflight_required",
+          "self": 0.254,
+          "total": 0.326,
+          "real": 0.545,
+          "over": 0,
+          "calls": 1119616
+        },
+        {
+          "name": "/proc/dogmos_stage_job_poll",
+          "self": 0.254,
+          "total": 0.254,
+          "real": 0.261,
+          "over": 0,
+          "calls": 950
+        },
+        {
+          "name": "/proc/dogmos_stage_job_commit",
+          "self": 0.243,
+          "total": 0.243,
+          "real": 0.224,
+          "over": 0,
+          "calls": 948
+        }
+      ]
+    },
+    {
+      "start": 180,
+      "end": 240,
+      "reset_count": 0,
+      "reset_examples": [],
+      "top_self": [
+        {
+          "name": "/datum/controller/master/proc/RunQueue",
+          "self": 9.173,
+          "total": 43.442,
+          "real": 43.518,
+          "over": 0.0,
+          "calls": 1201
+        },
+        {
+          "name": "/datum/controller/subsystem/air/fire",
+          "self": 5.786,
+          "total": 24.107,
+          "real": 24.558,
+          "over": 0,
+          "calls": 1463522
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_stage",
+          "self": 4.134,
+          "total": 8.715,
+          "real": 9.049,
+          "over": 0,
+          "calls": 1463570
+        },
+        {
+          "name": "/proc/dogmos_mixture_snapshot",
+          "self": 3.645,
+          "total": 3.647,
+          "real": 3.573,
+          "over": 0.0,
+          "calls": 29393
+        },
+        {
+          "name": "/datum/controller/subsystem/proc/ignite",
+          "self": 2.729,
+          "total": 34.26,
+          "real": 34.757,
+          "over": 0,
+          "calls": 1498974
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_async_stage",
+          "self": 2.424,
+          "total": 3.528,
+          "real": 3.803,
+          "over": 0,
+          "calls": 1463529
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_high_pressure_delta",
+          "self": 1.282,
+          "total": 6.22,
+          "real": 6.306,
+          "over": 0,
+          "calls": 671901
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_excited_groups",
+          "self": 1.126,
+          "total": 5.583,
+          "real": 5.89,
+          "over": 0,
+          "calls": 625278
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_work_limit_for_budget",
+          "self": 1.061,
+          "total": 1.167,
+          "real": 1.538,
+          "over": 0,
+          "calls": 1463755
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_turf_equalize_auxtools",
+          "self": 0.668,
+          "total": 4.652,
+          "real": 4.668,
+          "over": 0,
+          "calls": 671901
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_excited_groups_auxtools",
+          "self": 0.573,
+          "total": 4.234,
+          "real": 4.515,
+          "over": 0,
+          "calls": 625278
+        },
+        {
+          "name": "/datum/controller/subsystem/proc/pause",
+          "self": 0.561,
+          "total": 0.65,
+          "real": 0.977,
+          "over": 0,
+          "calls": 1463726
+        }
+      ],
+      "dogmos": [
+        {
+          "name": "/datum/controller/subsystem/air/fire",
+          "self": 5.786,
+          "total": 24.107,
+          "real": 24.558,
+          "over": 0,
+          "calls": 1463522
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_stage",
+          "self": 4.134,
+          "total": 8.715,
+          "real": 9.049,
+          "over": 0,
+          "calls": 1463570
+        },
+        {
+          "name": "/proc/dogmos_mixture_snapshot",
+          "self": 3.645,
+          "total": 3.647,
+          "real": 3.573,
+          "over": 0.0,
+          "calls": 29393
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_async_stage",
+          "self": 2.424,
+          "total": 3.528,
+          "real": 3.803,
+          "over": 0,
+          "calls": 1463529
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_high_pressure_delta",
+          "self": 1.282,
+          "total": 6.22,
+          "real": 6.306,
+          "over": 0,
+          "calls": 671901
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_excited_groups",
+          "self": 1.126,
+          "total": 5.583,
+          "real": 5.89,
+          "over": 0,
+          "calls": 625278
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_work_limit_for_budget",
+          "self": 1.061,
+          "total": 1.167,
+          "real": 1.538,
+          "over": 0,
+          "calls": 1463755
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_turf_equalize_auxtools",
+          "self": 0.668,
+          "total": 4.652,
+          "real": 4.668,
+          "over": 0,
+          "calls": 671901
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_excited_groups_auxtools",
+          "self": 0.573,
+          "total": 4.234,
+          "real": 4.515,
+          "over": 0,
+          "calls": 625278
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/lookup_mixture_snapshot_cache",
+          "self": 0.466,
+          "total": 0.526,
+          "real": 0.571,
+          "over": 0.001,
+          "calls": 188221
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/mixture_snapshot",
+          "self": 0.46,
+          "total": 4.736,
+          "real": 4.66,
+          "over": 0.0,
+          "calls": 188221
+        },
+        {
+          "name": "/proc/dogmos_mixture_command",
+          "self": 0.41,
+          "total": 0.41,
+          "real": 0.461,
+          "over": 0.002,
+          "calls": 3525
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_active_turfs",
+          "self": 0.347,
+          "total": 3.883,
+          "real": 3.833,
+          "over": 0,
+          "calls": 133719
+        },
+        {
+          "name": "/proc/dogmos_stage_job_commit",
+          "self": 0.307,
+          "total": 0.307,
+          "real": 0.271,
+          "over": 0,
+          "calls": 1075
+        },
+        {
+          "name": "/proc/dogmos_stage_job_poll",
+          "self": 0.283,
+          "total": 0.283,
+          "real": 0.29,
+          "over": 0,
+          "calls": 1087
+        }
+      ]
+    },
+    {
+      "start": 240,
+      "end": 300,
+      "reset_count": 0,
+      "reset_examples": [],
+      "top_self": [
+        {
+          "name": "/datum/controller/master/proc/RunQueue",
+          "self": 7.864,
+          "total": 44.429,
+          "real": 44.541,
+          "over": 0.002,
+          "calls": 1199
+        },
+        {
+          "name": "/proc/dogmos_mixture_snapshot",
+          "self": 4.86,
+          "total": 4.862,
+          "real": 4.939,
+          "over": 0.007,
+          "calls": 32381
+        },
+        {
+          "name": "/datum/controller/subsystem/air/fire",
+          "self": 4.347,
+          "total": 23.426,
+          "real": 23.818,
+          "over": 0,
+          "calls": 1037696
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_stage",
+          "self": 3.182,
+          "total": 6.763,
+          "real": 7.061,
+          "over": 0,
+          "calls": 1037644
+        },
+        {
+          "name": "/datum/controller/subsystem/proc/ignite",
+          "self": 2.118,
+          "total": 35.71,
+          "real": 36.141,
+          "over": 0,
+          "calls": 1073362
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_async_stage",
+          "self": 1.784,
+          "total": 2.761,
+          "real": 3.067,
+          "over": 0,
+          "calls": 1037613
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_high_pressure_delta",
+          "self": 0.969,
+          "total": 4.448,
+          "real": 4.599,
+          "over": 0,
+          "calls": 432558
+        },
+        {
+          "name": "/datum/controller/subsystem/proc/prune_rolling_usage",
+          "self": 0.844,
+          "total": 0.883,
+          "real": 1.058,
+          "over": 0.008,
+          "calls": 431232
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_excited_groups",
+          "self": 0.835,
+          "total": 4.404,
+          "real": 4.45,
+          "over": 0,
+          "calls": 439093
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_work_limit_for_budget",
+          "self": 0.823,
+          "total": 0.894,
+          "real": 1.21,
+          "over": 0,
+          "calls": 1037884
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/lookup_mixture_snapshot_cache",
+          "self": 0.785,
+          "total": 0.871,
+          "real": 0.963,
+          "over": 0.0,
+          "calls": 295866
+        },
+        {
+          "name": "/proc/dogmos_mixture_command",
+          "self": 0.669,
+          "total": 0.669,
+          "real": 0.678,
+          "over": 0.069,
+          "calls": 4508
+        }
+      ],
+      "dogmos": [
+        {
+          "name": "/proc/dogmos_mixture_snapshot",
+          "self": 4.86,
+          "total": 4.862,
+          "real": 4.939,
+          "over": 0.007,
+          "calls": 32381
+        },
+        {
+          "name": "/datum/controller/subsystem/air/fire",
+          "self": 4.347,
+          "total": 23.426,
+          "real": 23.818,
+          "over": 0,
+          "calls": 1037696
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_stage",
+          "self": 3.182,
+          "total": 6.763,
+          "real": 7.061,
+          "over": 0,
+          "calls": 1037644
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_async_stage",
+          "self": 1.784,
+          "total": 2.761,
+          "real": 3.067,
+          "over": 0,
+          "calls": 1037613
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_high_pressure_delta",
+          "self": 0.969,
+          "total": 4.448,
+          "real": 4.599,
+          "over": 0,
+          "calls": 432558
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_excited_groups",
+          "self": 0.835,
+          "total": 4.404,
+          "real": 4.45,
+          "over": 0,
+          "calls": 439093
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_work_limit_for_budget",
+          "self": 0.823,
+          "total": 0.894,
+          "real": 1.21,
+          "over": 0,
+          "calls": 1037884
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/lookup_mixture_snapshot_cache",
+          "self": 0.785,
+          "total": 0.871,
+          "real": 0.963,
+          "over": 0.0,
+          "calls": 295866
+        },
+        {
+          "name": "/proc/dogmos_mixture_command",
+          "self": 0.669,
+          "total": 0.669,
+          "real": 0.678,
+          "over": 0.069,
+          "calls": 4508
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/mixture_snapshot",
+          "self": 0.635,
+          "total": 6.482,
+          "real": 6.638,
+          "over": 0.001,
+          "calls": 295866
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_turf_equalize_auxtools",
+          "self": 0.465,
+          "total": 3.21,
+          "real": 3.378,
+          "over": 0,
+          "calls": 432558
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_excited_groups_auxtools",
+          "self": 0.459,
+          "total": 3.378,
+          "real": 3.428,
+          "over": 0,
+          "calls": 439093
+        },
+        {
+          "name": "/datum/gas_mixture/proc/dogmos_snapshot",
+          "self": 0.361,
+          "total": 6.846,
+          "real": 6.95,
+          "over": 0.0,
+          "calls": 295866
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_active_turfs",
+          "self": 0.337,
+          "total": 6.597,
+          "real": 6.685,
+          "over": 0.001,
+          "calls": 136182
+        },
+        {
+          "name": "/proc/dogmos_mixture_lifecycle_batch",
+          "self": 0.271,
+          "total": 0.271,
+          "real": 0.264,
+          "over": 0.025,
+          "calls": 1914
+        }
+      ]
+    },
+    {
+      "start": 300,
+      "end": 360,
+      "reset_count": 0,
+      "reset_examples": [],
+      "top_self": [
+        {
+          "name": "/proc/dogmos_mixture_snapshot",
+          "self": 6.034,
+          "total": 6.037,
+          "real": 6.021,
+          "over": 0.033,
+          "calls": 37585
+        },
+        {
+          "name": "/datum/controller/master/proc/RunQueue",
+          "self": 5.535,
+          "total": 47.881,
+          "real": 47.931,
+          "over": 0.0,
+          "calls": 1201
+        },
+        {
+          "name": "/datum/controller/subsystem/air/fire",
+          "self": 3.574,
+          "total": 29.336,
+          "real": 29.412,
+          "over": 0,
+          "calls": 844110
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_stage",
+          "self": 2.416,
+          "total": 5.423,
+          "real": 5.757,
+          "over": 0,
+          "calls": 843736
+        },
+        {
+          "name": "/datum/controller/subsystem/proc/ignite",
+          "self": 1.625,
+          "total": 42.291,
+          "real": 42.408,
+          "over": 0,
+          "calls": 879637
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/lookup_mixture_snapshot_cache",
+          "self": 1.54,
+          "total": 1.745,
+          "real": 1.898,
+          "over": 0.002,
+          "calls": 611121
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_async_stage",
+          "self": 1.487,
+          "total": 2.326,
+          "real": 2.516,
+          "over": 0,
+          "calls": 843693
+        },
+        {
+          "name": "/proc/dogmos_mixture_command",
+          "self": 1.365,
+          "total": 1.365,
+          "real": 1.379,
+          "over": 0.122,
+          "calls": 9760
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/mixture_snapshot",
+          "self": 1.034,
+          "total": 8.973,
+          "real": 9.065,
+          "over": 0.003,
+          "calls": 611121
+        },
+        {
+          "name": "/datum/gas_mixture/proc/compare",
+          "self": 0.911,
+          "total": 3.344,
+          "real": 3.373,
+          "over": 0,
+          "calls": 185163
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_high_pressure_delta",
+          "self": 0.749,
+          "total": 3.624,
+          "real": 3.654,
+          "over": 0,
+          "calls": 316918
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_work_limit_for_budget",
+          "self": 0.699,
+          "total": 0.748,
+          "real": 0.96,
+          "over": 0,
+          "calls": 844002
+        }
+      ],
+      "dogmos": [
+        {
+          "name": "/proc/dogmos_mixture_snapshot",
+          "self": 6.034,
+          "total": 6.037,
+          "real": 6.021,
+          "over": 0.033,
+          "calls": 37585
+        },
+        {
+          "name": "/datum/controller/subsystem/air/fire",
+          "self": 3.574,
+          "total": 29.336,
+          "real": 29.412,
+          "over": 0,
+          "calls": 844110
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_stage",
+          "self": 2.416,
+          "total": 5.423,
+          "real": 5.757,
+          "over": 0,
+          "calls": 843736
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/lookup_mixture_snapshot_cache",
+          "self": 1.54,
+          "total": 1.745,
+          "real": 1.898,
+          "over": 0.002,
+          "calls": 611121
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_async_stage",
+          "self": 1.487,
+          "total": 2.326,
+          "real": 2.516,
+          "over": 0,
+          "calls": 843693
+        },
+        {
+          "name": "/proc/dogmos_mixture_command",
+          "self": 1.365,
+          "total": 1.365,
+          "real": 1.379,
+          "over": 0.122,
+          "calls": 9760
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/mixture_snapshot",
+          "self": 1.034,
+          "total": 8.973,
+          "real": 9.065,
+          "over": 0.003,
+          "calls": 611121
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_high_pressure_delta",
+          "self": 0.749,
+          "total": 3.624,
+          "real": 3.654,
+          "over": 0,
+          "calls": 316918
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_work_limit_for_budget",
+          "self": 0.699,
+          "total": 0.748,
+          "real": 0.96,
+          "over": 0,
+          "calls": 844002
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/turf_settled",
+          "self": 0.693,
+          "total": 4.378,
+          "real": 4.358,
+          "over": 0,
+          "calls": 53698
+        },
+        {
+          "name": "/datum/gas_mixture/proc/dogmos_snapshot",
+          "self": 0.668,
+          "total": 9.633,
+          "real": 9.762,
+          "over": 0.001,
+          "calls": 611121
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_excited_groups",
+          "self": 0.566,
+          "total": 3.052,
+          "real": 3.172,
+          "over": 0,
+          "calls": 319184
+        },
+        {
+          "name": "/proc/dogmos_mixture_lifecycle_batch",
+          "self": 0.562,
+          "total": 0.562,
+          "real": 0.623,
+          "over": 0.049,
+          "calls": 4775
+        },
+        {
+          "name": "/proc/dogmos_mixture_snapshot_batch",
+          "self": 0.492,
+          "total": 0.492,
+          "real": 0.501,
+          "over": 0,
+          "calls": 817
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_active_turfs",
+          "self": 0.481,
+          "total": 13.691,
+          "real": 13.743,
+          "over": 0.0,
+          "calls": 186470
+        }
+      ]
+    },
+    {
+      "start": 360,
+      "end": 420,
+      "reset_count": 0,
+      "reset_examples": [],
+      "top_self": [
+        {
+          "name": "/proc/dogmos_mixture_snapshot",
+          "self": 6.335,
+          "total": 6.337,
+          "real": 6.475,
+          "over": 0.02,
+          "calls": 37304
+        },
+        {
+          "name": "/datum/controller/master/proc/RunQueue",
+          "self": 5.648,
+          "total": 47.471,
+          "real": 47.557,
+          "over": 0.001,
+          "calls": 1201
+        },
+        {
+          "name": "/datum/controller/subsystem/air/fire",
+          "self": 3.557,
+          "total": 28.986,
+          "real": 29.138,
+          "over": 0,
+          "calls": 862167
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_stage",
+          "self": 2.551,
+          "total": 5.664,
+          "real": 5.853,
+          "over": 0,
+          "calls": 861759
+        },
+        {
+          "name": "/datum/controller/subsystem/proc/ignite",
+          "self": 1.7,
+          "total": 41.797,
+          "real": 41.936,
+          "over": 0,
+          "calls": 897873
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/lookup_mixture_snapshot_cache",
+          "self": 1.58,
+          "total": 1.787,
+          "real": 1.899,
+          "over": 0.0,
+          "calls": 622934
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_async_stage",
+          "self": 1.564,
+          "total": 2.391,
+          "real": 2.55,
+          "over": 0,
+          "calls": 861720
+        },
+        {
+          "name": "/datum/gas_mixture/proc/compare",
+          "self": 1.097,
+          "total": 4.449,
+          "real": 4.577,
+          "over": 0,
+          "calls": 204705
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/mixture_snapshot",
+          "self": 1.058,
+          "total": 9.338,
+          "real": 9.521,
+          "over": 0.0,
+          "calls": 622934
+        },
+        {
+          "name": "/proc/dogmos_mixture_command",
+          "self": 0.923,
+          "total": 0.923,
+          "real": 0.971,
+          "over": 0.037,
+          "calls": 6525
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/turf_settled",
+          "self": 0.788,
+          "total": 5.586,
+          "real": 5.669,
+          "over": 0,
+          "calls": 59845
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_high_pressure_delta",
+          "self": 0.751,
+          "total": 3.66,
+          "real": 3.699,
+          "over": 0,
+          "calls": 330145
+        }
+      ],
+      "dogmos": [
+        {
+          "name": "/proc/dogmos_mixture_snapshot",
+          "self": 6.335,
+          "total": 6.337,
+          "real": 6.475,
+          "over": 0.02,
+          "calls": 37304
+        },
+        {
+          "name": "/datum/controller/subsystem/air/fire",
+          "self": 3.557,
+          "total": 28.986,
+          "real": 29.138,
+          "over": 0,
+          "calls": 862167
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_stage",
+          "self": 2.551,
+          "total": 5.664,
+          "real": 5.853,
+          "over": 0,
+          "calls": 861759
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/lookup_mixture_snapshot_cache",
+          "self": 1.58,
+          "total": 1.787,
+          "real": 1.899,
+          "over": 0.0,
+          "calls": 622934
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_async_stage",
+          "self": 1.564,
+          "total": 2.391,
+          "real": 2.55,
+          "over": 0,
+          "calls": 861720
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/mixture_snapshot",
+          "self": 1.058,
+          "total": 9.338,
+          "real": 9.521,
+          "over": 0.0,
+          "calls": 622934
+        },
+        {
+          "name": "/proc/dogmos_mixture_command",
+          "self": 0.923,
+          "total": 0.923,
+          "real": 0.971,
+          "over": 0.037,
+          "calls": 6525
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/turf_settled",
+          "self": 0.788,
+          "total": 5.586,
+          "real": 5.669,
+          "over": 0,
+          "calls": 59845
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_high_pressure_delta",
+          "self": 0.751,
+          "total": 3.66,
+          "real": 3.699,
+          "over": 0,
+          "calls": 330145
+        },
+        {
+          "name": "/datum/gas_mixture/proc/dogmos_snapshot",
+          "self": 0.711,
+          "total": 10.059,
+          "real": 10.21,
+          "over": 0.001,
+          "calls": 622934
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_work_limit_for_budget",
+          "self": 0.707,
+          "total": 0.773,
+          "real": 0.969,
+          "over": 0,
+          "calls": 861982
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_excited_groups",
+          "self": 0.639,
+          "total": 3.453,
+          "real": 3.569,
+          "over": 0,
+          "calls": 357311
+        },
+        {
+          "name": "/proc/dogmos_mixture_snapshot_batch",
+          "self": 0.545,
+          "total": 0.545,
+          "real": 0.542,
+          "over": 0.001,
+          "calls": 812
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/store_mixture_snapshot_cache",
+          "self": 0.509,
+          "total": 0.588,
+          "real": 0.608,
+          "over": 0.003,
+          "calls": 173755
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_active_turfs",
+          "self": 0.396,
+          "total": 14.319,
+          "real": 14.352,
+          "over": 0.0,
+          "calls": 156746
+        }
+      ]
+    },
+    {
+      "start": 420,
+      "end": 480,
+      "reset_count": 0,
+      "reset_examples": [],
+      "top_self": [
+        {
+          "name": "/proc/dogmos_mixture_snapshot",
+          "self": 8.011,
+          "total": 8.014,
+          "real": 7.983,
+          "over": 0.009,
+          "calls": 48272
+        },
+        {
+          "name": "/datum/controller/master/proc/RunQueue",
+          "self": 5.127,
+          "total": 48.865,
+          "real": 48.902,
+          "over": 0.0,
+          "calls": 1201
+        },
+        {
+          "name": "/datum/controller/subsystem/air/fire",
+          "self": 3.004,
+          "total": 30.891,
+          "real": 31.307,
+          "over": 0,
+          "calls": 742485
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_stage",
+          "self": 2.191,
+          "total": 4.779,
+          "real": 5.08,
+          "over": 0,
+          "calls": 741881
+        },
+        {
+          "name": "/datum/controller/subsystem/proc/ignite",
+          "self": 1.538,
+          "total": 43.663,
+          "real": 44.047,
+          "over": 0,
+          "calls": 778308
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/lookup_mixture_snapshot_cache",
+          "self": 1.472,
+          "total": 1.679,
+          "real": 2.014,
+          "over": 0.0,
+          "calls": 616500
+        },
+        {
+          "name": "/proc/dogmos_mixture_command",
+          "self": 1.426,
+          "total": 1.426,
+          "real": 1.414,
+          "over": 0.03,
+          "calls": 10325
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_async_stage",
+          "self": 1.292,
+          "total": 1.996,
+          "real": 2.242,
+          "over": 0,
+          "calls": 741850
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/mixture_snapshot",
+          "self": 1.143,
+          "total": 11.022,
+          "real": 11.236,
+          "over": 0.0,
+          "calls": 616500
+        },
+        {
+          "name": "/datum/gas_mixture/proc/compare",
+          "self": 0.846,
+          "total": 4.519,
+          "real": 4.646,
+          "over": 0,
+          "calls": 181058
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/turf_settled",
+          "self": 0.788,
+          "total": 5.682,
+          "real": 5.696,
+          "over": 0,
+          "calls": 52362
+        },
+        {
+          "name": "/datum/gas_mixture/proc/dogmos_snapshot",
+          "self": 0.757,
+          "total": 11.795,
+          "real": 11.942,
+          "over": 0.0,
+          "calls": 616500
+        }
+      ],
+      "dogmos": [
+        {
+          "name": "/proc/dogmos_mixture_snapshot",
+          "self": 8.011,
+          "total": 8.014,
+          "real": 7.983,
+          "over": 0.009,
+          "calls": 48272
+        },
+        {
+          "name": "/datum/controller/subsystem/air/fire",
+          "self": 3.004,
+          "total": 30.891,
+          "real": 31.307,
+          "over": 0,
+          "calls": 742485
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_stage",
+          "self": 2.191,
+          "total": 4.779,
+          "real": 5.08,
+          "over": 0,
+          "calls": 741881
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/lookup_mixture_snapshot_cache",
+          "self": 1.472,
+          "total": 1.679,
+          "real": 2.014,
+          "over": 0.0,
+          "calls": 616500
+        },
+        {
+          "name": "/proc/dogmos_mixture_command",
+          "self": 1.426,
+          "total": 1.426,
+          "real": 1.414,
+          "over": 0.03,
+          "calls": 10325
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_async_stage",
+          "self": 1.292,
+          "total": 1.996,
+          "real": 2.242,
+          "over": 0,
+          "calls": 741850
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/mixture_snapshot",
+          "self": 1.143,
+          "total": 11.022,
+          "real": 11.236,
+          "over": 0.0,
+          "calls": 616500
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/turf_settled",
+          "self": 0.788,
+          "total": 5.682,
+          "real": 5.696,
+          "over": 0,
+          "calls": 52362
+        },
+        {
+          "name": "/datum/gas_mixture/proc/dogmos_snapshot",
+          "self": 0.757,
+          "total": 11.795,
+          "real": 11.942,
+          "over": 0.0,
+          "calls": 616500
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_high_pressure_delta",
+          "self": 0.716,
+          "total": 3.476,
+          "real": 3.657,
+          "over": 0,
+          "calls": 301866
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_excited_groups",
+          "self": 0.592,
+          "total": 3.02,
+          "real": 3.089,
+          "over": 0,
+          "calls": 309925
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_work_limit_for_budget",
+          "self": 0.58,
+          "total": 0.617,
+          "real": 0.843,
+          "over": 0,
+          "calls": 742050
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/store_mixture_snapshot_cache",
+          "self": 0.488,
+          "total": 0.566,
+          "real": 0.601,
+          "over": 0.001,
+          "calls": 174694
+        },
+        {
+          "name": "/proc/dogmos_callback_drain",
+          "self": 0.481,
+          "total": 0.481,
+          "real": 0.466,
+          "over": 0.001,
+          "calls": 2443
+        },
+        {
+          "name": "/proc/dogmos_mixture_snapshot_batch",
+          "self": 0.464,
+          "total": 0.464,
+          "real": 0.462,
+          "over": 0.0,
+          "calls": 691
+        }
+      ]
+    },
+    {
+      "start": 480,
+      "end": 540,
+      "reset_count": 0,
+      "reset_examples": [],
+      "top_self": [
+        {
+          "name": "/proc/dogmos_mixture_snapshot",
+          "self": 10.478,
+          "total": 10.483,
+          "real": 10.388,
+          "over": 0.078,
+          "calls": 62506
+        },
+        {
+          "name": "/datum/controller/master/proc/RunQueue",
+          "self": 4.024,
+          "total": 51.458,
+          "real": 51.531,
+          "over": 0.0,
+          "calls": 1201
+        },
+        {
+          "name": "/datum/controller/subsystem/air/fire",
+          "self": 2.325,
+          "total": 35.282,
+          "real": 35.448,
+          "over": 0,
+          "calls": 558729
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/lookup_mixture_snapshot_cache",
+          "self": 2.244,
+          "total": 2.519,
+          "real": 2.718,
+          "over": 0.005,
+          "calls": 810448
+        },
+        {
+          "name": "/proc/dogmos_mixture_command",
+          "self": 1.711,
+          "total": 1.712,
+          "real": 1.713,
+          "over": 0.107,
+          "calls": 12452
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_stage",
+          "self": 1.68,
+          "total": 3.637,
+          "real": 3.737,
+          "over": 0,
+          "calls": 557822
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/mixture_snapshot",
+          "self": 1.402,
+          "total": 14.657,
+          "real": 14.801,
+          "over": 0.001,
+          "calls": 810448
+        },
+        {
+          "name": "/datum/controller/subsystem/proc/ignite",
+          "self": 1.101,
+          "total": 47.379,
+          "real": 47.646,
+          "over": 0,
+          "calls": 594470
+        },
+        {
+          "name": "/datum/gas_mixture/proc/compare",
+          "self": 1.009,
+          "total": 5.805,
+          "real": 5.852,
+          "over": 0,
+          "calls": 217922
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_async_stage",
+          "self": 0.982,
+          "total": 1.527,
+          "real": 1.651,
+          "over": 0,
+          "calls": 557773
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/turf_settled",
+          "self": 0.96,
+          "total": 7.262,
+          "real": 7.287,
+          "over": 0,
+          "calls": 62198
+        },
+        {
+          "name": "/datum/gas_mixture/proc/dogmos_snapshot",
+          "self": 0.957,
+          "total": 15.616,
+          "real": 15.737,
+          "over": 0.002,
+          "calls": 810448
+        }
+      ],
+      "dogmos": [
+        {
+          "name": "/proc/dogmos_mixture_snapshot",
+          "self": 10.478,
+          "total": 10.483,
+          "real": 10.388,
+          "over": 0.078,
+          "calls": 62506
+        },
+        {
+          "name": "/datum/controller/subsystem/air/fire",
+          "self": 2.325,
+          "total": 35.282,
+          "real": 35.448,
+          "over": 0,
+          "calls": 558729
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/lookup_mixture_snapshot_cache",
+          "self": 2.244,
+          "total": 2.519,
+          "real": 2.718,
+          "over": 0.005,
+          "calls": 810448
+        },
+        {
+          "name": "/proc/dogmos_mixture_command",
+          "self": 1.711,
+          "total": 1.712,
+          "real": 1.713,
+          "over": 0.107,
+          "calls": 12452
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_stage",
+          "self": 1.68,
+          "total": 3.637,
+          "real": 3.737,
+          "over": 0,
+          "calls": 557822
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/mixture_snapshot",
+          "self": 1.402,
+          "total": 14.657,
+          "real": 14.801,
+          "over": 0.001,
+          "calls": 810448
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_async_stage",
+          "self": 0.982,
+          "total": 1.527,
+          "real": 1.651,
+          "over": 0,
+          "calls": 557773
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/turf_settled",
+          "self": 0.96,
+          "total": 7.262,
+          "real": 7.287,
+          "over": 0,
+          "calls": 62198
+        },
+        {
+          "name": "/datum/gas_mixture/proc/dogmos_snapshot",
+          "self": 0.957,
+          "total": 15.616,
+          "real": 15.737,
+          "over": 0.002,
+          "calls": 810448
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/store_mixture_snapshot_cache",
+          "self": 0.71,
+          "total": 0.779,
+          "real": 0.845,
+          "over": 0.016,
+          "calls": 222432
+        },
+        {
+          "name": "/proc/dogmos_mixture_snapshot_batch",
+          "self": 0.582,
+          "total": 0.582,
+          "real": 0.585,
+          "over": 0.0,
+          "calls": 762
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_high_pressure_delta",
+          "self": 0.563,
+          "total": 2.607,
+          "real": 2.598,
+          "over": 0,
+          "calls": 233495
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/prefetch_mixture_snapshot_chunk",
+          "self": 0.456,
+          "total": 1.531,
+          "real": 1.532,
+          "over": 0.007,
+          "calls": 762
+        },
+        {
+          "name": "/proc/dogmos_mixture_lifecycle_batch",
+          "self": 0.429,
+          "total": 0.43,
+          "real": 0.44,
+          "over": 0.038,
+          "calls": 3153
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_excited_groups",
+          "self": 0.427,
+          "total": 2.249,
+          "real": 2.292,
+          "over": 0,
+          "calls": 229885
+        }
+      ]
+    },
+    {
+      "start": 540,
+      "end": 600,
+      "reset_count": 0,
+      "reset_examples": [],
+      "top_self": [
+        {
+          "name": "/proc/dogmos_mixture_snapshot",
+          "self": 8.696,
+          "total": 8.702,
+          "real": 8.543,
+          "over": 0.017,
+          "calls": 59485
+        },
+        {
+          "name": "/datum/controller/master/proc/RunQueue",
+          "self": 4.811,
+          "total": 51.137,
+          "real": 51.171,
+          "over": 0.0,
+          "calls": 1201
+        },
+        {
+          "name": "/proc/dogmos_mixture_command",
+          "self": 3.17,
+          "total": 3.176,
+          "real": 3.195,
+          "over": 0.018,
+          "calls": 30258
+        },
+        {
+          "name": "/datum/controller/subsystem/air/fire",
+          "self": 3.049,
+          "total": 35.411,
+          "real": 35.354,
+          "over": 0,
+          "calls": 736983
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_stage",
+          "self": 2.148,
+          "total": 4.729,
+          "real": 4.723,
+          "over": 0,
+          "calls": 736193
+        },
+        {
+          "name": "/datum/controller/subsystem/proc/ignite",
+          "self": 1.453,
+          "total": 46.292,
+          "real": 46.31,
+          "over": 0.001,
+          "calls": 772741
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/lookup_mixture_snapshot_cache",
+          "self": 1.342,
+          "total": 1.531,
+          "real": 1.701,
+          "over": 0.0,
+          "calls": 541717
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_async_stage",
+          "self": 1.338,
+          "total": 1.967,
+          "real": 1.981,
+          "over": 0,
+          "calls": 736159
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/mixture_snapshot",
+          "self": 1.063,
+          "total": 11.518,
+          "real": 11.562,
+          "over": 0.002,
+          "calls": 541717
+        },
+        {
+          "name": "/datum/gas_mixture/proc/compare",
+          "self": 0.821,
+          "total": 4.799,
+          "real": 4.841,
+          "over": 0,
+          "calls": 157258
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_high_pressure_delta",
+          "self": 0.748,
+          "total": 3.398,
+          "real": 3.412,
+          "over": 0,
+          "calls": 335719
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/turf_settled",
+          "self": 0.631,
+          "total": 5.732,
+          "real": 5.797,
+          "over": 0,
+          "calls": 44906
+        }
+      ],
+      "dogmos": [
+        {
+          "name": "/proc/dogmos_mixture_snapshot",
+          "self": 8.696,
+          "total": 8.702,
+          "real": 8.543,
+          "over": 0.017,
+          "calls": 59485
+        },
+        {
+          "name": "/proc/dogmos_mixture_command",
+          "self": 3.17,
+          "total": 3.176,
+          "real": 3.195,
+          "over": 0.018,
+          "calls": 30258
+        },
+        {
+          "name": "/datum/controller/subsystem/air/fire",
+          "self": 3.049,
+          "total": 35.411,
+          "real": 35.354,
+          "over": 0,
+          "calls": 736983
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_stage",
+          "self": 2.148,
+          "total": 4.729,
+          "real": 4.723,
+          "over": 0,
+          "calls": 736193
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/lookup_mixture_snapshot_cache",
+          "self": 1.342,
+          "total": 1.531,
+          "real": 1.701,
+          "over": 0.0,
+          "calls": 541717
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_async_stage",
+          "self": 1.338,
+          "total": 1.967,
+          "real": 1.981,
+          "over": 0,
+          "calls": 736159
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/mixture_snapshot",
+          "self": 1.063,
+          "total": 11.518,
+          "real": 11.562,
+          "over": 0.002,
+          "calls": 541717
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_high_pressure_delta",
+          "self": 0.748,
+          "total": 3.398,
+          "real": 3.412,
+          "over": 0,
+          "calls": 335719
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/turf_settled",
+          "self": 0.631,
+          "total": 5.732,
+          "real": 5.797,
+          "over": 0,
+          "calls": 44906
+        },
+        {
+          "name": "/datum/gas_mixture/proc/dogmos_snapshot",
+          "self": 0.626,
+          "total": 12.14,
+          "real": 12.181,
+          "over": 0.0,
+          "calls": 541717
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_work_limit_for_budget",
+          "self": 0.602,
+          "total": 0.66,
+          "real": 0.762,
+          "over": 0,
+          "calls": 736288
+        },
+        {
+          "name": "/proc/dogmos_continuation_resume",
+          "self": 0.595,
+          "total": 0.595,
+          "real": 0.641,
+          "over": 0.003,
+          "calls": 5379
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_excited_groups",
+          "self": 0.589,
+          "total": 3.163,
+          "real": 3.115,
+          "over": 0,
+          "calls": 325076
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/store_mixture_snapshot_cache",
+          "self": 0.514,
+          "total": 0.595,
+          "real": 0.692,
+          "over": 0.008,
+          "calls": 187119
+        },
+        {
+          "name": "/proc/dogmos_mixture_snapshot_batch",
+          "self": 0.413,
+          "total": 0.413,
+          "real": 0.407,
+          "over": 0.001,
+          "calls": 535
+        }
+      ]
+    },
+    {
+      "start": 600,
+      "end": 660,
+      "reset_count": 0,
+      "reset_examples": [],
+      "top_self": [
+        {
+          "name": "/proc/dogmos_mixture_snapshot",
+          "self": 8.299,
+          "total": 8.305,
+          "real": 8.498,
+          "over": 0.001,
+          "calls": 69513
+        },
+        {
+          "name": "/proc/dogmos_mixture_command",
+          "self": 5.19,
+          "total": 5.195,
+          "real": 5.301,
+          "over": 0.001,
+          "calls": 56177
+        },
+        {
+          "name": "/datum/controller/master/proc/RunQueue",
+          "self": 3.945,
+          "total": 54.863,
+          "real": 54.898,
+          "over": 0.0,
+          "calls": 1201
+        },
+        {
+          "name": "/datum/controller/subsystem/air/fire",
+          "self": 2.43,
+          "total": 41.919,
+          "real": 42.113,
+          "over": 0.001,
+          "calls": 595039
+        },
+        {
+          "name": "/turf/proc/__update_auxtools_turf_adjacency_info",
+          "self": 1.725,
+          "total": 5.654,
+          "real": 5.664,
+          "over": 0.813,
+          "calls": 62317
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_stage",
+          "self": 1.649,
+          "total": 3.554,
+          "real": 3.695,
+          "over": 0,
+          "calls": 593964
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/lookup_mixture_snapshot_cache",
+          "self": 1.268,
+          "total": 1.435,
+          "real": 1.542,
+          "over": 0.0,
+          "calls": 532445
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/mixture_snapshot",
+          "self": 1.172,
+          "total": 11.162,
+          "real": 11.321,
+          "over": 0.0,
+          "calls": 532445
+        },
+        {
+          "name": "/datum/controller/subsystem/proc/ignite",
+          "self": 1.144,
+          "total": 50.861,
+          "real": 51.116,
+          "over": 0.0,
+          "calls": 630828
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_async_stage",
+          "self": 1.01,
+          "total": 1.47,
+          "real": 1.564,
+          "over": 0,
+          "calls": 593942
+        },
+        {
+          "name": "/proc/dogmos_continuation_resume",
+          "self": 0.887,
+          "total": 0.887,
+          "real": 0.927,
+          "over": 0.0,
+          "calls": 9780
+        },
+        {
+          "name": "/datum/gas_mixture/proc/compare",
+          "self": 0.67,
+          "total": 3.856,
+          "real": 3.878,
+          "over": 0,
+          "calls": 131501
+        }
+      ],
+      "dogmos": [
+        {
+          "name": "/proc/dogmos_mixture_snapshot",
+          "self": 8.299,
+          "total": 8.305,
+          "real": 8.498,
+          "over": 0.001,
+          "calls": 69513
+        },
+        {
+          "name": "/proc/dogmos_mixture_command",
+          "self": 5.19,
+          "total": 5.195,
+          "real": 5.301,
+          "over": 0.001,
+          "calls": 56177
+        },
+        {
+          "name": "/datum/controller/subsystem/air/fire",
+          "self": 2.43,
+          "total": 41.919,
+          "real": 42.113,
+          "over": 0.001,
+          "calls": 595039
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_stage",
+          "self": 1.649,
+          "total": 3.554,
+          "real": 3.695,
+          "over": 0,
+          "calls": 593964
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/lookup_mixture_snapshot_cache",
+          "self": 1.268,
+          "total": 1.435,
+          "real": 1.542,
+          "over": 0.0,
+          "calls": 532445
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/mixture_snapshot",
+          "self": 1.172,
+          "total": 11.162,
+          "real": 11.321,
+          "over": 0.0,
+          "calls": 532445
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_async_stage",
+          "self": 1.01,
+          "total": 1.47,
+          "real": 1.564,
+          "over": 0,
+          "calls": 593942
+        },
+        {
+          "name": "/proc/dogmos_continuation_resume",
+          "self": 0.887,
+          "total": 0.887,
+          "real": 0.927,
+          "over": 0.0,
+          "calls": 9780
+        },
+        {
+          "name": "/datum/gas_mixture/proc/dogmos_snapshot",
+          "self": 0.602,
+          "total": 11.765,
+          "real": 11.939,
+          "over": 0.0,
+          "calls": 532445
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/queue_pending_gas_adjacency",
+          "self": 0.568,
+          "total": 0.789,
+          "real": 0.853,
+          "over": 0.279,
+          "calls": 111743
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_high_pressure_delta",
+          "self": 0.567,
+          "total": 2.62,
+          "real": 2.689,
+          "over": 0,
+          "calls": 262790
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/turf_settled",
+          "self": 0.552,
+          "total": 4.646,
+          "real": 4.631,
+          "over": 0,
+          "calls": 37314
+        },
+        {
+          "name": "/proc/dogmos_callback_drain",
+          "self": 0.549,
+          "total": 0.55,
+          "real": 0.548,
+          "over": 0.0,
+          "calls": 4450
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/queue_pending_heat_adjacency",
+          "self": 0.519,
+          "total": 0.726,
+          "real": 0.802,
+          "over": 0.252,
+          "calls": 109933
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/store_mixture_snapshot_cache",
+          "self": 0.515,
+          "total": 0.581,
+          "real": 0.6,
+          "over": 0.003,
+          "calls": 176650
+        }
+      ]
+    },
+    {
+      "start": 660,
+      "end": 720,
+      "reset_count": 0,
+      "reset_examples": [],
+      "top_self": [
+        {
+          "name": "/proc/dogmos_mixture_snapshot",
+          "self": 7.161,
+          "total": 7.161,
+          "real": 7.356,
+          "over": 0.0,
+          "calls": 51282
+        },
+        {
+          "name": "/datum/controller/master/proc/RunQueue",
+          "self": 5.897,
+          "total": 51.791,
+          "real": 51.893,
+          "over": 0.001,
+          "calls": 1201
+        },
+        {
+          "name": "/datum/controller/subsystem/air/fire",
+          "self": 3.931,
+          "total": 36.261,
+          "real": 36.263,
+          "over": 0.0,
+          "calls": 970986
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_stage",
+          "self": 2.707,
+          "total": 5.745,
+          "real": 5.879,
+          "over": 0,
+          "calls": 970232
+        },
+        {
+          "name": "/turf/proc/__update_auxtools_turf_adjacency_info",
+          "self": 2.101,
+          "total": 6.568,
+          "real": 6.59,
+          "over": 0.927,
+          "calls": 75975
+        },
+        {
+          "name": "/datum/controller/subsystem/proc/ignite",
+          "self": 1.852,
+          "total": 45.868,
+          "real": 45.901,
+          "over": 0.001,
+          "calls": 1006806
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_async_stage",
+          "self": 1.567,
+          "total": 2.314,
+          "real": 2.541,
+          "over": 0,
+          "calls": 970219
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/lookup_mixture_snapshot_cache",
+          "self": 1.329,
+          "total": 1.508,
+          "real": 1.594,
+          "over": 0.0,
+          "calls": 541157
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/mixture_snapshot",
+          "self": 0.972,
+          "total": 9.827,
+          "real": 10.036,
+          "over": 0.0,
+          "calls": 541157
+        },
+        {
+          "name": "/datum/gas_mixture/proc/compare",
+          "self": 0.964,
+          "total": 5.233,
+          "real": 5.228,
+          "over": 0,
+          "calls": 177286
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_high_pressure_delta",
+          "self": 0.931,
+          "total": 4.147,
+          "real": 4.165,
+          "over": 0,
+          "calls": 434742
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_excited_groups",
+          "self": 0.865,
+          "total": 4.418,
+          "real": 4.362,
+          "over": 0,
+          "calls": 477442
+        }
+      ],
+      "dogmos": [
+        {
+          "name": "/proc/dogmos_mixture_snapshot",
+          "self": 7.161,
+          "total": 7.161,
+          "real": 7.356,
+          "over": 0.0,
+          "calls": 51282
+        },
+        {
+          "name": "/datum/controller/subsystem/air/fire",
+          "self": 3.931,
+          "total": 36.261,
+          "real": 36.263,
+          "over": 0.0,
+          "calls": 970986
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_stage",
+          "self": 2.707,
+          "total": 5.745,
+          "real": 5.879,
+          "over": 0,
+          "calls": 970232
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_async_stage",
+          "self": 1.567,
+          "total": 2.314,
+          "real": 2.541,
+          "over": 0,
+          "calls": 970219
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/lookup_mixture_snapshot_cache",
+          "self": 1.329,
+          "total": 1.508,
+          "real": 1.594,
+          "over": 0.0,
+          "calls": 541157
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/mixture_snapshot",
+          "self": 0.972,
+          "total": 9.827,
+          "real": 10.036,
+          "over": 0.0,
+          "calls": 541157
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_high_pressure_delta",
+          "self": 0.931,
+          "total": 4.147,
+          "real": 4.165,
+          "over": 0,
+          "calls": 434742
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_excited_groups",
+          "self": 0.865,
+          "total": 4.418,
+          "real": 4.362,
+          "over": 0,
+          "calls": 477442
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_work_limit_for_budget",
+          "self": 0.708,
+          "total": 0.767,
+          "real": 0.977,
+          "over": 0,
+          "calls": 970306
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/queue_pending_gas_adjacency",
+          "self": 0.68,
+          "total": 0.966,
+          "real": 1.003,
+          "over": 0.318,
+          "calls": 134597
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/turf_settled",
+          "self": 0.654,
+          "total": 6.141,
+          "real": 6.162,
+          "over": 0,
+          "calls": 50260
+        },
+        {
+          "name": "/datum/gas_mixture/proc/dogmos_snapshot",
+          "self": 0.65,
+          "total": 10.49,
+          "real": 10.589,
+          "over": 0.0,
+          "calls": 541157
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/queue_pending_heat_adjacency",
+          "self": 0.622,
+          "total": 0.872,
+          "real": 0.876,
+          "over": 0.272,
+          "calls": 127116
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/remove_pending_gas_edge",
+          "self": 0.576,
+          "total": 0.798,
+          "real": 0.828,
+          "over": 0.375,
+          "calls": 112189
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/store_mixture_snapshot_cache",
+          "self": 0.56,
+          "total": 0.622,
+          "real": 0.669,
+          "over": 0.003,
+          "calls": 197729
+        }
+      ]
+    },
+    {
+      "start": 720,
+      "end": 780,
+      "reset_count": 0,
+      "reset_examples": [],
+      "top_self": [
+        {
+          "name": "/datum/controller/master/proc/RunQueue",
+          "self": 6.623,
+          "total": 53.01,
+          "real": 53.097,
+          "over": 0.0,
+          "calls": 1201
+        },
+        {
+          "name": "/proc/dogmos_mixture_snapshot",
+          "self": 6.369,
+          "total": 6.373,
+          "real": 6.478,
+          "over": 0.0,
+          "calls": 44792
+        },
+        {
+          "name": "/datum/controller/subsystem/air/fire",
+          "self": 4.241,
+          "total": 36.67,
+          "real": 37.077,
+          "over": 0.001,
+          "calls": 1058935
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_stage",
+          "self": 2.855,
+          "total": 6.241,
+          "real": 6.437,
+          "over": 0,
+          "calls": 1058249
+        },
+        {
+          "name": "/turf/proc/__update_auxtools_turf_adjacency_info",
+          "self": 2.599,
+          "total": 8.933,
+          "real": 8.959,
+          "over": 1.208,
+          "calls": 96899
+        },
+        {
+          "name": "/datum/controller/subsystem/proc/ignite",
+          "self": 1.984,
+          "total": 46.379,
+          "real": 46.686,
+          "over": 0.0,
+          "calls": 1094692
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_async_stage",
+          "self": 1.746,
+          "total": 2.544,
+          "real": 2.792,
+          "over": 0,
+          "calls": 1058232
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/lookup_mixture_snapshot_cache",
+          "self": 1.14,
+          "total": 1.301,
+          "real": 1.384,
+          "over": 0.0,
+          "calls": 470405
+        },
+        {
+          "name": "/datum/gas_mixture/proc/compare",
+          "self": 0.991,
+          "total": 5.153,
+          "real": 5.197,
+          "over": 0,
+          "calls": 160403
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/queue_pending_gas_adjacency",
+          "self": 0.989,
+          "total": 1.385,
+          "real": 1.402,
+          "over": 0.473,
+          "calls": 173030
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_high_pressure_delta",
+          "self": 0.945,
+          "total": 4.456,
+          "real": 4.64,
+          "over": 0,
+          "calls": 486243
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_excited_groups",
+          "self": 0.908,
+          "total": 4.625,
+          "real": 4.702,
+          "over": 0,
+          "calls": 512982
+        }
+      ],
+      "dogmos": [
+        {
+          "name": "/proc/dogmos_mixture_snapshot",
+          "self": 6.369,
+          "total": 6.373,
+          "real": 6.478,
+          "over": 0.0,
+          "calls": 44792
+        },
+        {
+          "name": "/datum/controller/subsystem/air/fire",
+          "self": 4.241,
+          "total": 36.67,
+          "real": 37.077,
+          "over": 0.001,
+          "calls": 1058935
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_stage",
+          "self": 2.855,
+          "total": 6.241,
+          "real": 6.437,
+          "over": 0,
+          "calls": 1058249
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_async_stage",
+          "self": 1.746,
+          "total": 2.544,
+          "real": 2.792,
+          "over": 0,
+          "calls": 1058232
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/lookup_mixture_snapshot_cache",
+          "self": 1.14,
+          "total": 1.301,
+          "real": 1.384,
+          "over": 0.0,
+          "calls": 470405
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/queue_pending_gas_adjacency",
+          "self": 0.989,
+          "total": 1.385,
+          "real": 1.402,
+          "over": 0.473,
+          "calls": 173030
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_high_pressure_delta",
+          "self": 0.945,
+          "total": 4.456,
+          "real": 4.64,
+          "over": 0,
+          "calls": 486243
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_excited_groups",
+          "self": 0.908,
+          "total": 4.625,
+          "real": 4.702,
+          "over": 0,
+          "calls": 512982
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/mixture_snapshot",
+          "self": 0.903,
+          "total": 8.746,
+          "real": 8.861,
+          "over": 0.0,
+          "calls": 470405
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_work_limit_for_budget",
+          "self": 0.838,
+          "total": 0.901,
+          "real": 1.096,
+          "over": 0,
+          "calls": 1058311
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/queue_pending_heat_adjacency",
+          "self": 0.815,
+          "total": 1.176,
+          "real": 1.167,
+          "over": 0.36,
+          "calls": 165070
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/remove_pending_heat_edge",
+          "self": 0.752,
+          "total": 1.079,
+          "real": 1.136,
+          "over": 0.517,
+          "calls": 145930
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/remove_pending_gas_edge",
+          "self": 0.74,
+          "total": 1.075,
+          "real": 1.122,
+          "over": 0.477,
+          "calls": 153182
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/index_pending_edge",
+          "self": 0.731,
+          "total": 0.766,
+          "real": 0.889,
+          "over": 0.341,
+          "calls": 598224
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/flush_turf_registration_batch",
+          "self": 0.671,
+          "total": 12.488,
+          "real": 12.477,
+          "over": 0.44,
+          "calls": 985
+        }
+      ]
+    },
+    {
+      "start": 780,
+      "end": 840,
+      "reset_count": 0,
+      "reset_examples": [],
+      "top_self": [
+        {
+          "name": "/datum/controller/master/proc/RunQueue",
+          "self": 7.219,
+          "total": 50.19,
+          "real": 50.25,
+          "over": 0.0,
+          "calls": 1201
+        },
+        {
+          "name": "/proc/dogmos_mixture_snapshot",
+          "self": 6.076,
+          "total": 6.077,
+          "real": 6.189,
+          "over": 0.0,
+          "calls": 42663
+        },
+        {
+          "name": "/datum/controller/subsystem/air/fire",
+          "self": 4.631,
+          "total": 32.992,
+          "real": 33.405,
+          "over": 0.0,
+          "calls": 1173475
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_stage",
+          "self": 3.199,
+          "total": 6.891,
+          "real": 7.321,
+          "over": 0,
+          "calls": 1172931
+        },
+        {
+          "name": "/datum/controller/subsystem/proc/ignite",
+          "self": 2.174,
+          "total": 42.96,
+          "real": 43.427,
+          "over": 0.0,
+          "calls": 1209217
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_async_stage",
+          "self": 1.977,
+          "total": 2.846,
+          "real": 3.147,
+          "over": 0,
+          "calls": 1172914
+        },
+        {
+          "name": "/turf/proc/__update_auxtools_turf_adjacency_info",
+          "self": 1.667,
+          "total": 5.644,
+          "real": 5.653,
+          "over": 0.796,
+          "calls": 60347
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_high_pressure_delta",
+          "self": 1.151,
+          "total": 5.073,
+          "real": 5.199,
+          "over": 0,
+          "calls": 541829
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/lookup_mixture_snapshot_cache",
+          "self": 1.104,
+          "total": 1.259,
+          "real": 1.322,
+          "over": 0.0,
+          "calls": 443440
+        },
+        {
+          "name": "/datum/gas_mixture/proc/compare",
+          "self": 1.074,
+          "total": 5.032,
+          "real": 5.205,
+          "over": 0,
+          "calls": 151150
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_excited_groups",
+          "self": 1.049,
+          "total": 5.165,
+          "real": 5.346,
+          "over": 0,
+          "calls": 579096
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_work_limit_for_budget",
+          "self": 0.861,
+          "total": 0.936,
+          "real": 1.283,
+          "over": 0,
+          "calls": 1172989
+        }
+      ],
+      "dogmos": [
+        {
+          "name": "/proc/dogmos_mixture_snapshot",
+          "self": 6.076,
+          "total": 6.077,
+          "real": 6.189,
+          "over": 0.0,
+          "calls": 42663
+        },
+        {
+          "name": "/datum/controller/subsystem/air/fire",
+          "self": 4.631,
+          "total": 32.992,
+          "real": 33.405,
+          "over": 0.0,
+          "calls": 1173475
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_stage",
+          "self": 3.199,
+          "total": 6.891,
+          "real": 7.321,
+          "over": 0,
+          "calls": 1172931
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_run_async_stage",
+          "self": 1.977,
+          "total": 2.846,
+          "real": 3.147,
+          "over": 0,
+          "calls": 1172914
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_high_pressure_delta",
+          "self": 1.151,
+          "total": 5.073,
+          "real": 5.199,
+          "over": 0,
+          "calls": 541829
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/lookup_mixture_snapshot_cache",
+          "self": 1.104,
+          "total": 1.259,
+          "real": 1.322,
+          "over": 0.0,
+          "calls": 443440
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_excited_groups",
+          "self": 1.049,
+          "total": 5.165,
+          "real": 5.346,
+          "over": 0,
+          "calls": 579096
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/dogmos_work_limit_for_budget",
+          "self": 0.861,
+          "total": 0.936,
+          "real": 1.283,
+          "over": 0,
+          "calls": 1172989
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/mixture_snapshot",
+          "self": 0.808,
+          "total": 8.305,
+          "real": 8.498,
+          "over": 0.001,
+          "calls": 443440
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/turf_settled",
+          "self": 0.593,
+          "total": 5.794,
+          "real": 5.894,
+          "over": 0,
+          "calls": 41830
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/queue_pending_gas_adjacency",
+          "self": 0.562,
+          "total": 0.813,
+          "real": 0.893,
+          "over": 0.275,
+          "calls": 109286
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_excited_groups_auxtools",
+          "self": 0.534,
+          "total": 3.909,
+          "real": 4.105,
+          "over": 0,
+          "calls": 579096
+        },
+        {
+          "name": "/datum/controller/subsystem/dogmos/proc/queue_pending_heat_adjacency",
+          "self": 0.533,
+          "total": 0.747,
+          "real": 0.784,
+          "over": 0.269,
+          "calls": 107052
+        },
+        {
+          "name": "/datum/gas_mixture/proc/dogmos_snapshot",
+          "self": 0.514,
+          "total": 8.819,
+          "real": 9.005,
+          "over": 0.0,
+          "calls": 443440
+        },
+        {
+          "name": "/datum/controller/subsystem/air/proc/process_turf_equalize_auxtools",
+          "self": 0.501,
+          "total": 3.706,
+          "real": 3.875,
+          "over": 0,
+          "calls": 541828
+        }
+      ]
+    }
+  ],
+  "top_self": [
+    {
+      "name": "/proc/dogmos_mixture_snapshot",
+      "self": 82.024,
+      "total": 82.061,
+      "real": 82.649,
+      "over": 0.19,
+      "calls": 555854
+    },
+    {
+      "name": "/datum/controller/master/proc/RunQueue",
+      "self": 73.665,
+      "total": 613.401,
+      "real": 614.262,
+      "over": 0.006,
+      "calls": 14956
+    },
+    {
+      "name": "/datum/controller/subsystem/air/fire",
+      "self": 45.602,
+      "total": 388.633,
+      "real": 391.582,
+      "over": 0.002,
+      "calls": 11175419
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/dogmos_run_stage",
+      "self": 31.996,
+      "total": 69.248,
+      "real": 71.961,
+      "over": 0,
+      "calls": 11168588
+    },
+    {
+      "name": "/datum/controller/subsystem/proc/ignite",
+      "self": 21.737,
+      "total": 539.039,
+      "real": 544.54,
+      "over": 0.002,
+      "calls": 11621398
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/dogmos_run_async_stage",
+      "self": 19.1,
+      "total": 28.564,
+      "real": 30.985,
+      "over": 0,
+      "calls": 11168217
+    },
+    {
+      "name": "/proc/dogmos_mixture_command",
+      "self": 16.637,
+      "total": 16.649,
+      "real": 16.901,
+      "over": 0.433,
+      "calls": 146950
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/lookup_mixture_snapshot_cache",
+      "self": 14.999,
+      "total": 16.973,
+      "real": 18.398,
+      "over": 0.015,
+      "calls": 5939591
+    },
+    {
+      "name": "/turf/proc/__update_auxtools_turf_adjacency_info",
+      "self": 12.6,
+      "total": 40.664,
+      "real": 40.793,
+      "over": 4.919,
+      "calls": 565143
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/mixture_snapshot",
+      "self": 11.297,
+      "total": 112.444,
+      "real": 113.958,
+      "over": 0.013,
+      "calls": 5939591
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/process_high_pressure_delta",
+      "self": 10.499,
+      "total": 48.786,
+      "real": 49.784,
+      "over": 0,
+      "calls": 4855965
+    },
+    {
+      "name": "/datum/gas_mixture/proc/compare",
+      "self": 9.075,
+      "total": 44.637,
+      "real": 45.303,
+      "over": 0,
+      "calls": 1677485
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/process_excited_groups",
+      "self": 9.018,
+      "total": 46.53,
+      "real": 47.586,
+      "over": 0,
+      "calls": 4975646
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/dogmos_work_limit_for_budget",
+      "self": 8.654,
+      "total": 9.381,
+      "real": 12.116,
+      "over": 0,
+      "calls": 11170260
+    },
+    {
+      "name": "/icon/proc/Blend",
+      "self": 7.467,
+      "total": 7.47,
+      "real": 7.519,
+      "over": 1.056,
+      "calls": 21085
+    },
+    {
+      "name": "/datum/gas_mixture/proc/dogmos_snapshot",
+      "self": 6.901,
+      "total": 119.371,
+      "real": 120.672,
+      "over": 0.007,
+      "calls": 5939591
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/turf_settled",
+      "self": 6.7,
+      "total": 54.316,
+      "real": 54.616,
+      "over": 0,
+      "calls": 502156
+    },
+    {
+      "name": "/proc/dogmos_turf_heat_snapshot",
+      "self": 6.191,
+      "total": 6.191,
+      "real": 6.341,
+      "over": 0.69,
+      "calls": 43776
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/store_mixture_snapshot_cache",
+      "self": 5.329,
+      "total": 6.026,
+      "real": 6.589,
+      "over": 0.051,
+      "calls": 1840865
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/process_excited_groups_auxtools",
+      "self": 5.018,
+      "total": 35.522,
+      "real": 36.685,
+      "over": 0,
+      "calls": 4975646
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/process_turf_equalize_auxtools",
+      "self": 4.811,
+      "total": 34.718,
+      "real": 35.869,
+      "over": 0,
+      "calls": 4855945
+    },
+    {
+      "name": "/proc/dogmos_mixture_snapshot_batch",
+      "self": 4.512,
+      "total": 4.512,
+      "real": 4.559,
+      "over": 0.004,
+      "calls": 6819
+    },
+    {
+      "name": "/datum/controller/subsystem/proc/pause",
+      "self": 4.507,
+      "total": 5.25,
+      "real": 7.546,
+      "over": 0.002,
+      "calls": 11182119
+    },
+    {
+      "name": "/proc/dogmos_turf_lifecycle_batch",
+      "self": 4.057,
+      "total": 4.058,
+      "real": 3.974,
+      "over": 1.984,
+      "calls": 37405
+    },
+    {
+      "name": "/proc/dogmos_mixture_lifecycle_batch",
+      "self": 3.943,
+      "total": 3.944,
+      "real": 4.099,
+      "over": 0.16,
+      "calls": 29981
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/flush_turf_registration_batch",
+      "self": 3.747,
+      "total": 59.34,
+      "real": 59.294,
+      "over": 2.132,
+      "calls": 112443
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/queue_pending_gas_adjacency",
+      "self": 3.64,
+      "total": 5.126,
+      "real": 5.392,
+      "over": 1.601,
+      "calls": 693406
+    },
+    {
+      "name": "/proc/dogmos_turf_heat_batch",
+      "self": 3.543,
+      "total": 3.546,
+      "real": 3.642,
+      "over": 1.739,
+      "calls": 35167
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/prefetch_mixture_snapshot_chunk",
+      "self": 3.496,
+      "total": 11.617,
+      "real": 11.68,
+      "over": 0.05,
+      "calls": 6819
+    },
+    {
+      "name": "/proc/dogmos_callback_drain",
+      "self": 3.436,
+      "total": 3.438,
+      "real": 3.545,
+      "over": 0.018,
+      "calls": 19604
+    },
+    {
+      "name": "/datum/controller/master/proc/CheckQueue",
+      "self": 3.339,
+      "total": 5.185,
+      "real": 4.384,
+      "over": 0,
+      "calls": 14956
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/queue_pending_heat_adjacency",
+      "self": 3.288,
+      "total": 4.626,
+      "real": 4.764,
+      "over": 1.367,
+      "calls": 679493
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/dogmos_prefetch_walk_snapshots",
+      "self": 3.081,
+      "total": 16.183,
+      "real": 16.245,
+      "over": 0.007,
+      "calls": 5224
+    },
+    {
+      "name": "/turf/proc/update_air_ref",
+      "self": 2.986,
+      "total": 20.483,
+      "real": 20.352,
+      "over": 0.707,
+      "calls": 199581
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/remove_pending_heat_edge",
+      "self": 2.984,
+      "total": 4.27,
+      "real": 4.378,
+      "over": 1.934,
+      "calls": 571483
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/process_active_turfs",
+      "self": 2.947,
+      "total": 198.061,
+      "real": 198.454,
+      "over": 0.001,
+      "calls": 1155589
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/remove_pending_gas_edge",
+      "self": 2.899,
+      "total": 4.114,
+      "real": 4.295,
+      "over": 1.758,
+      "calls": 585847
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/index_pending_edge",
+      "self": 2.725,
+      "total": 2.87,
+      "real": 3.486,
+      "over": 1.183,
+      "calls": 2314670
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/prefetch_mixture_snapshots",
+      "self": 2.63,
+      "total": 14.246,
+      "real": 14.4,
+      "over": 0.008,
+      "calls": 6807
+    },
+    {
+      "name": "/proc/getFlatIcon",
+      "self": 2.628,
+      "total": 4.734,
+      "real": 4.682,
+      "over": 0.452,
+      "calls": 11546
+    }
+  ],
+  "top_total": [
+    {
+      "name": "/datum/controller/master/proc/Loop",
+      "self": 0.567,
+      "total": 619.282,
+      "real": 0.0,
+      "over": 0.008,
+      "calls": 0
+    },
+    {
+      "name": "/datum/controller/master/proc/RunQueue",
+      "self": 73.665,
+      "total": 613.401,
+      "real": 614.262,
+      "over": 0.006,
+      "calls": 14956
+    },
+    {
+      "name": "/datum/controller/subsystem/proc/ignite",
+      "self": 21.737,
+      "total": 539.039,
+      "real": 544.54,
+      "over": 0.002,
+      "calls": 11621398
+    },
+    {
+      "name": "/datum/controller/subsystem/air/fire",
+      "self": 45.602,
+      "total": 388.633,
+      "real": 391.582,
+      "over": 0.002,
+      "calls": 11175419
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/process_active_turfs",
+      "self": 2.947,
+      "total": 198.061,
+      "real": 198.454,
+      "over": 0.001,
+      "calls": 1155589
+    },
+    {
+      "name": "/datum/gas_mixture/proc/dogmos_snapshot",
+      "self": 6.901,
+      "total": 119.371,
+      "real": 120.672,
+      "over": 0.007,
+      "calls": 5939591
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/mixture_snapshot",
+      "self": 11.297,
+      "total": 112.444,
+      "real": 113.958,
+      "over": 0.013,
+      "calls": 5939591
+    },
+    {
+      "name": "/proc/dogmos_mixture_snapshot",
+      "self": 82.024,
+      "total": 82.061,
+      "real": 82.649,
+      "over": 0.19,
+      "calls": 555854
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/dogmos_run_stage",
+      "self": 31.996,
+      "total": 69.248,
+      "real": 71.961,
+      "over": 0,
+      "calls": 11168588
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/flush_turf_registration_batch",
+      "self": 3.747,
+      "total": 59.34,
+      "real": 59.294,
+      "over": 2.132,
+      "calls": 112443
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/finish_turf_processing_auxtools",
+      "self": 0.006,
+      "total": 55.661,
+      "real": 55.696,
+      "over": 0,
+      "calls": 4507
+    },
+    {
+      "name": "/proc/process_atmos_callbacks",
+      "self": 1.002,
+      "total": 55.655,
+      "real": 55.682,
+      "over": 0,
+      "calls": 4507
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/turf_settled",
+      "self": 6.7,
+      "total": 54.316,
+      "real": 54.616,
+      "over": 0,
+      "calls": 502156
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/dispatch_general_callback",
+      "self": 2.391,
+      "total": 52.74,
+      "real": 52.892,
+      "over": 0,
+      "calls": 360058
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/process_high_pressure_delta",
+      "self": 10.499,
+      "total": 48.786,
+      "real": 49.784,
+      "over": 0,
+      "calls": 4855965
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/refresh_dogmos_visuals",
+      "self": 1.652,
+      "total": 48.057,
+      "real": 48.061,
+      "over": 0.001,
+      "calls": 1641
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/dispatch_general_reaction_callback",
+      "self": 0.978,
+      "total": 47.611,
+      "real": 47.714,
+      "over": 0,
+      "calls": 144474
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/process_excited_groups",
+      "self": 9.018,
+      "total": 46.53,
+      "real": 47.586,
+      "over": 0,
+      "calls": 4975646
+    },
+    {
+      "name": "/datum/gas_mixture/proc/compare",
+      "self": 9.075,
+      "total": 44.637,
+      "real": 45.303,
+      "over": 0,
+      "calls": 1677485
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/walk_active_turfs_batch",
+      "self": 2.091,
+      "total": 42.411,
+      "real": 42.423,
+      "over": 0,
+      "calls": 5152
+    },
+    {
+      "name": "/datum/controller/subsystem/machines/fire",
+      "self": 2.588,
+      "total": 41.098,
+      "real": 41.083,
+      "over": 0,
+      "calls": 2327
+    },
+    {
+      "name": "/turf/proc/__update_auxtools_turf_adjacency_info",
+      "self": 12.6,
+      "total": 40.664,
+      "real": 40.793,
+      "over": 4.919,
+      "calls": 565143
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/sync_dogmos_frontier",
+      "self": 0.099,
+      "total": 39.178,
+      "real": 39.2,
+      "over": 0.04,
+      "calls": 1352
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/dogmos_prepare_frontier_pairs",
+      "self": 1.384,
+      "total": 37.291,
+      "real": 37.301,
+      "over": 0.763,
+      "calls": 534
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/retry_pending_turf_adjacencies",
+      "self": 0.628,
+      "total": 36.758,
+      "real": 36.79,
+      "over": 0.229,
+      "calls": 42941
+    },
+    {
+      "name": "/turf/open/hotspot_expose",
+      "self": 0.661,
+      "total": 36.203,
+      "real": 36.397,
+      "over": 0,
+      "calls": 141480
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/process_excited_groups_auxtools",
+      "self": 5.018,
+      "total": 35.522,
+      "real": 36.685,
+      "over": 0,
+      "calls": 4975646
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/dogmos_reconcile_frontier_chunk",
+      "self": 0.46,
+      "total": 35.378,
+      "real": 35.375,
+      "over": 0.269,
+      "calls": 1144
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/process_turf_equalize_auxtools",
+      "self": 4.811,
+      "total": 34.718,
+      "real": 35.869,
+      "over": 0,
+      "calls": 4855945
+    },
+    {
+      "name": "/mob/living/basic/Life",
+      "self": 0.518,
+      "total": 34.649,
+      "real": 34.711,
+      "over": 0,
+      "calls": 217954
+    },
+    {
+      "name": "/datum/controller/subsystem/atoms/proc/InitAtom",
+      "self": 0.312,
+      "total": 33.037,
+      "real": 33.19,
+      "over": 0.057,
+      "calls": 55461
+    },
+    {
+      "name": "/proc/dogmos_aphelion_tritfire_finish",
+      "self": 0.206,
+      "total": 32.463,
+      "real": 32.567,
+      "over": 0,
+      "calls": 70611
+    },
+    {
+      "name": "/atom/New",
+      "self": 0.156,
+      "total": 31.245,
+      "real": 31.391,
+      "over": 0.031,
+      "calls": 60777
+    },
+    {
+      "name": "/datum/gas_mixture/proc/return_temperature",
+      "self": 1.016,
+      "total": 29.046,
+      "real": 28.928,
+      "over": 0,
+      "calls": 942336
+    },
+    {
+      "name": "/obj/machinery/door/firedoor/process",
+      "self": 0.7,
+      "total": 28.714,
+      "real": 28.768,
+      "over": 0,
+      "calls": 117274
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/dogmos_run_async_stage",
+      "self": 19.1,
+      "total": 28.564,
+      "real": 30.985,
+      "over": 0,
+      "calls": 11168217
+    },
+    {
+      "name": "/obj/machinery/door/firedoor/proc/process_results",
+      "self": 1.036,
+      "total": 28.035,
+      "real": 28.153,
+      "over": 0,
+      "calls": 190220
+    },
+    {
+      "name": "/datum/gas_mixture/proc/return_pressure",
+      "self": 0.328,
+      "total": 27.804,
+      "real": 28.061,
+      "over": 0.002,
+      "calls": 274894
+    },
+    {
+      "name": "/obj/machinery/door/firedoor/proc/check_atmos",
+      "self": 1.015,
+      "total": 26.997,
+      "real": 27.156,
+      "over": 0,
+      "calls": 190220
+    },
+    {
+      "name": "/datum/controller/subsystem/condos/proc/load_or_render_preview",
+      "self": 0.031,
+      "total": 26.376,
+      "real": 86.499,
+      "over": 0.016,
+      "calls": 14
+    }
+  ],
+  "dogmos": [
+    {
+      "name": "/proc/dogmos_mixture_snapshot",
+      "self": 82.024,
+      "total": 82.061,
+      "real": 82.649,
+      "over": 0.19,
+      "calls": 555854
+    },
+    {
+      "name": "/datum/controller/subsystem/air/fire",
+      "self": 45.602,
+      "total": 388.633,
+      "real": 391.582,
+      "over": 0.002,
+      "calls": 11175419
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/dogmos_run_stage",
+      "self": 31.996,
+      "total": 69.248,
+      "real": 71.961,
+      "over": 0,
+      "calls": 11168588
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/dogmos_run_async_stage",
+      "self": 19.1,
+      "total": 28.564,
+      "real": 30.985,
+      "over": 0,
+      "calls": 11168217
+    },
+    {
+      "name": "/proc/dogmos_mixture_command",
+      "self": 16.637,
+      "total": 16.649,
+      "real": 16.901,
+      "over": 0.433,
+      "calls": 146950
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/lookup_mixture_snapshot_cache",
+      "self": 14.999,
+      "total": 16.973,
+      "real": 18.398,
+      "over": 0.015,
+      "calls": 5939591
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/mixture_snapshot",
+      "self": 11.297,
+      "total": 112.444,
+      "real": 113.958,
+      "over": 0.013,
+      "calls": 5939591
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/process_high_pressure_delta",
+      "self": 10.499,
+      "total": 48.786,
+      "real": 49.784,
+      "over": 0,
+      "calls": 4855965
+    },
+    {
+      "name": "/datum/gas_mixture/proc/compare",
+      "self": 9.075,
+      "total": 44.637,
+      "real": 45.303,
+      "over": 0,
+      "calls": 1677485
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/process_excited_groups",
+      "self": 9.018,
+      "total": 46.53,
+      "real": 47.586,
+      "over": 0,
+      "calls": 4975646
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/dogmos_work_limit_for_budget",
+      "self": 8.654,
+      "total": 9.381,
+      "real": 12.116,
+      "over": 0,
+      "calls": 11170260
+    },
+    {
+      "name": "/datum/gas_mixture/proc/dogmos_snapshot",
+      "self": 6.901,
+      "total": 119.371,
+      "real": 120.672,
+      "over": 0.007,
+      "calls": 5939591
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/turf_settled",
+      "self": 6.7,
+      "total": 54.316,
+      "real": 54.616,
+      "over": 0,
+      "calls": 502156
+    },
+    {
+      "name": "/proc/dogmos_turf_heat_snapshot",
+      "self": 6.191,
+      "total": 6.191,
+      "real": 6.341,
+      "over": 0.69,
+      "calls": 43776
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/store_mixture_snapshot_cache",
+      "self": 5.329,
+      "total": 6.026,
+      "real": 6.589,
+      "over": 0.051,
+      "calls": 1840865
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/process_excited_groups_auxtools",
+      "self": 5.018,
+      "total": 35.522,
+      "real": 36.685,
+      "over": 0,
+      "calls": 4975646
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/process_turf_equalize_auxtools",
+      "self": 4.811,
+      "total": 34.718,
+      "real": 35.869,
+      "over": 0,
+      "calls": 4855945
+    },
+    {
+      "name": "/proc/dogmos_mixture_snapshot_batch",
+      "self": 4.512,
+      "total": 4.512,
+      "real": 4.559,
+      "over": 0.004,
+      "calls": 6819
+    },
+    {
+      "name": "/proc/dogmos_turf_lifecycle_batch",
+      "self": 4.057,
+      "total": 4.058,
+      "real": 3.974,
+      "over": 1.984,
+      "calls": 37405
+    },
+    {
+      "name": "/proc/dogmos_mixture_lifecycle_batch",
+      "self": 3.943,
+      "total": 3.944,
+      "real": 4.099,
+      "over": 0.16,
+      "calls": 29981
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/flush_turf_registration_batch",
+      "self": 3.747,
+      "total": 59.34,
+      "real": 59.294,
+      "over": 2.132,
+      "calls": 112443
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/queue_pending_gas_adjacency",
+      "self": 3.64,
+      "total": 5.126,
+      "real": 5.392,
+      "over": 1.601,
+      "calls": 693406
+    },
+    {
+      "name": "/proc/dogmos_turf_heat_batch",
+      "self": 3.543,
+      "total": 3.546,
+      "real": 3.642,
+      "over": 1.739,
+      "calls": 35167
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/prefetch_mixture_snapshot_chunk",
+      "self": 3.496,
+      "total": 11.617,
+      "real": 11.68,
+      "over": 0.05,
+      "calls": 6819
+    },
+    {
+      "name": "/proc/dogmos_callback_drain",
+      "self": 3.436,
+      "total": 3.438,
+      "real": 3.545,
+      "over": 0.018,
+      "calls": 19604
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/queue_pending_heat_adjacency",
+      "self": 3.288,
+      "total": 4.626,
+      "real": 4.764,
+      "over": 1.367,
+      "calls": 679493
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/dogmos_prefetch_walk_snapshots",
+      "self": 3.081,
+      "total": 16.183,
+      "real": 16.245,
+      "over": 0.007,
+      "calls": 5224
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/remove_pending_heat_edge",
+      "self": 2.984,
+      "total": 4.27,
+      "real": 4.378,
+      "over": 1.934,
+      "calls": 571483
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/process_active_turfs",
+      "self": 2.947,
+      "total": 198.061,
+      "real": 198.454,
+      "over": 0.001,
+      "calls": 1155589
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/remove_pending_gas_edge",
+      "self": 2.899,
+      "total": 4.114,
+      "real": 4.295,
+      "over": 1.758,
+      "calls": 585847
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/index_pending_edge",
+      "self": 2.725,
+      "total": 2.87,
+      "real": 3.486,
+      "over": 1.183,
+      "calls": 2314670
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/prefetch_mixture_snapshots",
+      "self": 2.63,
+      "total": 14.246,
+      "real": 14.4,
+      "over": 0.008,
+      "calls": 6807
+    },
+    {
+      "name": "/proc/dogmos_stage_job_poll",
+      "self": 2.574,
+      "total": 2.576,
+      "real": 2.529,
+      "over": 0,
+      "calls": 9132
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/add_to_active",
+      "self": 2.499,
+      "total": 2.943,
+      "real": 3.153,
+      "over": 0.006,
+      "calls": 1170446
+    },
+    {
+      "name": "/proc/dogmos_stage_job_commit",
+      "self": 2.475,
+      "total": 2.476,
+      "real": 2.475,
+      "over": 0,
+      "calls": 9096
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/unindex_pending_edge",
+      "self": 2.431,
+      "total": 2.591,
+      "real": 3.147,
+      "over": 1.557,
+      "calls": 2314660
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/dispatch_general_callback",
+      "self": 2.391,
+      "total": 52.74,
+      "real": 52.892,
+      "over": 0,
+      "calls": 360058
+    },
+    {
+      "name": "/datum/gas_mixture/proc/__get_gases",
+      "self": 2.379,
+      "total": 6.706,
+      "real": 6.706,
+      "over": 0.023,
+      "calls": 285183
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/dogmos_health_preflight_required",
+      "self": 2.303,
+      "total": 2.983,
+      "real": 5.51,
+      "over": 0,
+      "calls": 11175419
+    },
+    {
+      "name": "/datum/controller/subsystem/dogmos/proc/mixture_snapshot_cache_bucket",
+      "self": 2.231,
+      "total": 2.771,
+      "real": 4.646,
+      "over": 0.01,
+      "calls": 7960698
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/walk_active_turfs_batch",
+      "self": 2.091,
+      "total": 42.411,
+      "real": 42.423,
+      "over": 0,
+      "calls": 5152
+    },
+    {
+      "name": "/turf/proc/dogmos_air_registration_is_current",
+      "self": 1.976,
+      "total": 2.047,
+      "real": 2.353,
+      "over": 0.757,
+      "calls": 1106603
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/dogmos_defer_stage_for_budget",
+      "self": 1.906,
+      "total": 2.575,
+      "real": 4.986,
+      "over": 0,
+      "calls": 11157785
+    },
+    {
+      "name": "/turf/proc/dogmos_service_slot",
+      "self": 1.704,
+      "total": 1.842,
+      "real": 2.211,
+      "over": 0.684,
+      "calls": 1896330
+    },
+    {
+      "name": "/datum/gas_mixture/proc/__get_moles",
+      "self": 1.699,
+      "total": 22.692,
+      "real": 22.875,
+      "over": 0.003,
+      "calls": 964336
+    },
+    {
+      "name": "/proc/dogmos_continuation_resume",
+      "self": 1.654,
+      "total": 1.654,
+      "real": 1.775,
+      "over": 0.003,
+      "calls": 16652
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/refresh_dogmos_visuals",
+      "self": 1.652,
+      "total": 48.057,
+      "real": 48.061,
+      "over": 0.001,
+      "calls": 1641
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/stop_processing_machine",
+      "self": 1.644,
+      "total": 1.757,
+      "real": 1.789,
+      "over": 0.001,
+      "calls": 26654
+    },
+    {
+      "name": "/datum/controller/subsystem/air/proc/process_turfs_auxtools",
+      "self": 1.605,
+      "total": 7.386,
+      "real": 7.678,
+      "over": 0,
+      "calls": 894676
+    },
+    {
+      "name": "/proc/dogmos_turf_adjacency_batch",
+      "self": 1.577,
+      "total": 1.577,
+      "real": 1.605,
+      "over": 0.797,
+      "calls": 4979
+    }
+  ],
+  "metrics": {
+    "players": {
+      "count": 78,
+      "min": 0.0,
+      "median": 1.0,
+      "p95": 1.0,
+      "maximum": 1.0,
+      "mean": 0.9871794871794872
+    },
+    "tidi": {
+      "count": 78,
+      "min": 0.0,
+      "median": 2.0625,
+      "p95": 20.297,
+      "maximum": 38.9233,
+      "mean": 5.197588461538461
+    },
+    "tidi_avg": {
+      "count": 78,
+      "min": 0.875889,
+      "median": 5.46805,
+      "p95": 167.125,
+      "maximum": 187.748,
+      "mean": 24.194319974358976
+    },
+    "maptick": {
+      "count": 78,
+      "min": 0.0139694,
+      "median": 0.918533,
+      "p95": 1.45052,
+      "maximum": 2.37993,
+      "mean": 0.9490447230769231
+    },
+    "air_turf_cost": {
+      "count": 78,
+      "min": 0.0,
+      "median": 597.844,
+      "p95": 3706.44,
+      "maximum": 4104.37,
+      "mean": 1298.0307820512821
+    },
+    "air_eg_cost": {
+      "count": 78,
+      "min": 0.0,
+      "median": 202.04,
+      "p95": 693.199,
+      "maximum": 723.622,
+      "mean": 266.06668333333334
+    },
+    "air_highpressure_cost": {
+      "count": 78,
+      "min": 0.0,
+      "median": 213.927,
+      "p95": 658.638,
+      "maximum": 687.697,
+      "mean": 269.47091025641026
+    },
+    "air_hotspots_cost": {
+      "count": 78,
+      "min": 0.0,
+      "median": 18.4213,
+      "p95": 242.552,
+      "maximum": 275.078,
+      "mean": 53.55764420423077
+    },
+    "air_superconductivity_cost": {
+      "count": 78,
+      "min": 0.0,
+      "median": 16.5982,
+      "p95": 26.533,
+      "maximum": 42.9137,
+      "mean": 16.009762435897436
+    },
+    "air_pipenets_cost": {
+      "count": 78,
+      "min": 0.0,
+      "median": 8.60187,
+      "p95": 19.8542,
+      "maximum": 27.1539,
+      "mean": 9.5886794875
+    },
+    "air_pipenets_reconciled": {
+      "count": 78,
+      "min": 0.0,
+      "median": 7.0,
+      "p95": 24.0,
+      "maximum": 31.0,
+      "mean": 9.012820512820513
+    },
+    "air_pipenet_mixtures_reconciled": {
+      "count": 78,
+      "min": 0.0,
+      "median": 99.0,
+      "p95": 174.0,
+      "maximum": 248.0,
+      "mean": 105.88461538461539
+    },
+    "air_rebuilds_cost": {
+      "count": 78,
+      "min": 0.0,
+      "median": 0.0,
+      "p95": 0.0,
+      "maximum": 56.5412,
+      "mean": 0.7248871794871795
+    },
+    "air_equalize_cost": {
+      "count": 78,
+      "min": 0.0,
+      "median": 0.0,
+      "p95": 0.0,
+      "maximum": 0.0,
+      "mean": 0.0
+    },
+    "air_post_process_cost": {
+      "count": 78,
+      "min": 0.0,
+      "median": 0.0,
+      "p95": 0.0,
+      "maximum": 0.0,
+      "mean": 0.0
+    },
+    "air_turf_count": {
+      "count": 78,
+      "min": 143.0,
+      "median": 1899.0,
+      "p95": 4048.0,
+      "maximum": 9795.0,
+      "mean": 2008.7948717948718
+    },
+    "air_eg_count": {
+      "count": 78,
+      "min": 0.0,
+      "median": 0.0,
+      "p95": 0.0,
+      "maximum": 0.0,
+      "mean": 0.0
+    },
+    "air_hotspot_count": {
+      "count": 78,
+      "min": 0.0,
+      "median": 28.0,
+      "p95": 536.0,
+      "maximum": 704.0,
+      "mean": 98.76923076923077
+    },
+    "air_network_count": {
+      "count": 78,
+      "min": 132.0,
+      "median": 145.0,
+      "p95": 146.0,
+      "maximum": 146.0,
+      "mean": 140.84615384615384
+    },
+    "air_delta_count": {
+      "count": 78,
+      "min": 0.0,
+      "median": 271.0,
+      "p95": 2334.0,
+      "maximum": 2633.0,
+      "mean": 844.2820512820513
+    },
+    "air_superconductive_count": {
+      "count": 78,
+      "min": 0.0,
+      "median": 0.0,
+      "p95": 0.0,
+      "maximum": 0.0,
+      "mean": 0.0
+    },
+    "air_heat_edge_attempts": {
+      "count": 78,
+      "min": 0.0,
+      "median": 0.0,
+      "p95": 0.0,
+      "maximum": 0.0,
+      "mean": 0.0
+    },
+    "air_heat_edges_applied": {
+      "count": 78,
+      "min": 0.0,
+      "median": 0.0,
+      "p95": 0.0,
+      "maximum": 0.0,
+      "mean": 0.0
+    },
+    "air_heat_lock_contention": {
+      "count": 78,
+      "min": 0.0,
+      "median": 0.0,
+      "p95": 0.0,
+      "maximum": 0.0,
+      "mean": 0.0
+    },
+    "air_heat_registration_changes": {
+      "count": 78,
+      "min": 0.0,
+      "median": 0.0,
+      "p95": 0.0,
+      "maximum": 0.0,
+      "mean": 0.0
+    },
+    "air_heat_registration_total": {
+      "count": 78,
+      "min": 0.0,
+      "median": 0.0,
+      "p95": 0.0,
+      "maximum": 0.0,
+      "mean": 0.0
+    },
+    "air_low_pressure_count": {
+      "count": 78,
+      "min": 0.0,
+      "median": 0.0,
+      "p95": 0.0,
+      "maximum": 0.0,
+      "mean": 0.0
+    },
+    "air_high_pressure_count": {
+      "count": 78,
+      "min": 0.0,
+      "median": 0.0,
+      "p95": 0.0,
+      "maximum": 0.0,
+      "mean": 0.0
+    },
+    "air_group_processed": {
+      "count": 78,
+      "min": 0.0,
+      "median": 16269.0,
+      "p95": 18791.0,
+      "maximum": 19060.0,
+      "mean": 14701.794871794871
+    },
+    "air_equalize_processed": {
+      "count": 78,
+      "min": 0.0,
+      "median": 16244.0,
+      "p95": 18749.0,
+      "maximum": 19046.0,
+      "mean": 14596.48717948718
+    },
+    "air_space_boundary_count": {
+      "count": 78,
+      "min": 0.0,
+      "median": 0.0,
+      "p95": 0.0,
+      "maximum": 0.0,
+      "mean": 0.0
+    },
+    "air_equalize_enabled": {
+      "count": 78,
+      "min": 1.0,
+      "median": 1.0,
+      "p95": 1.0,
+      "maximum": 1.0,
+      "mean": 1.0
+    },
+    "air_equalize_performance_profile": {
+      "count": 78,
+      "min": 1.0,
+      "median": 1.0,
+      "p95": 1.0,
+      "maximum": 1.0,
+      "mean": 1.0
+    },
+    "air_realistic_space_radiation": {
+      "count": 78,
+      "min": 1.0,
+      "median": 1.0,
+      "p95": 1.0,
+      "maximum": 1.0,
+      "mean": 1.0
+    }
+  },
+  "runtime_signatures": {
+    "play_ambience failed to get soundlength from /sound with a file of modular_nova/master_files/sound/ambience/ambigen1.ogg.": 4,
+    "play_ambience failed to get soundlength from /sound with a file of modular_nova/master_files/sound/ambience/ambigen6.ogg.": 8,
+    "play_ambience failed to get soundlength from /sound with a file of modular_nova/master_files/sound/ambience/ambigen8.ogg.": 6,
+    "play_ambience failed to get soundlength from /sound with a file of modular_nova/master_files/sound/ambience/ambigen5.ogg.": 5,
+    "play_ambience failed to get soundlength from /sound with a file of modular_nova/master_files/sound/ambience/ambigen3.ogg.": 4,
+    "play_ambience failed to get soundlength from /sound with a file of sound/ambience/engineering/ambiatmos2.ogg.": 3,
+    "play_ambience failed to get soundlength from /sound with a file of modular_nova/master_files/sound/ambience/ambigen9.ogg.": 3,
+    "play_ambience failed to get soundlength from /sound with a file of modular_nova/master_files/sound/ambience/ambigen2.ogg.": 4,
+    "play_ambience failed to get soundlength from /sound with a file of sound/ambience/engineering/ambisin3.ogg.": 4,
+    "play_ambience failed to get soundlength from /sound with a file of sound/ambience/engineering/ambitech3.ogg.": 2,
+    "play_ambience failed to get soundlength from /sound with a file of sound/ambience/engineering/ambiatmos.ogg.": 3,
+    "Cannot read null.screen_groups": 1,
+    "play_ambience failed to get soundlength from /sound with a file of sound/ambience/engineering/ambitech2.ogg.": 2,
+    "play_ambience failed to get soundlength from /sound with a file of sound/ambience/engineering/ambisin1.ogg.": 2,
+    "/obj/structure/transit_tube_pod destroy proc was called multiple times, likely due to a qdel loop in the Destroy logic": 1,
+    "play_ambience failed to get soundlength from /sound with a file of sound/ambience/engineering/ambisin2.ogg.": 2,
+    "play_ambience failed to get soundlength from /sound with a file of sound/ambience/engineering/ambitech.ogg.": 1,
+    "play_ambience failed to get soundlength from /sound with a file of modular_nova/master_files/sound/ambience/ambigen4.ogg.": 1,
+    "play_ambience failed to get soundlength from /sound with a file of modular_nova/master_files/sound/ambience/ambigen7.ogg.": 5
+  },
+  "csv_samples": 86,
+  "gameplay_samples": 78,
+  "duplicate_name_counts": {
+    "profiler-0.json": 115,
+    "profiler-20.json": 189,
+    "profiler-40.json": 13,
+    "profiler-60.json": 65,
+    "profiler-120.json": 105,
+    "profiler-180.json": 111,
+    "profiler-240.json": 111,
+    "profiler-300.json": 113,
+    "profiler-360.json": 121,
+    "profiler-420.json": 122,
+    "profiler-480.json": 126,
+    "profiler-540.json": 126,
+    "profiler-600.json": 126,
+    "profiler-660.json": 126,
+    "profiler-720.json": 127,
+    "profiler-780.json": 127,
+    "profiler-840.json": 127
+  },
+  "operator_observation": "Movement was responsive; atmosphere reactions stalled, with repeated fire effects and no apparent gas turf updates.",
+  "runtime_mode": "DOGMOS_ASYNC_STAGES with BYOND AUTO_PROFILE",
+  "dmb_sha256": "fa9dd86d1f58cf5764818bbf66aa16f955b29344f23625ddbc8def7b7ad4ffae",
+  "native_fingerprint": "2950234a5e53e82ce5e19f3ae303a9308d6a2ae17e44498aa9f8ec9786590421"
+}

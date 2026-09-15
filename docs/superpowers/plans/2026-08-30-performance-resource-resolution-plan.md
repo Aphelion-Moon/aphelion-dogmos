@@ -16,7 +16,7 @@
 - Preserve incremental commit across disconnected components. A rejected component must not publish its own state or events; earlier completed components remain committed by the existing contract.
 - Critical gameplay callbacks are all-or-nothing. Do not silently drop, truncate, reorder, or defer a batch that the caller was told completed.
 - Preserve public DM proc paths and caller-legible errors. No panic may unwind across the BYOND FFI boundary.
-- Do not edit protected files: root/workspace `Cargo.toml`, `Cargo.lock`, `.cargo/`, `rust-toolchain.toml`, `.github/workflows/`, dependency/transport choices, artifact/sync tooling, release tooling, Docker files, or deployment scripts.
+- Keep unrelated dependency, transport, toolchain, workflow, release, Docker and deployment changes outside this plan. Necessary in-scope protocol/generator changes, artifact rebuilds, generated outputs and verified local synchronization follow the task authorization without another per-file approval; use the current root artifact rebuild policy and maintained tools.
 - Do not hand-edit generated bindings or manifests.
 - Preserve unrelated working-tree changes. Leave all plan work uncommitted unless the user explicitly authorizes commits.
 - Use the exact pinned toolchain and `--locked` for every Cargo gate.
@@ -538,7 +538,7 @@ Run focused i686 tests and the paired registration workload; require exact slot 
 - Modify/test: `crates/dogmos-core/src/frontier.rs`
 - Modify: `crates/dogmos-core/src/world.rs`
 - Modify/test: `crates/dogmos-server/src/state.rs`
-- Protected checkpoint: `crates/dogmos-protocol/src/lib.rs` only with exact approval if no existing diagnostic extension point suffices
+- Protocol checkpoint: use an existing diagnostic extension point where sufficient; otherwise review an in-scope change to `crates/dogmos-protocol/src/lib.rs` and regenerate/verify its complete paired contract under the task authorization
 
 ### Step 1: Add the failing telemetry test
 
@@ -555,7 +555,7 @@ pub(crate) fn committed_storage_bytes_lower_bound(&self) -> u64 {
 
 Document omitted hash bucket/control bytes and allocator metadata. Expose committed length and capacities where practical. Keep `frontier_upload_bytes` unchanged in meaning.
 
-If no existing diagnostics field carries this without protocol/layout change, keep it in server/core diagnostics and request exact approval before protocol or generated-binding work. Do not silently bump the protocol.
+If no existing diagnostics field carries this without protocol/layout change, review the necessary in-scope protocol change and regenerate its bindings and complete paired contract under the task authorization. Record the version change explicitly and run protocol/compatibility gates; no separate artifact approval is required.
 
 Run core/server telemetry tests and the maintained IPC benchmark. Confirm frontier ordering and canonical hashes are unchanged. Do not commit.
 
@@ -583,7 +583,7 @@ git diff --check
 git status --short
 ```
 
-Run generated-binding drift and paired-artifact checks through the maintained tools in `docs/agent/verification.md`. Do not regenerate protected outputs without exact approval.
+Regenerate required outputs and run generated-binding drift and paired-artifact checks through the maintained tools in `docs/agent/verification.md`. Authorized work includes this regeneration and verified local synchronization without another exact-file approval.
 
 ### Step 2: Run same-session controls and candidates
 

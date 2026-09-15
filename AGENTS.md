@@ -19,6 +19,12 @@ Preserve public DM proc paths and caller-legible errors. No panic may unwind acr
 
 Generated bindings and release manifests are never hand-edited. Regenerate them with maintained tooling and compare exact output. Build BYOND-facing code for `i686-pc-windows-msvc` and `i686-unknown-linux-gnu`; host-only Cargo success is not authoritative.
 
+## Artifact rebuild authorization
+
+Authorized implementation and verification work includes rebuilding native binaries, regenerating bindings, contract defines, manifests and artifact lock data, and synchronizing the verified matching artifact set into a local development or test checkout. Do not request separate per-file permission for these operations because an output or its authority file is described as protected. Necessary in-scope protocol and generator updates follow the same task authorization, with their required review and verification gates.
+
+Use the maintained build, generation and synchronization tools, preserve unrelated changes, and verify the complete shim/service contract. This rule supersedes older local plans that require exact-file approval to regenerate protected outputs. Publishing releases, changing live deployments, restarting production services, and unrelated dependency or infrastructure changes retain their own authorization requirements.
+
 ## Verification boundary
 
 Use the repository's exact pinned toolchain and `--locked`. Run formatting, strict Clippy, tests, supported feature combinations, i686 shim builds, generated-binding drift, and paired artifact verification as applicable. Verify the paired Meridian-Rift integration through its PowerShell DreamMaker/DreamDaemon gates. Report Rust, DM compile, focused tests, boot, full suite, and performance evidence separately.

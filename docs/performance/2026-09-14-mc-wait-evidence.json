@@ -1,0 +1,545 @@
+{
+  "schema_version": 1,
+  "scope": "MC waiting correction; no matched performance or heavy-fire acceptance claim",
+  "source": {
+    "scope": "Source preservation; qualification recorded separately",
+    "baseline": {
+      "path": "target/r6-frontier-candidate-dm-source.zip",
+      "sha256": "640e5ac8acc575e3244a31ba259e8a5843a0c331ab31e4373f175a647dbc5559",
+      "bytes": 146817
+    },
+    "archive": {
+      "path": "target/local-playtest-analysis-20260914/mc-wait-candidate-02-source.zip",
+      "sha256": "04dddb613eecbe605c7b1db8ad4bddb8cf719e52a0f1c5dc6b659e081241e49e",
+      "bytes": 109149
+    },
+    "patch": {
+      "path": "docs/patches/2026-09-14-meridian-mc-wait.patch",
+      "sha256": "2192d6a1425421cde1903f5b859ca92f83f2ed002a16a9f9ccd84bfbad03705d",
+      "bytes": 10571
+    },
+    "files": [
+      {
+        "path": "code/controllers/master.dm",
+        "before_sha256": "4a5fae43b2234158a82d9d83bd2c838adfc5a915056aee47243f8935ccc83955",
+        "sha256": "ffd46d9d8be29309f3163c28ab323a320ac2ce395d4915e13e3bdd5de4092cf2"
+      },
+      {
+        "path": "code/controllers/subsystem.dm",
+        "before_sha256": "8b0fa0a45df9e15aff4d30549c6f12f191eb2f9030062ab98403bd195b1adf8a",
+        "sha256": "b9dcad771d1128526fc3ebde43f1158fdf36caa88e29b1623d5d614fe163127a"
+      },
+      {
+        "path": "modular_aphelion/modules/dogmos/code/service_backend.dm",
+        "before_sha256": "27abc3f3f648ec015835a77b1f5a28bf3c10b6b9ce3ab5158ee7474600797ae1",
+        "sha256": "fa7d481b58022c2ddd9f46cf7431960890e9bb9277c7c7a66ace4e531a2b4758"
+      },
+      {
+        "path": "modular_aphelion/modules/dogmos/code/service_backend_test.dm",
+        "before_sha256": "d8913fcfe12705df372939de9fd8a9091b9df8c954dfe7a20569e559dc1e4019",
+        "sha256": "5ad593e08f72a703db339bf0821ef9af3c5d2206889a4b41e54aa2bd7eb4af77"
+      }
+    ]
+  },
+  "native_bundle_changed": false,
+  "native_fingerprint": "2950234a5e53e82ce5e19f3ae303a9308d6a2ae17e44498aa9f8ec9786590421",
+  "live_parser": {
+    "state_generation": 24,
+    "errors": 127,
+    "warnings": 3,
+    "baseline_unchanged": true
+  },
+  "runs": [
+    {
+      "run_id": "20260914T193116Z-5ea1d53e",
+      "status": "failed",
+      "evidence": "focused_test",
+      "exit_code": 4,
+      "duration_ms": 208397,
+      "tool_versions": {
+        "bun": "1.3.5",
+        "byond": "516.1687",
+        "byond_resolver": "standard_path"
+      },
+      "tests": null,
+      "runtime_signatures": [],
+      "cleanup": {
+        "passed": true,
+        "leftovers": [],
+        "retained": []
+      },
+      "failures": [
+        {
+          "code": "compile_failed",
+          "stage": "compile",
+          "message": "compile_process_failed: natural 255"
+        }
+      ],
+      "scope": "Restricted compiler stalled before its banner; no behavioral test executed",
+      "summary": {
+        "path": "target/meridian-artifact-policy/data/rift-runs/20260914T193116Z-5ea1d53e/summary.json",
+        "sha256": "fe1a4b6b05328e8a2bbd7de3861e7af5fe7cd30e8127f5e72ff70912c9571867",
+        "bytes": 2555
+      },
+      "compile_artifacts": []
+    },
+    {
+      "run_id": "20260914T193500Z-d211d16c",
+      "status": "failed",
+      "evidence": "focused_test",
+      "exit_code": 5,
+      "duration_ms": 474538,
+      "tool_versions": {
+        "bun": "1.3.5",
+        "byond": "516.1687",
+        "byond_resolver": "standard_path"
+      },
+      "tests": {
+        "recorded": 1,
+        "passed": 0,
+        "failed": 1,
+        "skipped": 0
+      },
+      "runtime_signatures": [],
+      "cleanup": {
+        "passed": true,
+        "leftovers": [],
+        "retained": []
+      },
+      "failures": [
+        {
+          "code": "unit_test_failed",
+          "stage": "test",
+          "message": "unit_test_failed: /datum/unit_test/dogmos_runtime_scheduling/mc_wait"
+        }
+      ],
+      "scope": "Invalid first regression fixture: MC had no budget; not a behavioral RED",
+      "summary": {
+        "path": "target/meridian-artifact-policy/data/rift-runs/20260914T193500Z-d211d16c/summary.json",
+        "sha256": "9ba36333a1e485af877e41007821c15321c038eb080997a8c7460e28445f1b65",
+        "bytes": 15922
+      },
+      "compile_artifacts": [
+        {
+          "path": "artifacts/compile/tgstation.dmb",
+          "size": 68465513,
+          "sha256": "a8d3997a32f005e6092ffbabc911cb01d893a1859269c8cfec37ed589ee3f12d",
+          "stage": "compile",
+          "freshness": "new"
+        },
+        {
+          "path": "artifacts/compile/tgstation.rsc",
+          "size": 233020282,
+          "sha256": "cb5902053500110fa40167d867c23c97995982190562ac6511fa8124499fd256",
+          "stage": "compile",
+          "freshness": "new"
+        }
+      ],
+      "test_results": {
+        "path": "target/meridian-artifact-policy/data/rift-runs/20260914T193500Z-d211d16c/artifacts/data/unit_tests.json",
+        "sha256": "f9a6b045c4eb120937fbb9b73e55268dc14d865f6142e8ea5fc1325b7ce82ad0",
+        "bytes": 358
+      },
+      "scheduling_results": {
+        "/datum/unit_test/dogmos_runtime_scheduling/mc_wait": {
+          "status": 1,
+          "message": "\tFAILURE #1: Pending job spun in the MC queue: atmos=0, other subsystem=0, queue result=1; expected one visit each. at modular_aphelion/modules/dogmos/code/service_backend_test.dm:5354",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling/mc_wait",
+          "runtimes": 0,
+          "duration": 0.6875
+        }
+      },
+      "failed_tests": {
+        "/datum/unit_test/dogmos_runtime_scheduling/mc_wait": {
+          "status": 1,
+          "message": "\tFAILURE #1: Pending job spun in the MC queue: atmos=0, other subsystem=0, queue result=1; expected one visit each. at modular_aphelion/modules/dogmos/code/service_backend_test.dm:5354",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling/mc_wait",
+          "runtimes": 0,
+          "duration": 0.6875
+        }
+      }
+    },
+    {
+      "run_id": "20260914T194503Z-e9f6c40e",
+      "status": "failed",
+      "evidence": "focused_test",
+      "exit_code": 5,
+      "duration_ms": 477719,
+      "tool_versions": {
+        "bun": "1.3.5",
+        "byond": "516.1687",
+        "byond_resolver": "standard_path"
+      },
+      "tests": {
+        "recorded": 1,
+        "passed": 0,
+        "failed": 1,
+        "skipped": 0
+      },
+      "runtime_signatures": [],
+      "cleanup": {
+        "passed": true,
+        "leftovers": [],
+        "retained": []
+      },
+      "failures": [
+        {
+          "code": "unit_test_failed",
+          "stage": "test",
+          "message": "unit_test_failed: /datum/unit_test/dogmos_runtime_scheduling/mc_wait"
+        }
+      ],
+      "scope": "Behavioral RED: four same-tick pending-job resumes instead of one",
+      "summary": {
+        "path": "target/meridian-artifact-policy/data/rift-runs/20260914T194503Z-e9f6c40e/summary.json",
+        "sha256": "51f55462244a1690595d248e55844b70c216b59d0f53e6bd6000de9331a9be41",
+        "bytes": 15910
+      },
+      "compile_artifacts": [
+        {
+          "path": "artifacts/compile/tgstation.dmb",
+          "size": 68465785,
+          "sha256": "c6d97b190ced51445c3dfa87f4ae0c476e07539120aceb0fcfd0679696296fc2",
+          "stage": "compile",
+          "freshness": "new"
+        },
+        {
+          "path": "artifacts/compile/tgstation.rsc",
+          "size": 233020282,
+          "sha256": "8f9308f30692b4bc4920c7cc9c2e748d1764af7370c1477172d61ae08dd25df9",
+          "stage": "compile",
+          "freshness": "new"
+        }
+      ],
+      "test_results": {
+        "path": "target/meridian-artifact-policy/data/rift-runs/20260914T194503Z-e9f6c40e/artifacts/data/unit_tests.json",
+        "sha256": "2c9c2fc437e4f4cbf145e058e65c5d40bd10963a6e466b6c4183a2aada21255f",
+        "bytes": 358
+      },
+      "scheduling_results": {
+        "/datum/unit_test/dogmos_runtime_scheduling/mc_wait": {
+          "status": 1,
+          "message": "\tFAILURE #1: Pending job spun in the MC queue: atmos=4, other subsystem=1, queue result=1; expected one visit each. at modular_aphelion/modules/dogmos/code/service_backend_test.dm:5360",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling/mc_wait",
+          "runtimes": 0,
+          "duration": 0.3125
+        }
+      },
+      "failed_tests": {
+        "/datum/unit_test/dogmos_runtime_scheduling/mc_wait": {
+          "status": 1,
+          "message": "\tFAILURE #1: Pending job spun in the MC queue: atmos=4, other subsystem=1, queue result=1; expected one visit each. at modular_aphelion/modules/dogmos/code/service_backend_test.dm:5360",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling/mc_wait",
+          "runtimes": 0,
+          "duration": 0.3125
+        }
+      }
+    },
+    {
+      "run_id": "20260914T195509Z-9f0d9c9a",
+      "status": "failed",
+      "evidence": "focused_test",
+      "exit_code": 5,
+      "duration_ms": 490637,
+      "tool_versions": {
+        "bun": "1.3.5",
+        "byond": "516.1687",
+        "byond_resolver": "standard_path"
+      },
+      "tests": {
+        "recorded": 5,
+        "passed": 4,
+        "failed": 1,
+        "skipped": 0
+      },
+      "runtime_signatures": [],
+      "cleanup": {
+        "passed": true,
+        "leftovers": [],
+        "retained": []
+      },
+      "failures": [
+        {
+          "code": "unit_test_failed",
+          "stage": "test",
+          "message": "unit_test_failed: /datum/unit_test/dogmos_runtime_scheduling/native_cache"
+        }
+      ],
+      "scope": "Four scheduling/receipt tests passed; async cache fixture restoration failed on a closed turf",
+      "summary": {
+        "path": "target/meridian-artifact-policy/data/rift-runs/20260914T195509Z-9f0d9c9a/summary.json",
+        "sha256": "c1b5a657e3d20f3f96a342f7e3c211c12dcfcce99b8b6c013a4af0a0e4ca0ddd",
+        "bytes": 15921
+      },
+      "compile_artifacts": [
+        {
+          "path": "artifacts/compile/tgstation.dmb",
+          "size": 68468468,
+          "sha256": "e15c3c39bc08bbe6836c6b1158ac240bb7a60cda2dcd58efeaf28684576e0bc3",
+          "stage": "compile",
+          "freshness": "new"
+        },
+        {
+          "path": "artifacts/compile/tgstation.rsc",
+          "size": 233020282,
+          "sha256": "7f1859cf4ea8ab5e32aed38f04f04cff1299339e44e7e5a91f3a00cd031d567e",
+          "stage": "compile",
+          "freshness": "new"
+        }
+      ],
+      "test_results": {
+        "path": "target/meridian-artifact-policy/data/rift-runs/20260914T195509Z-9f0d9c9a/artifacts/data/unit_tests.json",
+        "sha256": "1b78f87cd39265ce562618eb6b502eeda42b4a12ebb0568c6b1c2e42d643305e",
+        "bytes": 1084
+      },
+      "scheduling_results": {
+        "/datum/unit_test/dogmos_runtime_scheduling": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling",
+          "runtimes": 0,
+          "duration": 12.375
+        },
+        "/datum/unit_test/dogmos_runtime_scheduling/mc_wait": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling/mc_wait",
+          "runtimes": 0,
+          "duration": 0.3125
+        },
+        "/datum/unit_test/dogmos_runtime_scheduling/mc_wait/background": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling/mc_wait/background",
+          "runtimes": 0,
+          "duration": 0.3125
+        },
+        "/datum/unit_test/dogmos_runtime_scheduling/receipts": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling/receipts",
+          "runtimes": 0,
+          "duration": 0.375
+        },
+        "/datum/unit_test/dogmos_runtime_scheduling/native_cache": {
+          "status": 1,
+          "message": "\tFAILURE #1:  Native cache cleanup raised undefined variable /turf/closed/indestructible/hotelwall/var/air. Native job cleanup could not prove a safe restored frontier. at code/modules/unit_tests/unit_test.dm:175",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling/native_cache",
+          "runtimes": 0,
+          "duration": 11.8125
+        }
+      },
+      "failed_tests": {
+        "/datum/unit_test/dogmos_runtime_scheduling/native_cache": {
+          "status": 1,
+          "message": "\tFAILURE #1:  Native cache cleanup raised undefined variable /turf/closed/indestructible/hotelwall/var/air. Native job cleanup could not prove a safe restored frontier. at code/modules/unit_tests/unit_test.dm:175",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling/native_cache",
+          "runtimes": 0,
+          "duration": 11.8125
+        }
+      }
+    },
+    {
+      "run_id": "20260914T200543Z-b4d1339c",
+      "status": "failed",
+      "evidence": "focused_test",
+      "exit_code": 4,
+      "duration_ms": 147311,
+      "tool_versions": {
+        "bun": "1.3.5",
+        "byond": "516.1687",
+        "byond_resolver": "standard_path"
+      },
+      "tests": null,
+      "runtime_signatures": [],
+      "cleanup": {
+        "passed": true,
+        "leftovers": [],
+        "retained": []
+      },
+      "failures": [
+        {
+          "code": "compile_failed",
+          "stage": "compile",
+          "message": "compile_process_failed: natural 255"
+        }
+      ],
+      "scope": "New fixture used an unavailable test macro; compile failure, corrected to direct Fail calls",
+      "summary": {
+        "path": "target/meridian-artifact-policy/data/rift-runs/20260914T200543Z-b4d1339c/summary.json",
+        "sha256": "c129c1af3a32c5843c6a84563d18a15e98fb793519fec904d5818f8f27a97f76",
+        "bytes": 2660
+      },
+      "compile_artifacts": []
+    },
+    {
+      "run_id": "20260914T200919Z-8037c2b3",
+      "status": "passed",
+      "evidence": "full_test",
+      "exit_code": 0,
+      "duration_ms": 1350075,
+      "tool_versions": {
+        "bun": "1.3.5",
+        "byond": "516.1687",
+        "byond_resolver": "standard_path"
+      },
+      "tests": {
+        "recorded": 673,
+        "passed": 673,
+        "failed": 0,
+        "skipped": 0
+      },
+      "runtime_signatures": [],
+      "cleanup": {
+        "passed": true,
+        "leftovers": [],
+        "retained": []
+      },
+      "failures": [],
+      "scope": "Full DM suite on corrected source, default asynchronous mode disabled",
+      "summary": {
+        "path": "target/meridian-artifact-policy/data/rift-runs/20260914T200919Z-8037c2b3/summary.json",
+        "sha256": "d6570b8e98d328d01a4f926f7017eaf3d1de588ff32cd3a4b1010694989490ac",
+        "bytes": 56353
+      },
+      "compile_artifacts": [
+        {
+          "path": "artifacts/compile/tgstation.dmb",
+          "size": 68470546,
+          "sha256": "53616ef234b5047bc5d32b739ece3827f7d1d0d0d761437340592144f43bd74d",
+          "stage": "compile",
+          "freshness": "new"
+        },
+        {
+          "path": "artifacts/compile/tgstation.rsc",
+          "size": 233020282,
+          "sha256": "070eb5c9203809eadeb7f5375c5a258a979ce07c9979bad21e8a6efb15daf506",
+          "stage": "compile",
+          "freshness": "new"
+        }
+      ],
+      "test_results": {
+        "path": "target/meridian-artifact-policy/data/rift-runs/20260914T200919Z-8037c2b3/artifacts/data/unit_tests.json",
+        "sha256": "4f78c6ab77d3fb04c61c7020c79c1cba775be9649c83028e373f728c8d4fd4f7",
+        "bytes": 100247
+      },
+      "scheduling_results": {
+        "/datum/unit_test/dogmos_runtime_scheduling": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling",
+          "runtimes": 0,
+          "duration": 2.1875
+        },
+        "/datum/unit_test/dogmos_runtime_scheduling/mc_wait": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling/mc_wait",
+          "runtimes": 0,
+          "duration": 0.3125
+        },
+        "/datum/unit_test/dogmos_runtime_scheduling/mc_wait/background": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling/mc_wait/background",
+          "runtimes": 0,
+          "duration": 0.3125
+        },
+        "/datum/unit_test/dogmos_runtime_scheduling/receipts": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling/receipts",
+          "runtimes": 0,
+          "duration": 0.3125
+        },
+        "/datum/unit_test/dogmos_runtime_scheduling/native_cache": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling/native_cache",
+          "runtimes": 0,
+          "duration": 1.3125
+        },
+        "/datum/unit_test/dogmos_runtime_scheduling/fixture_frontier": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling/fixture_frontier",
+          "runtimes": 0,
+          "duration": 0.25
+        },
+        "/datum/unit_test/dogmos_runtime_scheduling/failures": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling/failures",
+          "runtimes": 0,
+          "duration": 0.1875
+        },
+        "/datum/unit_test/dogmos_runtime_scheduling/recovery_phases": {
+          "status": 0,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling/recovery_phases",
+          "runtimes": 0,
+          "duration": 0.375
+        }
+      },
+      "failed_tests": {}
+    },
+    {
+      "run_id": "20260914T203236Z-e60d915f",
+      "status": "passed",
+      "evidence": "focused_test",
+      "exit_code": 0,
+      "duration_ms": 638250,
+      "tool_versions": {
+        "bun": "1.3.5",
+        "byond": "516.1687",
+        "byond_resolver": "standard_path"
+      },
+      "tests": {
+        "recorded": 1,
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      },
+      "runtime_signatures": [],
+      "cleanup": {
+        "passed": true,
+        "leftovers": [],
+        "retained": []
+      },
+      "failures": [],
+      "scope": "Separate opt-in asynchronous real-map progress observation with BYOND procedure profiling",
+      "summary": {
+        "path": "target/meridian-artifact-policy/data/rift-runs/20260914T203236Z-e60d915f/summary.json",
+        "sha256": "5c26e75d9ac753a82eb4ed022784b8b288fb1bf716162943cc934f31c56751db",
+        "bytes": 18685
+      },
+      "compile_artifacts": [
+        {
+          "path": "artifacts/compile/tgstation.dmb",
+          "size": 68470564,
+          "sha256": "ff527a9713119c4729942c5acfe7bc713748da1a466bd068131aec4a40d57028",
+          "stage": "compile",
+          "freshness": "new"
+        },
+        {
+          "path": "artifacts/compile/tgstation.rsc",
+          "size": 233020282,
+          "sha256": "715aa0f6e7b409bf0fab359a74370938afe7d69487ff318f631321d49970398a",
+          "stage": "compile",
+          "freshness": "new"
+        }
+      ],
+      "test_results": {
+        "path": "target/meridian-artifact-policy/data/rift-runs/20260914T203236Z-e60d915f/artifacts/data/unit_tests.json",
+        "sha256": "beaa5530471fce000152d99a2e1bedc3654251582aacc35b0d973bf7c39230b1",
+        "bytes": 184
+      },
+      "scheduling_results": {},
+      "failed_tests": {}
+    }
+  ],
+  "changes_committed": false,
+  "live_deployment_changed": false,
+  "matched_performance_accepted": false,
+  "interactive_fire_behavior_accepted": false
+}

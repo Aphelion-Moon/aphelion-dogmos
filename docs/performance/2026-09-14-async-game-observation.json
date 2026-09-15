@@ -1,0 +1,82 @@
+{
+  "cleanup": {
+    "leftovers": [],
+    "passed": true,
+    "retained": [
+      "workspace"
+    ]
+  },
+  "criteria": {
+    "async_selected_during_gameplay": true,
+    "clean_runtime_gate": true,
+    "multiple_complete_atmosphere_cycles": false,
+    "native_jobs_complete": true,
+    "owned_cleanup": true,
+    "rift_passed": true,
+    "service_ready_during_gameplay": true,
+    "three_wall_minutes_complete": true
+  },
+  "cumulative_counter_observations": {
+    "cancelled_jobs": {
+      "delta": 0,
+      "first": 0,
+      "last": 0
+    },
+    "commit_calls": {
+      "delta": 953,
+      "first": 0,
+      "last": 953
+    },
+    "completed_jobs": {
+      "delta": 5,
+      "first": 0,
+      "last": 5
+    },
+    "prepare_calls": {
+      "delta": 1881,
+      "first": 0,
+      "last": 1881
+    },
+    "publication_retries": {
+      "delta": 0,
+      "first": 0,
+      "last": 0
+    }
+  },
+  "first_air_cycles": 1,
+  "first_shift_seconds": 0,
+  "gameplay_samples": 102,
+  "largest_observed_active_job_age_ms": 58554.0691,
+  "last_air_cycles": 1,
+  "last_shift_seconds": 180.113,
+  "limitations": [
+    "No matched control",
+    "No injected five-phase scenario",
+    "No complete per-call durations or frame distributions",
+    "No populated main-server acceptance",
+    "Observer adds one native telemetry RPC per sample"
+  ],
+  "passed": false,
+  "performance_accepted": false,
+  "raw_observations": {
+    "bytes": 183679,
+    "path": "target/meridian-artifact-policy/data/rift-runs/20260914T153103Z-12513f8b/artifacts/data/logs/rift/dogmos-performance.jsonl",
+    "sha256": "95f4eaae68f7f0ba487dc2ff833f5c5dcf7f9733bf4a9631b37684793880ae64"
+  },
+  "run_id": "20260914T153103Z-12513f8b",
+  "runtime_signatures": [],
+  "samples": 129,
+  "schema_version": 1,
+  "scope": "Single busy-host real-map functional progress/liveness observation, not a matched performance workload",
+  "summary": {
+    "bytes": 17738,
+    "path": "target/meridian-artifact-policy/data/rift-runs/20260914T153103Z-12513f8b/summary.json",
+    "sha256": "506c49ad8f54712e0b97420947c73ce94d7bbb2a463acb0d29fbcb3b55e62389"
+  },
+  "tests": {
+    "failed": 0,
+    "passed": 2,
+    "recorded": 2,
+    "skipped": 0
+  }
+}

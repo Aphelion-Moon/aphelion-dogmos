@@ -1,0 +1,13 @@
+# Local artifact qualification
+
+The runtime plan requires a matching native pair in the isolated game checkout while the user requires changes to remain uncommitted. Existing release generation and synchronization require a clean commit. Add an explicit local qualification path before installing the R5 pair; retain the clean-source default for releases.
+
+- [x] Capture a canonical inventory of current repository files, including untracked source and raw-byte hashes. Reject links and noncanonical paths. Record the base Git revision. Verify the complete inventory again after builds and before synchronization so changed, added or removed inputs reject the bundle.
+- [x] Bind the local snapshot digest into the shim/service feature fingerprint. Generate a manifest marked `local-source-snapshot-v1` with the snapshot as a hashed bundle member. This identity represents uncommitted source; it is not a new Git revision.
+- [x] Default release generation/verification and synchronization reject local bundles. Explicit local generation and `-AllowLocalQualification` synchronization validate the snapshot and the complete existing four-artifact contract. Installed-contract verification continues to check integrity for local test runners and exposes the qualification marker in generated defines.
+- [x] Test default rejection, wrong snapshot/identity, changed/added/deleted source, links/path traversal, atomic install, idempotent verification and unchanged production behavior. Do not install until all checks pass.
+- [x] Build the pinned Windows/Linux shim/service pairs, archive the source inventory and rollback artifacts, verify exact source after compilation, then synchronize through the maintained installer. Continue R5 scheduling tests.
+
+The third local builder run completed all four artifacts, symbols, source recheck, manifest generation and bundle verification. The first two attempts are retained: one stopped at WSL path conversion, the other at manifest argument assembly; neither installed artifacts. The final pair passed three explicit i686-client/x64-service process tests before synchronization into G. All 54 native Python tests completed (one Windows symlink skip, covered by the four Linux snapshot tests); seven game contract tests passed. Source is archived in `target/r5-local-qualification-03/source.zip`, SHA-256 `071e4eed7fef23a8160118ab09680dabc3433072a9f43e1545c45af787b4b050`. Later documentation changes are separate from that exact build snapshot.
+
+No commits, release publication or production deployment are part of this path. Local qualification is functional evidence only; controlled server playtests remain separate.

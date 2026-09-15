@@ -1,4 +1,7 @@
+mod job_observations;
+pub mod jobs;
 mod state;
+mod transport;
 
 use dogmos_protocol::{
 	decode_adjacency_batch, decode_adjust_multiple_request,
@@ -16,9 +19,9 @@ use dogmos_protocol::{
 	MixtureStateUploadAppendResponse, MixtureStateUploadBeginRequest,
 	MixtureStateUploadBeginResponse, MixtureStateUploadCommitRequest,
 	MixtureStateUploadCommitResponse, OperationKind, ProtocolHeader, ServiceErrorCode,
-	SimulationStageRequest, SimulationStageResponse, TurfHeatSnapshotRequest, FLAG_ERROR,
-	HANDSHAKE_PAYLOAD_LEN, MAX_CONTROL_PAYLOAD, MAX_MIXTURE_SNAPSHOT_BATCH,
-	MAX_PIPENET_RECONCILE_MIXTURES,
+	SimulationStageRequest, SimulationStageResponse, StageJobCancel, StageJobCommit, StageJobPoll,
+	StageJobSubmit, TurfHeatSnapshotRequest, FLAG_ERROR, HANDSHAKE_PAYLOAD_LEN,
+	MAX_CONTROL_PAYLOAD, MAX_MIXTURE_SNAPSHOT_BATCH, MAX_PIPENET_RECONCILE_MIXTURES,
 };
 use interprocess::local_socket::{
 	prelude::*, GenericNamespaced, Listener, ListenerNonblockingMode, ListenerOptions, Stream,
@@ -50,9 +53,9 @@ impl Drop for AuthenticatedSessionGuard<'_> {
 }
 
 impl RequestDeadline {
-	fn from_budget_ns(budget_ns: u64) -> Self {
+	fn from_received(budget_ns: u64, received_at: Instant) -> Self {
 		Self {
-			received_at: Instant::now(),
+			received_at,
 			budget: (budget_ns != 0).then(|| Duration::from_nanos(budget_ns)),
 		}
 	}
@@ -60,6 +63,37 @@ impl RequestDeadline {
 	fn is_expired(self) -> bool {
 		self.budget
 			.is_some_and(|budget| self.received_at.elapsed() >= budget)
+	}
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum ActorAction {
+	Request,
+	Quantum,
+	Wait,
+}
+
+#[derive(Default)]
+struct ActorScheduler {
+	commands: u8,
+}
+
+impl ActorScheduler {
+	fn next(&mut self, runnable: bool, request_ready: bool) -> ActorAction {
+		if runnable && (!request_ready || self.commands >= 8) {
+			self.commands = 0;
+			ActorAction::Quantum
+		} else if request_ready {
+			self.commands = if runnable {
+				self.commands.saturating_add(1)
+			} else {
+				0
+			};
+			ActorAction::Request
+		} else {
+			self.commands = 0;
+			ActorAction::Wait
+		}
 	}
 }
 
@@ -229,10 +263,26 @@ fn handle_primary(
 		expected.capacities.max_reaction_transactions,
 		expected.world_generation,
 	);
+	let mut stream = transport::Transport::new(stream)?;
+	let mut scheduler = ActorScheduler::default();
+	let mut queued_request = None;
 
 	loop {
-		let (request, payload_len) = read_frame_into(&mut stream, &mut payload)?;
-		let deadline = RequestDeadline::from_budget_ns(request.deadline_ns);
+		stream.finish(false)?;
+		let incoming = loop {
+			if queued_request.is_none() {
+				queued_request = stream.try_receive()?;
+			}
+			match scheduler.next(service_state.stage_job_runnable(), queued_request.is_some()) {
+				ActorAction::Request => break queued_request.take().unwrap(),
+				ActorAction::Quantum => {
+					service_state.run_stage_job_quantum(|| shutdown.load(Ordering::Acquire))?;
+				}
+				ActorAction::Wait => break stream.receive()?,
+			}
+		};
+		let (request, payload_len, received_at) = stream.install(incoming, &mut payload)?;
+		let deadline = RequestDeadline::from_received(request.deadline_ns, received_at);
 		if request.world_generation != expected.world_generation
 			|| request.world_nonce != expected.world_nonce
 		{
@@ -883,6 +933,51 @@ fn handle_primary(
 				};
 				write_response(stream.get_mut(), request, &operation_count.to_le_bytes())?;
 			}
+			OperationKind::StageJobSubmit
+			| OperationKind::StageJobPoll
+			| OperationKind::StageJobCommit
+			| OperationKind::StageJobCancel => {
+				let result = match operation {
+					OperationKind::StageJobSubmit => {
+						StageJobSubmit::decode(&payload[..payload_len]).map(|request| {
+							if request.work_limit > expected.capacities.max_stage_work_items {
+								Err(state::StateError::InvalidRequest(
+									"stage job exceeds negotiated work capacity".into(),
+								))
+							} else {
+								service_state.submit_stage_job(request)
+							}
+						})
+					}
+					OperationKind::StageJobPoll => StageJobPoll::decode(&payload[..payload_len])
+						.map(|request| service_state.poll_stage_job(request.job)),
+					OperationKind::StageJobCommit => {
+						StageJobCommit::decode(&payload[..payload_len])
+							.map(|request| service_state.commit_stage_job(request))
+					}
+					OperationKind::StageJobCancel => {
+						StageJobCancel::decode(&payload[..payload_len])
+							.map(|request| service_state.cancel_stage_job(request.job))
+					}
+					_ => unreachable!(),
+				};
+				match result {
+					Ok(Ok(response)) => {
+						write_response(stream.get_mut(), request, &response.encode()?)?
+					}
+					Ok(Err(error)) => {
+						write_state_error_response(stream.get_mut(), request, &error)?
+					}
+					Err(_) => {
+						service_state.record_protocol_error();
+						write_error_response(
+							stream.get_mut(),
+							request,
+							ServiceErrorCode::InvalidRequest,
+						)?;
+					}
+				}
+			}
 			OperationKind::SimulationStage => {
 				let Ok(stage_request) = SimulationStageRequest::decode(&payload[..payload_len])
 				else {
@@ -1089,6 +1184,8 @@ fn handle_primary(
 			}
 			OperationKind::Shutdown => {
 				write_frame(stream.get_mut(), request.response(), &[])?;
+				stream.finish(true)?;
+				stream.close(Duration::from_secs(1))?;
 				shutdown.store(true, Ordering::Release);
 				return Ok(());
 			}
@@ -1116,6 +1213,7 @@ fn service_error_code(error: &state::StateError) -> ServiceErrorCode {
 		state::StateError::FrontierConflict => ServiceErrorCode::FrontierConflict,
 		state::StateError::FrontierIncomplete => ServiceErrorCode::FrontierIncomplete,
 		state::StateError::StageConflict(_) => ServiceErrorCode::StageConflict,
+		state::StateError::StageJobBusy => ServiceErrorCode::Busy,
 		state::StateError::MixtureStateUploadConflict => {
 			ServiceErrorCode::MixtureStateUploadConflict
 		}
@@ -1142,6 +1240,7 @@ fn service_error_code(error: &state::StateError) -> ServiceErrorCode {
 		| state::StateError::InvalidSecondsPerTick
 		| state::StateError::StageNotImplemented(_) => ServiceErrorCode::InvalidRequest,
 		state::StateError::State(_)
+		| state::StateError::StageJobPublicationFailed(_)
 		| state::StateError::CallbackOutputTooSmall
 		| state::StateError::CallbackSequenceExhausted
 		| state::StateError::ReactionTransactionIdExhausted
@@ -1168,17 +1267,20 @@ fn service_error_diagnostic(
 }
 
 fn write_state_error_response(
-	stream: &mut Stream,
+	stream: &mut impl io::Write,
 	request: ProtocolHeader,
 	error: &state::StateError,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
 	let code = service_error_code(error);
 	eprintln!("{}", service_error_diagnostic(request, code, error));
+	if matches!(error, state::StateError::StageJobPublicationFailed(_)) {
+		return Err(error.to_string().into());
+	}
 	write_error_response(stream, request, code)
 }
 
 fn write_response(
-	stream: &mut Stream,
+	stream: &mut impl io::Write,
 	request: ProtocolHeader,
 	payload: &[u8],
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -1204,7 +1306,7 @@ fn read_u64_payload(payload: &[u8]) -> Result<u64, Box<dyn Error + Send + Sync>>
 }
 
 fn write_error_response(
-	stream: &mut Stream,
+	stream: &mut impl io::Write,
 	request: ProtocolHeader,
 	code: ServiceErrorCode,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -1221,6 +1323,29 @@ mod tests {
 	use super::{service_error_code, service_error_diagnostic, RequestSequence};
 	use crate::state::StateError;
 	use dogmos_protocol::{OperationKind, ProtocolHeader, ServiceErrorCode};
+
+	#[test]
+	fn actor_fairness_services_eight_queued_commands_then_grants_preparation() {
+		let mut scheduler = super::ActorScheduler::default();
+		for _ in 0..4 {
+			for _ in 0..8 {
+				assert_eq!(scheduler.next(true, true), super::ActorAction::Request);
+			}
+			assert_eq!(scheduler.next(true, true), super::ActorAction::Quantum);
+		}
+		assert_eq!(scheduler.next(true, false), super::ActorAction::Quantum);
+		assert_eq!(scheduler.next(false, false), super::ActorAction::Wait);
+		assert_eq!(scheduler.next(false, true), super::ActorAction::Request);
+	}
+
+	#[test]
+	fn request_budget_includes_actor_queue_time_and_zero_means_no_budget() {
+		use std::time::{Duration, Instant};
+		let received = Instant::now() - Duration::from_secs(1);
+		assert!(super::RequestDeadline::from_received(1_000_000, received).is_expired());
+		assert!(!super::RequestDeadline::from_received(0, received).is_expired());
+		assert!(!super::RequestDeadline::from_received(10_000_000_000, received).is_expired());
+	}
 
 	#[test]
 	fn service_error_diagnostic_preserves_request_identity_and_native_detail() {

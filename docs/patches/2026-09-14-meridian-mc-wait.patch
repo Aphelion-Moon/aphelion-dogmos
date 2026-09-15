@@ -1,0 +1,231 @@
+--- a/code/controllers/master.dm
++++ b/code/controllers/master.dm
+@@ -876,6 +876,15 @@
+ 				bg_calc = FALSE
+ 
+ 
++			// APHELION EDIT ADDITION START - DOGMOS
++			if (queue_node.resume_after > world.time && (queue_node.state == SS_PAUSED || queue_node.state == SS_PAUSING))
++				// Keep the unfinished run queued, but give later work its share of this pass.
++				current_tick_budget -= queue_node_priority
++				queue_node = queue_node.queue_next
++				continue
++			queue_node.resume_after = 0
++			// APHELION EDIT ADDITION END
++
+ 			tick_remaining = TICK_LIMIT_RUNNING - TICK_USAGE
+ 
+ 			if (queue_node_priority >= 0 && current_tick_budget > 0 && current_tick_budget >= queue_node_priority)
+--- a/code/controllers/subsystem.dm
++++ b/code/controllers/subsystem.dm
+@@ -65,6 +65,11 @@
+ 
+ 	/// Scheduled world.time for next fire()
+ 	var/next_fire = 0
++
++	// APHELION EDIT ADDITION START - DOGMOS
++	/// Earliest world.time to resume a paused run waiting for external work; zero permits ordinary budget reuse.
++	var/resume_after = 0
++	// APHELION EDIT ADDITION END
+ 
+ 	/// Running average of the amount of milliseconds it takes the subsystem to complete a run (including all resumes but not the time spent paused)
+ 	var/cost = 0
+@@ -280,6 +285,13 @@
+ 		if(SS_SLEEPING)
+ 			state = SS_PAUSING
+ 
++// APHELION EDIT ADDITION START - DOGMOS
++/// Keep this run queued without spending another MC allocation until the next game tick.
++/datum/controller/subsystem/proc/pause_until_next_tick()
++	resume_after = world.time + world.tick_lag
++	return pause()
++// APHELION EDIT ADDITION END
++
+ /// Called after the config has been loaded or reloaded.
+ /datum/controller/subsystem/proc/OnConfigLoad()
+ 
+--- a/modular_aphelion/modules/dogmos/code/service_backend.dm
++++ b/modular_aphelion/modules/dogmos/code/service_backend.dm
+@@ -2346,11 +2346,13 @@
+ 		dogmos_job_last_poll_tick = world.time
+ 		if(!dogmos_accept_job_response(dogmos_job_request("submit", request), "submit"))
+ 			return dogmos_fail_closed_stage(stage)
+-		return TRUE
++		return pause_until_next_tick()
+ 	if(dogmos_job.stage != stage || !dogmos_job.id)
+ 		return dogmos_fail_closed_stage(stage)
+ 	if(!dogmos_job.ready_unit)
+-		if(dogmos_job_last_poll_tick == world.time || dogmos_job_budget_ms(remaining_ms, started_tick_usage) <= 0)
++		if(dogmos_job_last_poll_tick == world.time)
++			return pause_until_next_tick()
++		if(dogmos_job_budget_ms(remaining_ms, started_tick_usage) <= 0)
+ 			return dogmos_defer_stage_for_budget()
+ 		dogmos_job_last_poll_tick = world.time
+ 		if(!dogmos_accept_job_response(dogmos_job_request("poll", dogmos_job.id), "poll"))
+@@ -2367,7 +2369,7 @@
+ 		dogmos_pending_stage = null
+ 		dogmos_stage_remaining_estimate = 0
+ 		return FALSE
+-	return TRUE
++	return pause_until_next_tick()
+ 
+ /** Runs bounded continuations until this stage completes or the caller's time budget is spent. */
+ /datum/controller/subsystem/air/proc/dogmos_run_stage(stage, remaining_ms)
+--- a/modular_aphelion/modules/dogmos/code/service_backend_test.dm
++++ b/modular_aphelion/modules/dogmos/code/service_backend_test.dm
+@@ -5305,6 +5305,112 @@
+ 			response[19] = 7
+ 	return response
+ 
++/** A pending native job must leave MC time available without repeated same-tick resumes. */
++/datum/unit_test/dogmos_runtime_scheduling/mc_wait
++	var/test_queue_flags = NONE
++
++/datum/unit_test/dogmos_runtime_scheduling/mc_wait/Run()
++	var/datum/controller/subsystem/air/recovery_test_copy/job_probe/mc_wait/probe = new
++	var/datum/controller/subsystem/air/recovery_test_copy/job_probe/mc_sentinel/sentinel = new
++	var/list/master_fields = list("queue_head", "queue_tail", "queue_priority_count", "queue_priority_count_bg", "current_ticklimit", "skip_ticks", "use_rolling_usage", "last_type_processed")
++	var/list/saved_master = list()
++	var/failure
++	var/original_processing = Master.processing
++	Master.processing = FALSE
++	for(var/attempt in 1 to 20)
++		sleep(world.tick_lag)
++		if(TICK_USAGE < TICK_LIMIT_MC * 0.5)
++			break
++	for(var/field in master_fields)
++		saved_master[field] = Master.vars[field]
++	try
++		Master.queue_head = probe
++		Master.queue_tail = sentinel
++		Master.queue_priority_count = test_queue_flags & SS_BACKGROUND ? 0 : 20
++		Master.queue_priority_count_bg = test_queue_flags & SS_BACKGROUND ? 20 : 0
++		Master.skip_ticks = 0
++		Master.use_rolling_usage = FALSE
++		probe.ss_flags = test_queue_flags
++		sentinel.ss_flags = test_queue_flags
++		probe.queued_priority = 10
++		sentinel.queued_priority = 10
++		probe.state = SS_PAUSED
++		sentinel.state = SS_QUEUED
++		probe.queue_next = sentinel
++		sentinel.queue_prev = probe
++		var/queue_result = Master.RunQueue()
++		if(queue_result != 1 || probe.fire_calls != 1 || sentinel.fire_calls != 1)
++			failure = "Pending job spun in the MC queue: atmos=[probe.fire_calls], other subsystem=[sentinel.fire_calls], queue result=[queue_result]; expected one visit each."
++		else if(probe.times_fired || probe.state != SS_PAUSED || Master.queue_head != probe || Master.queue_tail != probe || Master.queue_priority_count + Master.queue_priority_count_bg != 10)
++			failure = "Waiting for native work completed or removed the unfinished atmosphere cycle."
++		else
++			Master.RunQueue()
++			if(probe.fire_calls != 1 || probe.submit_calls != 1 || probe.poll_calls || probe.commit_calls)
++				failure = "A second MC queue pass resumed or polled the pending job during the same game tick."
++		if(!failure)
++			// Advance the eligibility boundary without leaving the borrowed MC queue installed across a sleep.
++			probe.resume_after = world.time
++			probe.dogmos_job_last_poll_tick = world.time - world.tick_lag
++			Master.RunQueue()
++			if(probe.fire_calls != 2 || probe.poll_calls != 1 || probe.commit_calls || probe.times_fired || probe.state != SS_PAUSED)
++				failure = "An eligible pending job did not poll once and wait again."
++		if(!failure)
++			probe.resume_after = world.time
++			probe.dogmos_job_last_poll_tick = world.time - world.tick_lag
++			Master.RunQueue()
++			if(probe.fire_calls != 3 || probe.poll_calls != 2 || probe.commit_calls != 1 || probe.times_fired != 1 || probe.dogmos_job || Master.queue_head || Master.queue_tail || Master.queue_priority_count || Master.queue_priority_count_bg)
++				failure = "A ready job did not publish once and complete its queued run."
++		if(!failure)
++			// An ordinary budget pause must still reuse time left by other subsystems in the same tick.
++			sentinel.fire_calls = 0
++			sentinel.pause_once = TRUE
++			sentinel.state = SS_QUEUED
++			sentinel.queue_prev = null
++			Master.queue_head = sentinel
++			Master.queue_tail = sentinel
++			Master.queue_priority_count = test_queue_flags & SS_BACKGROUND ? 0 : 10
++			Master.queue_priority_count_bg = test_queue_flags & SS_BACKGROUND ? 10 : 0
++			Master.RunQueue()
++			if(sentinel.fire_calls != 2 || sentinel.times_fired != 2 || Master.queue_head || Master.queue_tail || Master.queue_priority_count || Master.queue_priority_count_bg)
++				failure = "Ordinary budget pauses lost same-tick reuse or completion accounting."
++	catch(var/exception/error)
++		failure = "MC scheduling fixture raised [error.name]."
++	for(var/field in master_fields)
++		Master.vars[field] = saved_master[field]
++	Master.processing = original_processing
++	probe.queue_next = null
++	probe.queue_prev = null
++	sentinel.queue_next = null
++	sentinel.queue_prev = null
++	QDEL_NULL(probe.dogmos_job)
++	qdel(probe)
++	qdel(sentinel)
++	if(failure)
++		return Fail(failure, __FILE__, __LINE__)
++
++/datum/unit_test/dogmos_runtime_scheduling/mc_wait/background
++	test_queue_flags = SS_BACKGROUND
++
++/datum/controller/subsystem/air/recovery_test_copy/job_probe/mc_wait
++	var/fire_calls = 0
++
++/datum/controller/subsystem/air/recovery_test_copy/job_probe/mc_wait/fire(resumed = FALSE)
++	fire_calls++
++	// Bound the failing baseline instead of burning the complete MC allowance.
++	if(fire_calls >= 4)
++		return
++	if(dogmos_run_stage(4, 100))
++		pause()
++
++/datum/controller/subsystem/air/recovery_test_copy/job_probe/mc_sentinel
++	var/fire_calls = 0
++	var/pause_once = FALSE
++
++/datum/controller/subsystem/air/recovery_test_copy/job_probe/mc_sentinel/fire(resumed = FALSE)
++	fire_calls++
++	if(pause_once && fire_calls == 1)
++		pause()
++
+ /** Exact receipts cannot publish during Poll, regress counts, or invalidate twice. */
+ /datum/unit_test/dogmos_runtime_scheduling/receipts/Run()
+ 	var/datum/controller/subsystem/air/recovery_test_copy/job_probe/probe = new
+@@ -5476,7 +5582,9 @@
+ 			native_clear = TRUE
+ 		if(native_clear && SSdogmos.service_ready && dogmos_drain_fixture_callbacks())
+ 			SSair.dogmos_pending_frontier_epoch = null
+-			SSair.dogmos_replace_active_frontier(original_active)
++			// The detached saved list misses ChangeTurf/removal hooks while this fixture sleeps.
++			// Revalidate it and retain unrelated activations recorded in the borrowed live list.
++			SSair.dogmos_replace_active_frontier(dogmos_restored_fixture_frontier(original_active, room_turfs, SSair.active_turfs))
+ 			restored = dogmos_sync_fixture_frontier()
+ 			SSair.dogmos_pending_frontier_epoch = null
+ 	catch(var/exception/cleanup_error)
+@@ -5509,6 +5617,31 @@
+ 		if(SSair.dogmos_job.ready_unit)
+ 			return TRUE
+ 	return FALSE
++
++/** Reconciles saved fixture membership with turf lifetimes and unrelated live activations. */
++/datum/unit_test/proc/dogmos_restored_fixture_frontier(list/original, list/owned, list/current)
++	var/list/restored = list()
++	for(var/turf/open/member in original)
++		if(member.air)
++			restored |= member
++	for(var/turf/open/member in current)
++		if(member.air && !(member in owned))
++			restored |= member
++	return restored
++
++/datum/unit_test/dogmos_runtime_scheduling/fixture_frontier/Run()
++	var/turf/open/original = run_loc_floor_bottom_left
++	var/turf/open/activated = get_step(original, EAST)
++	var/turf/open/owned = get_step(activated, EAST)
++	var/turf/closed/closed
++	for(var/turf/closed/candidate in Z_TURFS(original.z))
++		closed = candidate
++		break
++	if(!closed)
++		return Fail("The fixture needs a closed turf to represent a saved reference retargeted by ChangeTurf.", __FILE__, __LINE__)
++	var/list/restored = dogmos_restored_fixture_frontier(list(original, closed, original), list(owned), list(activated, owned, closed))
++	if(length(restored) != 2 || restored[1] != original || restored[2] != activated)
++		return Fail("Fixture restoration retained a closed/duplicate/owned-only turf or lost an unrelated activation.", __FILE__, __LINE__)
+ 
+ /** Malformed control replies close admission without a cache publication or fallback. */
+ /datum/unit_test/dogmos_runtime_scheduling/failures/Run()

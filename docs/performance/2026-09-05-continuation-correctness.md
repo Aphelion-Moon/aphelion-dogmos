@@ -64,5 +64,7 @@ At this checkpoint, paired Windows/Linux release builds, generated-binding/manif
 cross-process gates, updated-pair DreamDaemon execution, full DM suite, and matched live performance
 qualification are pending. The game-side recovery, callback scheduling, idle pipeline, and profiling
 fixes are being verified separately against the existing installed pair. They do not qualify this
-native candidate. The release bundle must be generated from an exact clean source commit, and the
-game's protected installed artifact/contract set requires its documented approval before replacement.
+native candidate. The release bundle must be generated from an exact clean source commit. Under the
+current root `AGENTS.md` policy, authorized work includes rebuilding, regenerating and synchronizing
+the complete verified artifact/contract set into a local development or test checkout without a
+separate protected-artifact approval. Publication and live production operations remain separate.

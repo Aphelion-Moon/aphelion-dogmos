@@ -2278,6 +2278,35 @@ fn connected_component_publication_is_atomic_and_every_yield_can_be_cancelled() 
 }
 
 #[test]
+fn frontier_journal_and_restarted_upload_share_literal_last_add_order() {
+	let [a, b, c, replacement] = [turf(0, 1), turf(1, 1), turf(2, 1), turf(0, 2)];
+	let mut world = DogmosWorld::new(1024 * 1024);
+	register_turfs(&mut world, &[a, b, c]);
+	world.add_frontier(1, &[a, b, c]).unwrap();
+	world.remove_frontier(2, &[b]).unwrap();
+	world.add_frontier(3, &[b]).unwrap();
+	assert_eq!(world.committed_frontier(), &[a, c, b]);
+	world.remove_frontier(4, &[a]).unwrap();
+	register_turfs(&mut world, &[replacement]);
+	world.add_frontier(5, &[replacement]).unwrap();
+	assert_eq!(world.committed_frontier(), &[c, b, replacement]);
+
+	// An abandoned partial upload cannot publish and cannot reuse its begin epoch.
+	world.begin_frontier(6, 3).unwrap();
+	world.append_frontier(6, 0, &[b]).unwrap();
+	assert!(world.begin_frontier(6, 3).is_err());
+	assert_eq!(world.committed_frontier_epoch(), Some(5));
+	assert_eq!(world.committed_frontier(), &[c, b, replacement]);
+	world.begin_frontier(7, 3).unwrap();
+	world.append_frontier(7, 0, &[c, b]).unwrap();
+	world.append_frontier(7, 2, &[replacement]).unwrap();
+	assert_eq!(world.committed_frontier_epoch(), Some(5));
+	world.commit_frontier(7).unwrap();
+	assert_eq!(world.committed_frontier_epoch(), Some(7));
+	assert_eq!(world.committed_frontier(), &[c, b, replacement]);
+}
+
+#[test]
 fn frontier_removal_and_readdition_preserve_order_through_compaction() {
 	let mut world = DogmosWorld::new(1024 * 1024);
 	let handles: Vec<_> = (0..32).map(|slot| turf(slot, 1)).collect();

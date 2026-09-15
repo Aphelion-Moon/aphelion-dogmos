@@ -3,6 +3,8 @@
 mod client;
 mod ffi;
 mod session;
+#[doc(hidden)]
+pub mod stage_jobs;
 
 pub use client::{BoundedDogmosClient, ClientError, DogmosClient};
 use session::{start_service_session, ServiceSession};
@@ -53,7 +55,7 @@ use std::{
 #[cfg(feature = "diagnostic-bindings")]
 use dogmos_protocol::{encode_adjacency_batch, AdjacencyMutation, ServiceErrorCode};
 #[cfg(feature = "diagnostic-bindings")]
-use std::{sync::OnceLock, time::Instant};
+use std::sync::OnceLock;
 
 #[cfg(feature = "diagnostic-bindings")]
 static BENCHMARK_SESSION: Mutex<Option<ServiceSession>> = Mutex::new(None);
@@ -315,7 +317,7 @@ fn dogmos_process_metrics() -> eyre::Result<ByondValue> {
 #[doc(hidden)]
 pub fn decode_production_service_telemetry(response: &[u8]) -> eyre::Result<Vec<f32>> {
 	let telemetry = ServiceTelemetry::decode(response)?;
-	let mut fields = Vec::with_capacity(182);
+	let mut fields = Vec::with_capacity(236);
 	for value in [
 		telemetry.callback_depth,
 		telemetry.callback_capacity,
@@ -366,6 +368,11 @@ pub fn decode_production_service_telemetry(response: &[u8]) -> eyre::Result<Vec<
 	append_u64_words(&mut fields, telemetry.topology_revision);
 	append_u64_words(&mut fields, telemetry.reusable_workset_bytes);
 	append_u64_words(&mut fields, telemetry.packed_topology_bytes);
+	append_u64_words(&mut fields, telemetry.stage_jobs.job);
+	append_u32_words(&mut fields, u32::from(telemetry.stage_jobs.status));
+	for counter in telemetry.stage_jobs.counters() {
+		append_u64_words(&mut fields, counter);
+	}
 	Ok(fields)
 }
 
@@ -2099,6 +2106,57 @@ fn dogmos_simulation_stage(fields: ByondValue) -> eyre::Result<ByondValue> {
 		decode_production_simulation_stage,
 	)?;
 	production_number_list(&fields)
+}
+
+#[auxmacros::bind("/proc/dogmos_stage_job_submit")]
+fn dogmos_stage_job_submit(fields: ByondValue) -> eyre::Result<ByondValue> {
+	production_stage_job_control(
+		OperationKind::StageJobSubmit,
+		fields,
+		stage_jobs::encode_submit,
+	)
+}
+
+#[auxmacros::bind("/proc/dogmos_stage_job_poll")]
+fn dogmos_stage_job_poll(fields: ByondValue) -> eyre::Result<ByondValue> {
+	production_stage_job_control(OperationKind::StageJobPoll, fields, stage_jobs::encode_poll)
+}
+
+#[auxmacros::bind("/proc/dogmos_stage_job_commit")]
+fn dogmos_stage_job_commit(fields: ByondValue) -> eyre::Result<ByondValue> {
+	production_stage_job_control(
+		OperationKind::StageJobCommit,
+		fields,
+		stage_jobs::encode_commit,
+	)
+}
+
+#[auxmacros::bind("/proc/dogmos_stage_job_cancel")]
+fn dogmos_stage_job_cancel(fields: ByondValue) -> eyre::Result<ByondValue> {
+	production_stage_job_control(
+		OperationKind::StageJobCancel,
+		fields,
+		stage_jobs::encode_cancel,
+	)
+}
+
+fn production_stage_job_control<const FIELDS: usize, const BYTES: usize>(
+	operation: OperationKind,
+	fields: ByondValue,
+	encode: impl FnOnce([f32; FIELDS]) -> eyre::Result<[u8; BYTES]>,
+) -> eyre::Result<ByondValue> {
+	let fields = bounded_number_list(fields, "stage job control", FIELDS)?;
+	let fields = fields
+		.try_into()
+		.map_err(|_| eyre::eyre!("{operation:?} requires exactly {FIELDS} numeric fields"))?;
+	let request = encode(fields)?;
+	let response = production_request_with_response(
+		operation,
+		&request,
+		dogmos_protocol::STAGE_JOB_RESPONSE_LEN,
+		|bytes| stage_jobs::decode_response_to(operation, &request, bytes),
+	)?;
+	production_number_list(&response)
 }
 
 #[doc(hidden)]
@@ -3960,9 +4018,16 @@ mod tests {
 			topology_revision: 47,
 			reusable_workset_bytes: 48,
 			packed_topology_bytes: 49,
+			stage_jobs: dogmos_protocol::StageJobTelemetry {
+				job: 0x0001_0002_0003_0004,
+				status: 3,
+				age_nanoseconds: 0x0005_0006_0007_0008,
+				publication_retries: u64::MAX,
+				..Default::default()
+			},
 		};
 		let fields = decode_production_service_telemetry(&telemetry.encode()).unwrap();
-		assert_eq!(fields.len(), 182);
+		assert_eq!(fields.len(), 236);
 		assert_eq!(&fields[..2], &[0xba98 as f32, 0xfedc as f32]);
 		assert_eq!(
 			&fields[12..16],
@@ -3974,6 +4039,10 @@ mod tests {
 		assert_eq!(&fields[142..146], &[34_952.0, 30_583.0, 26_214.0, 21_845.0]);
 		assert_eq!(&fields[146..148], &[38.0, 0.0]);
 		assert_eq!(&fields[178..182], &[49.0, 0.0, 0.0, 0.0]);
+		assert_eq!(&fields[182..186], &[4.0, 3.0, 2.0, 1.0]);
+		assert_eq!(&fields[186..188], &[3.0, 0.0]);
+		assert_eq!(&fields[188..192], &[8.0, 7.0, 6.0, 5.0]);
+		assert_eq!(&fields[224..228], &[65_535.0; 4]);
 	}
 
 	#[test]

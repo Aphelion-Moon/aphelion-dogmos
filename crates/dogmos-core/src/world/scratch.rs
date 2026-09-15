@@ -3,17 +3,14 @@ use super::*;
 impl StageDiffusionState {
 	pub(super) fn clear(&mut self) {
 		self.publication = Publication::new();
-		self.publication_index = 0;
 		self.turfs.clear();
 		self.mixtures.clear();
 		self.index_by_turf.clear();
 		self.seen_mixtures.clear();
 		self.input.clear();
-		self.output.clear();
 		self.input_temperatures.clear();
 		self.minimum_heat_capacities.clear();
 		self.input_energy.clear();
-		self.output_energy.clear();
 		self.next_node = 0;
 	}
 }
@@ -26,10 +23,8 @@ impl StageHeatState {
 		self.publication_index = 0;
 		self.nodes.clear();
 		self.index_by_slot.clear();
-		self.temperatures.clear();
-		self.conductivities.clear();
-		self.heat_capacities.clear();
 		self.staged_mixtures.clear();
+		self.next_staged_mixture = 0;
 		self.linked_mixtures.clear();
 		self.staged_events.clear();
 		self.next_active_seed = 0;
@@ -37,7 +32,6 @@ impl StageHeatState {
 		self.next_topology_node = 0;
 		self.next_topology_neighbor = 0;
 		self.edges.clear();
-		self.row_sums.clear();
 		self.conduction_substeps = None;
 		self.conduction_substep = 0;
 		self.conduction_edge = 0;
@@ -50,6 +44,8 @@ impl StageReactionState {
 		Self {
 			publication: Publication::new(),
 			publication_index: 0,
+			next_continuation: 0,
+			continuation_limit: 0,
 			targets: Vec::new(),
 			active_continuations: SlotSet::new(),
 			seen_mixtures: SlotSet::new(),
@@ -61,6 +57,8 @@ impl StageReactionState {
 	pub(super) fn clear(&mut self) {
 		self.publication = Publication::new();
 		self.publication_index = 0;
+		self.next_continuation = 0;
+		self.continuation_limit = 0;
 		self.targets.clear();
 		self.active_continuations.clear();
 		self.seen_mixtures.clear();
@@ -83,7 +81,12 @@ impl StageComponentState {
 		self.next_neighbor = 0;
 		self.component_ready = false;
 		self.computed = false;
-		self.computation = None;
+		if let Some(computation) = self.computation.take() {
+			let (kernel, transaction, events, _) = computation.cancel();
+			self.component_kernel = Some(kernel);
+			self.transaction = transaction;
+			self.staged_events = events;
+		}
 		if let Some(kernel) = &mut self.component_kernel {
 			kernel.clear();
 		}

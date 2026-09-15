@@ -25,7 +25,7 @@ impl Publication {
 	fn visible(&self) -> bool {
 		self.0.load(Ordering::Acquire) == PUBLISHED
 	}
-	fn invalidate(&self) {
+	pub(super) fn invalidate(&self) {
 		let _ = self
 			.0
 			.compare_exchange(PENDING, CONFLICTED, Ordering::AcqRel, Ordering::Acquire);

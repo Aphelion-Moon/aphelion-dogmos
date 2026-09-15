@@ -1,0 +1,1066 @@
+{
+  "artifacts": [
+    {
+      "architecture": "x86_64",
+      "file": "linux/dogmosd",
+      "format": "elf",
+      "platform": "linux",
+      "role": "service",
+      "sha256": "6171363d652a9f922fc17e1575e5010b5981c257f8d40cde3bb7f3bb0097f7b1",
+      "size": 1375704,
+      "symbols": {
+        "file": "linux/dogmosd.debug",
+        "sha256": "46baebe38b2df9c37c862b5364edd265958e070d20ad76f3a133a1a8bafb9c0e",
+        "size": 15410240
+      },
+      "target": "x86_64-unknown-linux-gnu"
+    },
+    {
+      "architecture": "i686",
+      "file": "linux/libdogmos.so",
+      "format": "elf",
+      "platform": "linux",
+      "role": "shim",
+      "sha256": "7e7acdbb4d302814314142cdc77ccc4fe7c8defa229fdd202796d3d7c0a038ca",
+      "size": 1197476,
+      "symbols": {
+        "file": "linux/libdogmos.so.debug",
+        "sha256": "a391fdfddef2d0244e4ee6d26753f2bd5fc1a9a293f0bbec54f5ff16b7dea59f",
+        "size": 10815444
+      },
+      "target": "i686-unknown-linux-gnu"
+    },
+    {
+      "architecture": "x86_64",
+      "file": "windows/dogmosd.exe",
+      "format": "pe",
+      "platform": "windows",
+      "role": "service",
+      "sha256": "fca6e8506f12de29b484a1881ecdbd684aac2b1f655074333c18710f7d6d7095",
+      "size": 1081856,
+      "symbols": {
+        "file": "windows/dogmosd.pdb",
+        "sha256": "b92962e78ee3f5f9a6d0a338376a4bc0afe777d60656edaded11ddbf5d6ad433",
+        "size": 16429056
+      },
+      "target": "x86_64-pc-windows-msvc"
+    },
+    {
+      "architecture": "i686",
+      "file": "windows/dogmos.dll",
+      "format": "pe",
+      "platform": "windows",
+      "role": "shim",
+      "sha256": "ed2643f52179483deebfbf782ca4903486201657eaa101c641fd37bad5468bb9",
+      "size": 688640,
+      "symbols": {
+        "file": "windows/dogmos.pdb",
+        "sha256": "0924fc8cc63b1630310ba8498ae275f95d6063b6062cc3cb94166e344fcf33a2",
+        "size": 9809920
+      },
+      "target": "i686-pc-windows-msvc"
+    }
+  ],
+  "dm_expanded_runs": {
+    "20260914T140936Z-9fe9b207": {
+      "cache_witnesses": [],
+      "cleanup": {
+        "leftovers": [],
+        "passed": true,
+        "retained": []
+      },
+      "compile_errors": 0,
+      "compile_warnings": 2,
+      "compiled_artifacts": [
+        {
+          "bytes": 68424583,
+          "path": "target/meridian-artifact-policy/data/rift-runs/20260914T140936Z-9fe9b207/artifacts/compile/tgstation.dmb",
+          "sha256": "6021ce8afbf91aa3f356f13444820ba437c13db584654d74aa079f9cc4eef17d"
+        },
+        {
+          "bytes": 233020282,
+          "path": "target/meridian-artifact-policy/data/rift-runs/20260914T140936Z-9fe9b207/artifacts/compile/tgstation.rsc",
+          "sha256": "b58196d755b7f53d27defcd335f3dbe445e91bc53656eecadb7536923808810f"
+        }
+      ],
+      "dreamdaemon": [
+        {
+          "exit_code": 143,
+          "termination": "requested"
+        }
+      ],
+      "failures": [
+        {
+          "code": "runtime_error",
+          "message": "runtime_error observed 1 time(s) after readiness",
+          "stage": "test"
+        }
+      ],
+      "runner_test_summary": null,
+      "runtime_error_trace_count": 2,
+      "runtime_log": {
+        "bytes": 31571,
+        "path": "target/meridian-artifact-policy/data/rift-runs/20260914T140936Z-9fe9b207/artifacts/data/logs/rift/runtime.log",
+        "sha256": "5dcc0f9dd2d76832cb4eb9e841a17f0195d25aeafee63f83f30d77f1d9bcab01"
+      },
+      "runtime_signatures": [],
+      "status": "failed",
+      "summary": {
+        "bytes": 17653,
+        "path": "target/meridian-artifact-policy/data/rift-runs/20260914T140936Z-9fe9b207/summary.json",
+        "sha256": "35faa223ceba55bd69ea8fb8e85d918d348313129a73c78c3ecb142c8fcf95b5"
+      },
+      "test_records": {
+        "/datum/unit_test/dogmos_runtime_frontier_journal": {
+          "duration": 0.21875,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_frontier_journal/native_replacement": {
+          "duration": 0.78125,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal/native_replacement",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_frontier_journal/overflow": {
+          "duration": 0.3125,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal/overflow",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_frontier_journal/rejected_upload": {
+          "duration": 0.25,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal/rejected_upload",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_frontier_journal/reset_identity": {
+          "duration": 0.25,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal/reset_identity",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_prefetch": {
+          "duration": 4.4375,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_prefetch",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_prefetch/leaker": {
+          "duration": 0.25,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_prefetch/leaker",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_prefetch/oversized": {
+          "duration": 0.28125,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_prefetch/oversized",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_scheduling": {
+          "duration": 13.4062,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_ssair_recovery": {
+          "duration": 1097.34,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_ssair_recovery",
+          "runtimes": 0,
+          "status": 0
+        }
+      },
+      "test_results": {
+        "bytes": 1734,
+        "path": "target/meridian-artifact-policy/data/rift-runs/20260914T140936Z-9fe9b207/artifacts/data/unit_tests.json",
+        "sha256": "4013d0c6c36a72379549b4f932a91c62c08e54fa313b4890eb516be2e8ddb99f"
+      },
+      "tests": {
+        "failed": 0,
+        "passed": 10,
+        "recorded": 10,
+        "skipped": 0
+      }
+    },
+    "20260914T142255Z-66c88165": {
+      "cache_witnesses": [],
+      "cleanup": {
+        "leftovers": [],
+        "passed": true,
+        "retained": []
+      },
+      "compile_errors": 0,
+      "compile_warnings": 2,
+      "compiled_artifacts": [
+        {
+          "bytes": 68436187,
+          "path": "target/meridian-artifact-policy/data/rift-runs/20260914T142255Z-66c88165/artifacts/compile/tgstation.dmb",
+          "sha256": "4535a60b26e7e98e93bb185fe18cd42a075755a52d103064e815bbd298b79955"
+        },
+        {
+          "bytes": 233020282,
+          "path": "target/meridian-artifact-policy/data/rift-runs/20260914T142255Z-66c88165/artifacts/compile/tgstation.rsc",
+          "sha256": "429b63ac2ff3d3aa2d2f896010c5b1c337bcb14a4d64c6caf5cf8c6b0420ddf5"
+        }
+      ],
+      "dreamdaemon": [
+        {
+          "exit_code": 48,
+          "termination": "natural"
+        }
+      ],
+      "failures": [
+        {
+          "code": "unit_test_failed",
+          "message": "unit_test_failed: /datum/unit_test/dogmos_runtime_scheduling/native_cache",
+          "stage": "test"
+        }
+      ],
+      "runner_test_summary": {
+        "failed": 1,
+        "passed": 11,
+        "recorded": 12,
+        "skipped": 0
+      },
+      "runtime_error_trace_count": 0,
+      "runtime_log": {
+        "bytes": 30472,
+        "path": "target/meridian-artifact-policy/data/rift-runs/20260914T142255Z-66c88165/artifacts/data/logs/rift/runtime.log",
+        "sha256": "27f7d97db818fac21bf0031ad9d5386d7e6b71dc72d79ca82f46b80786d0c95d"
+      },
+      "runtime_signatures": [],
+      "status": "failed",
+      "summary": {
+        "bytes": 17526,
+        "path": "target/meridian-artifact-policy/data/rift-runs/20260914T142255Z-66c88165/summary.json",
+        "sha256": "fcae15c257b32ed4c50b40d5ed87d80ef87f450fac03324c49cf2518cc1330c6"
+      },
+      "test_records": {
+        "/datum/unit_test/dogmos_runtime_frontier_journal": {
+          "duration": 0.21875,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_frontier_journal/native_replacement": {
+          "duration": 0.71875,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal/native_replacement",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_frontier_journal/overflow": {
+          "duration": 0.34375,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal/overflow",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_frontier_journal/rejected_upload": {
+          "duration": 0.25,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal/rejected_upload",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_frontier_journal/reset_identity": {
+          "duration": 0.21875,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal/reset_identity",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_prefetch": {
+          "duration": 4.46875,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_prefetch",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_prefetch/leaker": {
+          "duration": 0.25,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_prefetch/leaker",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_prefetch/oversized": {
+          "duration": 0.25,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_prefetch/oversized",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_scheduling": {
+          "duration": 12.1562,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_scheduling/native_cache": {
+          "duration": 5.875,
+          "message": "\tFAILURE #1: Native cache fixture raised Native preparation published or invalidated cached gas before Commit.. at modular_aphelion/modules/dogmos/code/service_backend_test.dm:5291",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling/native_cache",
+          "runtimes": 0,
+          "status": 1
+        },
+        "/datum/unit_test/dogmos_runtime_scheduling/receipts": {
+          "duration": 0.25,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling/receipts",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_ssair_recovery": {
+          "duration": 1020.62,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_ssair_recovery",
+          "runtimes": 0,
+          "status": 0
+        }
+      },
+      "test_results": {
+        "bytes": 2266,
+        "path": "target/meridian-artifact-policy/data/rift-runs/20260914T142255Z-66c88165/artifacts/data/unit_tests.json",
+        "sha256": "ea0b8280f1eea68c54e6335087cccd840cc00b32cb90090c6eacd2892b497734"
+      },
+      "tests": {
+        "failed": 1,
+        "passed": 11,
+        "recorded": 12,
+        "skipped": 0
+      }
+    },
+    "20260914T143613Z-1f3e2cb6": {
+      "cache_witnesses": [
+        "[2026-09-14 14:45:12.754] RUNTIME: Native cache fixture witness: epoch 119 -> 119, target 26514:4, bucket 26514:4, resident 1."
+      ],
+      "cleanup": {
+        "leftovers": [],
+        "passed": true,
+        "retained": []
+      },
+      "compile_errors": 0,
+      "compile_warnings": 2,
+      "compiled_artifacts": [
+        {
+          "bytes": 68437762,
+          "path": "target/meridian-artifact-policy/data/rift-runs/20260914T143613Z-1f3e2cb6/artifacts/compile/tgstation.dmb",
+          "sha256": "203f4033046d6f44450c2687f6930218884bd937e9e58fd40c92fd5089bf15dd"
+        },
+        {
+          "bytes": 233020282,
+          "path": "target/meridian-artifact-policy/data/rift-runs/20260914T143613Z-1f3e2cb6/artifacts/compile/tgstation.rsc",
+          "sha256": "7fdeb566364a3c10ef6e6f5d3279891638bed351f0cdb84b355431e5aa9319d7"
+        }
+      ],
+      "dreamdaemon": [
+        {
+          "exit_code": 240,
+          "termination": "natural"
+        }
+      ],
+      "failures": [],
+      "runner_test_summary": {
+        "failed": 0,
+        "passed": 12,
+        "recorded": 12,
+        "skipped": 0
+      },
+      "runtime_error_trace_count": 0,
+      "runtime_log": {
+        "bytes": 30212,
+        "path": "target/meridian-artifact-policy/data/rift-runs/20260914T143613Z-1f3e2cb6/artifacts/data/logs/rift/runtime.log",
+        "sha256": "d87b1cce132615e0137584faae2d4109d5da2952a81141ed5713e248e49e550d"
+      },
+      "runtime_signatures": [],
+      "status": "passed",
+      "summary": {
+        "bytes": 17612,
+        "path": "target/meridian-artifact-policy/data/rift-runs/20260914T143613Z-1f3e2cb6/summary.json",
+        "sha256": "532040ea8c6b5963d8afad1ebc53a0a4d62ba9b34d08ba40b338662ad712f134"
+      },
+      "test_records": {
+        "/datum/unit_test/dogmos_runtime_frontier_journal": {
+          "duration": 0.1875,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_frontier_journal/native_replacement": {
+          "duration": 0.8125,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal/native_replacement",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_frontier_journal/overflow": {
+          "duration": 0.3125,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal/overflow",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_frontier_journal/rejected_upload": {
+          "duration": 0.25,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal/rejected_upload",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_frontier_journal/reset_identity": {
+          "duration": 0.25,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal/reset_identity",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_prefetch": {
+          "duration": 4.3125,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_prefetch",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_prefetch/leaker": {
+          "duration": 0.25,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_prefetch/leaker",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_prefetch/oversized": {
+          "duration": 0.25,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_prefetch/oversized",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_scheduling": {
+          "duration": 13.4375,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_scheduling/native_cache": {
+          "duration": 6.375,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling/native_cache",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_scheduling/receipts": {
+          "duration": 0.1875,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling/receipts",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_ssair_recovery": {
+          "duration": 1018.06,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_ssair_recovery",
+          "runtimes": 0,
+          "status": 0
+        }
+      },
+      "test_results": {
+        "bytes": 2080,
+        "path": "target/meridian-artifact-policy/data/rift-runs/20260914T143613Z-1f3e2cb6/artifacts/data/unit_tests.json",
+        "sha256": "edcf40dcde67ce0f7db255bbc118cb8fbeb2d3d2534cd4e5c8779a5f0990270e"
+      },
+      "tests": {
+        "failed": 0,
+        "passed": 12,
+        "recorded": 12,
+        "skipped": 0
+      }
+    },
+    "20260914T144718Z-ffbc2b80": {
+      "cache_witnesses": [
+        "[2026-09-14 14:56:23.618] RUNTIME: Native cache fixture witness: epoch 58 -> 58, target 26127:6, bucket 1551:1, resident 0."
+      ],
+      "cleanup": {
+        "leftovers": [],
+        "passed": true,
+        "retained": []
+      },
+      "compile_errors": 0,
+      "compile_warnings": 2,
+      "compiled_artifacts": [
+        {
+          "bytes": 68445570,
+          "path": "target/meridian-artifact-policy/data/rift-runs/20260914T144718Z-ffbc2b80/artifacts/compile/tgstation.dmb",
+          "sha256": "2df4eb15ff1e4c56a67b9b5fea32416b3b96795af76e76ace69ccc7cdde843d1"
+        },
+        {
+          "bytes": 233020282,
+          "path": "target/meridian-artifact-policy/data/rift-runs/20260914T144718Z-ffbc2b80/artifacts/compile/tgstation.rsc",
+          "sha256": "1cfcbae1e7b22b326295eddcceb9e4a46be2c4c331e2f6cd23de10f383c960bb"
+        }
+      ],
+      "dreamdaemon": [
+        {
+          "exit_code": 32,
+          "termination": "natural"
+        }
+      ],
+      "failures": [],
+      "runner_test_summary": {
+        "failed": 0,
+        "passed": 14,
+        "recorded": 14,
+        "skipped": 0
+      },
+      "runtime_error_trace_count": 0,
+      "runtime_log": {
+        "bytes": 31202,
+        "path": "target/meridian-artifact-policy/data/rift-runs/20260914T144718Z-ffbc2b80/artifacts/data/logs/rift/runtime.log",
+        "sha256": "0857ce451085436944fa2109de84d9e59577b19220fd9c8d510d48e11c8673b6"
+      },
+      "runtime_signatures": [],
+      "status": "passed",
+      "summary": {
+        "bytes": 17607,
+        "path": "target/meridian-artifact-policy/data/rift-runs/20260914T144718Z-ffbc2b80/summary.json",
+        "sha256": "c43167125bfde757736e1954d6cc9cb654740c9f8f5cca6764f1ffebbee039e5"
+      },
+      "test_records": {
+        "/datum/unit_test/dogmos_runtime_frontier_journal": {
+          "duration": 0.25,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_frontier_journal/native_replacement": {
+          "duration": 0.8125,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal/native_replacement",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_frontier_journal/overflow": {
+          "duration": 0.25,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal/overflow",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_frontier_journal/rejected_upload": {
+          "duration": 0.1875,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal/rejected_upload",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_frontier_journal/reset_identity": {
+          "duration": 0.25,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal/reset_identity",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_prefetch": {
+          "duration": 4.375,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_prefetch",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_prefetch/leaker": {
+          "duration": 0.25,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_prefetch/leaker",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_prefetch/oversized": {
+          "duration": 0.25,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_prefetch/oversized",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_scheduling": {
+          "duration": 12.0625,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_scheduling/failures": {
+          "duration": 0.25,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling/failures",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_scheduling/native_cache": {
+          "duration": 6.0625,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling/native_cache",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_scheduling/receipts": {
+          "duration": 0.1875,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling/receipts",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_scheduling/recovery_phases": {
+          "duration": 0.25,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling/recovery_phases",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_ssair_recovery": {
+          "duration": 1066.12,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_ssair_recovery",
+          "runtimes": 0,
+          "status": 0
+        }
+      },
+      "test_results": {
+        "bytes": 2432,
+        "path": "target/meridian-artifact-policy/data/rift-runs/20260914T144718Z-ffbc2b80/artifacts/data/unit_tests.json",
+        "sha256": "90729ee1f862a2677fc0db2cdc23a537039c5179eab21c970e269bb63e9f1e8b"
+      },
+      "tests": {
+        "failed": 0,
+        "passed": 14,
+        "recorded": 14,
+        "skipped": 0
+      }
+    },
+    "20260914T152004Z-94dcf941": {
+      "cache_witnesses": [
+        "[2026-09-14 15:29:50.195] RUNTIME: Native cache fixture witness: epoch 57 -> 57, target 26150:6, bucket 1574:1, resident 0."
+      ],
+      "cleanup": {
+        "leftovers": [],
+        "passed": true,
+        "retained": []
+      },
+      "compile_errors": 0,
+      "compile_warnings": 2,
+      "compiled_artifacts": [
+        {
+          "bytes": 68453631,
+          "path": "target/meridian-artifact-policy/data/rift-runs/20260914T152004Z-94dcf941/artifacts/compile/tgstation.dmb",
+          "sha256": "8d70c0be4ed4acdba8b1fe89a884cb58959bb09b85949723dcb0cb330cb8928a"
+        },
+        {
+          "bytes": 233020282,
+          "path": "target/meridian-artifact-policy/data/rift-runs/20260914T152004Z-94dcf941/artifacts/compile/tgstation.rsc",
+          "sha256": "5678e1fcab7838f7a8b9717e81fb152b7fc149c64268781840bf151f621e73c9"
+        }
+      ],
+      "dreamdaemon": [
+        {
+          "exit_code": 64,
+          "termination": "natural"
+        }
+      ],
+      "failures": [],
+      "runner_test_summary": {
+        "failed": 0,
+        "passed": 15,
+        "recorded": 15,
+        "skipped": 0
+      },
+      "runtime_error_trace_count": 0,
+      "runtime_log": {
+        "bytes": 31610,
+        "path": "target/meridian-artifact-policy/data/rift-runs/20260914T152004Z-94dcf941/artifacts/data/logs/rift/runtime.log",
+        "sha256": "828a28d3f210065be70868be27b7ab5b18682669c4bf31da160558273bf69859"
+      },
+      "runtime_signatures": [],
+      "status": "passed",
+      "summary": {
+        "bytes": 17658,
+        "path": "target/meridian-artifact-policy/data/rift-runs/20260914T152004Z-94dcf941/summary.json",
+        "sha256": "5cf54705878afe7d6b022a6c842ca25af5ec8ff05cf235a259d42bb9dc2cd4c6"
+      },
+      "test_records": {
+        "/datum/unit_test/dogmos_job_observations": {
+          "duration": 0.25,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_job_observations",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_frontier_journal": {
+          "duration": 0.25,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_frontier_journal/native_replacement": {
+          "duration": 0.6875,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal/native_replacement",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_frontier_journal/overflow": {
+          "duration": 0.3125,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal/overflow",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_frontier_journal/rejected_upload": {
+          "duration": 0.25,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal/rejected_upload",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_frontier_journal/reset_identity": {
+          "duration": 0.1875,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_frontier_journal/reset_identity",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_prefetch": {
+          "duration": 4.3125,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_prefetch",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_prefetch/leaker": {
+          "duration": 0.25,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_prefetch/leaker",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_prefetch/oversized": {
+          "duration": 0.25,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_prefetch/oversized",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_scheduling": {
+          "duration": 12.0625,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_scheduling/failures": {
+          "duration": 0.25,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling/failures",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_scheduling/native_cache": {
+          "duration": 6,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling/native_cache",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_scheduling/receipts": {
+          "duration": 0.25,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling/receipts",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_runtime_scheduling/recovery_phases": {
+          "duration": 0.3125,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_runtime_scheduling/recovery_phases",
+          "runtimes": 0,
+          "status": 0
+        },
+        "/datum/unit_test/dogmos_ssair_recovery": {
+          "duration": 1109.5,
+          "message": "",
+          "name": "/datum/unit_test/dogmos_ssair_recovery",
+          "runtimes": 0,
+          "status": 0
+        }
+      },
+      "test_results": {
+        "bytes": 2577,
+        "path": "target/meridian-artifact-policy/data/rift-runs/20260914T152004Z-94dcf941/artifacts/data/unit_tests.json",
+        "sha256": "0a8a259898d144c1fe3aecf54e5d8345facffb51e67b41c2311c2fc6f81df737"
+      },
+      "tests": {
+        "failed": 0,
+        "passed": 15,
+        "recorded": 15,
+        "skipped": 0
+      }
+    }
+  },
+  "dm_first_fixture": {
+    "cleanup": {
+      "leftovers": [],
+      "passed": true,
+      "retained": []
+    },
+    "compile_errors": 0,
+    "compile_warnings": 2,
+    "dmb": {
+      "bytes": 68423034,
+      "path": "target/meridian-artifact-policy/data/rift-runs/20260914T135735Z-3aabeea0/artifacts/compile/tgstation.dmb",
+      "sha256": "43d9a4685c00efd5d1ce6a6475bd93bc794b098fcc57f654b4cf086e50919528"
+    },
+    "dreamdaemon_exit": {
+      "exit_code": 240,
+      "termination": "natural"
+    },
+    "rsc": {
+      "bytes": 233020282,
+      "path": "target/meridian-artifact-policy/data/rift-runs/20260914T135735Z-3aabeea0/artifacts/compile/tgstation.rsc",
+      "sha256": "dbe3b862c28710a0bd811626614d300b0d51eb643223e9d7ee1e5b164939d22d"
+    },
+    "run_id": "20260914T135735Z-3aabeea0",
+    "status": "passed",
+    "summary": {
+      "bytes": 15988,
+      "path": "target/meridian-artifact-policy/data/rift-runs/20260914T135735Z-3aabeea0/summary.json",
+      "sha256": "a5a0eae94daf813a45a6968a1394740bbe5def9945bcd84b93e006f538d9c9a3"
+    },
+    "tests": {
+      "/datum/unit_test/dogmos_runtime_scheduling": {
+        "duration": 13,
+        "message": "",
+        "name": "/datum/unit_test/dogmos_runtime_scheduling",
+        "runtimes": 0,
+        "status": 0
+      }
+    }
+  },
+  "dm_source_checkpoint": {
+    "archive": {
+      "bytes": 142128,
+      "path": "target/r5-dm-qualification-source.zip",
+      "sha256": "10f476efe5f45c2207a034232d75d97f14091909fecd845e482103ac3731aba8"
+    },
+    "cumulative_patch": {
+      "bytes": 116852,
+      "path": "docs/patches/2026-09-14-meridian-runtime-r1-r2-r5.patch",
+      "sha256": "2c1706eb0079d7842999eedbe5e933840051bf23d5e2a77c9468968345cd55b5"
+    },
+    "files": [
+      {
+        "bytes": 24106,
+        "path": "code/controllers/configuration/entries/general.dm",
+        "sha256": "37bc2873d1a4e1fd946c682adb498f29f75e476b580fc4985a5325ff6365cc9b"
+      },
+      {
+        "bytes": 71764,
+        "path": "code/controllers/subsystem/air.dm",
+        "sha256": "06d02a7138c76bfdd646a8a22c3aea2d207dcb73672c561ea9f30085404d3214"
+      },
+      {
+        "bytes": 20018,
+        "path": "code/modules/atmospherics/environmental/LINDA_turf_tile.dm",
+        "sha256": "908bf0d78f8753be502c1b598c4abe639e837aaddcd4f184afd741e5b8c22ea7"
+      },
+      {
+        "bytes": 3695,
+        "path": "code/modules/unit_tests/dogmos_active_turfs_bloat.dm",
+        "sha256": "e2912d2c6b7a2580f732fbe866f4c485d6926e1637dfdd27e32d3f98bf63fc7a"
+      },
+      {
+        "bytes": 7557,
+        "path": "code/modules/unit_tests/dogmos_space_boundary_registration.dm",
+        "sha256": "06c94c9b6352b37afd482c01fb5bfab0f43add3eb16ebc4da5b21f3aed91ad45"
+      },
+      {
+        "bytes": 20326,
+        "path": "code/modules/unit_tests/dogmos_ssair_recovery.dm",
+        "sha256": "ed1bdcd965827a78c88c53093c8f9504f4cd50642f2b5bfea1e68dc4f6c9b21a"
+      },
+      {
+        "bytes": 30437,
+        "path": "code/modules/unit_tests/unit_test.dm",
+        "sha256": "72b36fc695e8291c470dcacb3093b013a24f02147f3278ea917634f30bb6f531"
+      },
+      {
+        "bytes": 835,
+        "path": "modular_aphelion/master_files/code/game/turfs/open/space/space.dm",
+        "sha256": "24c3c8027e7fba815203d076e877dd2c4c60550bc87348dcdbc04525fb80dbf9"
+      },
+      {
+        "bytes": 4042,
+        "path": "modular_aphelion/master_files/code/game/turfs/turf.dm",
+        "sha256": "747123eea778ffb40b85d15ad6bf9d38f569b971c8b1f76d4b4e0ad60f97dd68"
+      },
+      {
+        "bytes": 143747,
+        "path": "modular_aphelion/modules/dogmos/code/service_backend.dm",
+        "sha256": "bba8908e8f7f99ff70d4198ecdfbe8e9360c428324a1a9aa48e23093390b6a44"
+      },
+      {
+        "bytes": 300309,
+        "path": "modular_aphelion/modules/dogmos/code/service_backend_test.dm",
+        "sha256": "cbb6018ccaac63d215342c2875338dc8958f0201e6563e35d47416d7669c7210"
+      }
+    ],
+    "native_contract": "local protocol 15; target/r5-local-qualification-03/bundle",
+    "patch_scope": "Cumulative R1/R2/R5 DM source, excluding generated native contract files; install the matching pair with maintained synchronization.",
+    "qualified_run": "20260914T144718Z-ffbc2b80"
+  },
+  "gate_logs": [
+    {
+      "bytes": 175,
+      "path": "target/r5-shim-clippy-green.log",
+      "sha256": "2e0373dcf40aad406a74768a1254722baa24cd72cd9b4c9471262bbba2db7aa4"
+    },
+    {
+      "bytes": 380,
+      "path": "target/r5-shim-clippy-linux-i686.log",
+      "sha256": "3e18f1430fba40778a9fe647863687b4214ad1f3251aa57e9664cd534fef9bb6"
+    },
+    {
+      "bytes": 263,
+      "path": "target/r5-binding-drift.log",
+      "sha256": "b461bd062a94abba2e576a44185f34a14fc174452af9fae6021e1555711e341b"
+    },
+    {
+      "bytes": 175,
+      "path": "target/r5-diagnostic-feature-green.log",
+      "sha256": "8d5e3e04a28c48e262f1cf30158b310a304de14f2235df9159ab692dbaffb678"
+    },
+    {
+      "bytes": 2987,
+      "path": "target/r5-feature-matrix-windows.log",
+      "sha256": "5b7a0325c2e3bff9b85ef59b621e397028a6ee0c982d1d3b4a8a74e944159cda"
+    },
+    {
+      "bytes": 7929,
+      "path": "target/r5-feature-matrix-linux-retry.log",
+      "sha256": "bef224c2f7f4d0242fe975180e3ad74e03ae03949d8c1a72d5c8d76a46df89cb"
+    },
+    {
+      "bytes": 9794,
+      "path": "target/r5-python-tooling-first.log",
+      "sha256": "a60a0bb09b1542af6655afaf23a81a85e15789ce61aa7a31297e11634aecf3c3"
+    },
+    {
+      "bytes": 718,
+      "path": "target/r5-source-snapshot-linux.log",
+      "sha256": "194922a81e3ec2633e869d40837fb533a7aeb19be88e16e575d3b4efe35309f5"
+    },
+    {
+      "bytes": 1822,
+      "path": "target/r5-game-contract-final.log",
+      "sha256": "038ba177de0c81721421691a590233ba8f41e2452a3b2cef4ba9a7337a53ccbc"
+    }
+  ],
+  "native_identity": {
+    "feature_fingerprint": "191a5b3b71b5411eb07243cb7d263e703905c44a96979a11f7ee63a6c17a8266",
+    "qualification": {
+      "kind": "local-source-snapshot-v1",
+      "source_snapshot": {
+        "file": "dogmos-source-snapshot.json",
+        "sha256": "e067aff12938595aa5448565ddb0825626d7817489f313c5d28c35d9f6f812c4",
+        "size": 47614
+      }
+    },
+    "source_revision": "6b6321b2c4a0658933b7529e1d732acfac9cc5a4",
+    "versions": {
+      "abi": 2,
+      "dogmos-byond": "2.3.0",
+      "dogmos-server": "2.3.0",
+      "protocol": 15,
+      "workspace": "2.3.0"
+    }
+  },
+  "native_manifest": {
+    "bytes": 3010,
+    "path": "target/r5-local-qualification-03/bundle/dogmos-release-manifest.json",
+    "sha256": "ad860b9967d4d4fef8cbaf371d588dec947602a360b7e608f48823c31215f4ad"
+  },
+  "native_source_archive": {
+    "bytes": 851009,
+    "path": "target/r5-local-qualification-03/source.zip",
+    "sha256": "071e4eed7fef23a8160118ab09680dabc3433072a9f43e1545c45af787b4b050"
+  },
+  "native_tests": [
+    {
+      "failed": 0,
+      "ignored": 0,
+      "log": {
+        "bytes": 6299,
+        "path": "target/r5-shim-windows-i686.log",
+        "sha256": "f6b05cc25c5c4433092d2d0786c356cd1d29de6d46b6401b7e4df938bc67c8a2"
+      },
+      "passed": 54,
+      "target": "i686-pc-windows-msvc"
+    },
+    {
+      "failed": 0,
+      "ignored": 0,
+      "log": {
+        "bytes": 6049,
+        "path": "target/r5-shim-linux-i686-full.log",
+        "sha256": "acd4a41630bb9e159e3eea40d71b93133558f1e9a27d9f1009582ad140da7fb1"
+      },
+      "passed": 49,
+      "target": "i686-unknown-linux-gnu"
+    },
+    {
+      "failed": 0,
+      "ignored": 0,
+      "log": {
+        "bytes": 1863,
+        "path": "target/r5-local-pair-cross-bitness.log",
+        "sha256": "a8344c93eb44fadad847d39711689b00ac9979cff901cf5e563d0be3155a8663"
+      },
+      "passed": 3,
+      "target": "i686-client-x64-service-windows"
+    }
+  ],
+  "open_gates": [
+    "Remaining asynchronous shutdown/failure/recovery cases",
+    "Native job timing and age observations",
+    "Full DM suite",
+    "Dedicated boot and 300-second soak",
+    "Linux BYOND loading",
+    "Matched server workload and performance acceptance",
+    "Startup workplans"
+  ],
+  "performance_accepted": false,
+  "retained_failed_attempts": [
+    "r5-local-qualification-01: WSL path conversion",
+    "r5-local-qualification-02: manifest argument assembly",
+    "20260914T134730Z-7188b328: restricted compiler startup stalled; verified owned process tree terminated",
+    "20260914T135210Z-20f9742b: expected absent DM API compile errors",
+    "r5-feature-matrix-linux.log: wrapper lacked login Cargo path; no compilation"
+  ],
+  "schema_version": 1,
+  "scope": "R5 native bindings, DM scheduling and expanded regression checkpoints; further qualification remains open"
+}

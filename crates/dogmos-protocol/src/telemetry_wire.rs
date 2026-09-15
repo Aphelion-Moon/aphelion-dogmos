@@ -1,11 +1,11 @@
-use crate::ProtocolError;
+use crate::{ProtocolError, StageJobTelemetry};
 
 pub const CALLBACK_EVENT_KIND_COUNT: usize = 8;
 pub const SERVICE_PROCESS_RSS_AVAILABLE: u32 = 1 << 0;
 pub const SERVICE_PROCESS_CPU_AVAILABLE: u32 = 1 << 1;
 pub const SERVICE_PROCESS_ALL_AVAILABLE: u32 =
 	SERVICE_PROCESS_RSS_AVAILABLE | SERVICE_PROCESS_CPU_AVAILABLE;
-pub const SERVICE_TELEMETRY_LEN: usize = 368;
+pub const SERVICE_TELEMETRY_LEN: usize = 480;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ServiceTelemetry {
@@ -41,6 +41,7 @@ pub struct ServiceTelemetry {
 	pub topology_revision: u64,
 	pub reusable_workset_bytes: u64,
 	pub packed_topology_bytes: u64,
+	pub stage_jobs: StageJobTelemetry,
 }
 
 impl ServiceTelemetry {
@@ -78,6 +79,7 @@ impl ServiceTelemetry {
 		output[344..352].copy_from_slice(&self.topology_revision.to_le_bytes());
 		output[352..360].copy_from_slice(&self.reusable_workset_bytes.to_le_bytes());
 		output[360..368].copy_from_slice(&self.packed_topology_bytes.to_le_bytes());
+		output[368..480].copy_from_slice(&self.stage_jobs.encode());
 		output
 	}
 
@@ -144,6 +146,7 @@ impl ServiceTelemetry {
 			topology_revision: read_u64(input, 344),
 			reusable_workset_bytes: read_u64(input, 352),
 			packed_topology_bytes: read_u64(input, 360),
+			stage_jobs: StageJobTelemetry::decode(&input[368..480])?,
 		})
 	}
 }
