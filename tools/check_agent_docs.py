@@ -55,7 +55,10 @@ def check_repository(root: Path) -> list[str]:
 		if relative not in agent_text:
 			errors.append(f"AGENTS.md must link {relative}")
 
-	checked = [agents, *(root / relative for relative in REQUIRED_GUIDES)]
+	# Keep new component/API onboarding linked to real source after module moves.
+	# This ratchet covers maintained boundary docs, not archived audits or all Markdown.
+	checked = [agents, *(root / relative for relative in REQUIRED_GUIDES), root / "README.md",
+		*(root / "crates").glob("*/README.md"), *(root / "docs" / "architecture").glob("*.md")]
 	for source in checked:
 		if not source.is_file():
 			continue

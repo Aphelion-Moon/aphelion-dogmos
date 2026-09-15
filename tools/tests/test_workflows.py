@@ -33,10 +33,22 @@ class WorkflowTests(unittest.TestCase):
 	def test_check_workflow_runs_the_same_authoritative_gates(self) -> None:
 		workflow, _ = self.load_workflow("check.yml")
 		runs = "\n".join(step.get("run", "") for step in self.all_steps(workflow))
-		self.assertIn("cargo fmt --all -- --check", runs)
-		self.assertIn("cargo clippy --workspace --locked --target i686-unknown-linux-gnu --all-targets -- -D warnings", runs)
-		self.assertIn("cargo test --workspace --locked --target i686-unknown-linux-gnu", runs)
-		self.assertIn("tools/check_feature_matrix.ps1 -Target i686-unknown-linux-gnu", runs)
+		matrix = workflow["jobs"]["check"]["strategy"]["matrix"]["include"]
+		self.assertEqual({(entry["shim"], entry["service"]) for entry in matrix}, {
+			("i686-pc-windows-msvc", "x86_64-pc-windows-msvc"),
+			("i686-unknown-linux-gnu", "x86_64-unknown-linux-gnu"),
+		})
+		for entry in matrix:
+			resolved = runs.replace("${{ matrix.shim }}", entry["shim"]).replace("${{ matrix.service }}", entry["service"])
+			self.assertIn("cargo +1.98.0 fmt --all -- --check", resolved)
+			self.assertIn(f"cargo +1.98.0 clippy --workspace --locked --target {entry['shim']} --all-targets -- -D warnings", resolved)
+			self.assertIn(f"cargo +1.98.0 test --workspace --locked --target {entry['shim']}", resolved)
+			self.assertIn(f"tools/check_feature_matrix.ps1 -Target '{entry['shim']}'", resolved)
+			self.assertIn(f"cargo +1.98.0 test -p dogmos-server --locked --target '{entry['service']}'", resolved)
+			self.assertIn("--features diagnostic-bindings", resolved)
+			self.assertIn("git diff --exit-code -- bindings.dm", resolved)
+			self.assertIn("tools/check_dependency_direction.py", resolved)
+		self.assertEqual(workflow["jobs"]["paired-artifacts"]["uses"], "./.github/workflows/build.yml")
 
 	def test_build_workflow_runs_for_the_dogmos_branch(self) -> None:
 		workflow, text = self.load_workflow("build.yml")

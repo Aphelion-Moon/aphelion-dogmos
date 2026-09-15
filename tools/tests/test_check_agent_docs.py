@@ -101,6 +101,17 @@ class AgentDocumentTests(unittest.TestCase):
 		)
 		self.assertTrue(any("Reviewed Auxmos revision" in error for error in check_repository(root)))
 
+	def test_component_api_readme_links_cannot_drift_after_module_moves(self) -> None:
+		root, errors = self.errors_for_valid_fixture()
+		self.assertEqual(errors, [])
+		component = root / "crates" / "dogmos-byond"
+		component.mkdir(parents=True)
+		(component / "README.md").write_text("[codec](src/codec.rs)\n", encoding="utf-8")
+		self.assertTrue(any("crates/dogmos-byond/README.md" in error.replace("\\", "/") for error in check_repository(root)))
+		(component / "src").mkdir()
+		(component / "src" / "codec.rs").write_text("// Maintained codec\n", encoding="utf-8")
+		self.assertEqual(check_repository(root), [])
+
 	def test_unrelated_reviewed_local_revision_is_reported(self) -> None:
 		root, errors = self.errors_for_valid_fixture()
 		self.assertEqual(errors, [])
