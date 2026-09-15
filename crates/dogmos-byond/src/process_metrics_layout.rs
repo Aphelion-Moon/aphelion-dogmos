@@ -4,7 +4,7 @@
 //! comments in bindings.dm. Each f32 list element carries an exact u16 word. Sampling,
 //! validation, limits and runtime policy remain with their existing owners.
 
-use super::{append_u32_words, append_u64_words};
+use crate::dm_codec::{append_u32_words, append_u64_words};
 use dogmos_process_metrics::{
 	CurrentProcessMetrics, PROCESS_PRIVATE_BYTES_AVAILABLE, PROCESS_VIRTUAL_BYTES_AVAILABLE,
 	PROCESS_WORKING_SET_AVAILABLE,

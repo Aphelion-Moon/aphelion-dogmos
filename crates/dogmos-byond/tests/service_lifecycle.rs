@@ -1,9 +1,11 @@
+mod support;
+
 use std::{fs, path::Path};
 
 #[test]
 fn production_service_lifecycle_exports_are_distinct_from_benchmarks() {
 	let crate_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-	let source = fs::read_to_string(crate_root.join("src/lib.rs")).unwrap();
+	let source = support::shim_source(crate_root);
 	let bindings = fs::read_to_string(crate_root.join("bindings.dm")).unwrap();
 	for binding in [
 		"/proc/dogmos_abi_version",

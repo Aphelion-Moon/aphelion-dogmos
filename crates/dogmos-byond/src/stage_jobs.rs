@@ -1,6 +1,6 @@
 //! Fixed-size conversion between exact DM words and stage job control frames.
 
-use super::{
+use crate::dm_codec::{
 	exact_u16, exact_u32, exact_words4, join_u32_words, join_u64_words, split_u32_words,
 	split_u64_words,
 };
