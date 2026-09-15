@@ -9,6 +9,17 @@
 //! child. These are measured normal/fault cleanup bounds, not an unconditional
 //! wall-time guarantee: OS termination/reaping or failed OS cancellation can still
 //! delay final ownership cleanup. No worker is silently detached to meet a deadline.
+//!
+//! Startup owns child/diagnostics before fallible setup. The endpoint and handshake
+//! share a connection budget; the handshake worker is cancelled and joined on expiry.
+//! Windows releases its exact kill-on-close job on every terminal path. Unix creates
+//! a child process group, observes exit with waitid(WNOWAIT), consumes the group before
+//! reaping its leader, and never signals a stored PGID after identity could be reused.
+//! Group containment excludes descendants deliberately leaving the group. Windows
+//! attachment precedes delivery of dogmosd's blocking stdin handshake; it cannot
+//! retroactively contain arbitrary children launched before job attachment.
+
+#![deny(clippy::undocumented_unsafe_blocks)]
 
 use crate::session_limits::{
 	SESSION_CONTROL_PAYLOAD_BYTES, SESSION_PENDING_CAPACITY, SESSION_REQUEST_TIMEOUT,
@@ -254,13 +265,114 @@ fn record_service_diagnostic(state: &Arc<(Mutex<ServiceDiagnosticState>, Condvar
 	updated.notify_all();
 }
 
+/// Containment is consumed before the owned leader is reaped. A Unix PGID is never
+/// retained after wait: once empty and reaped, the numeric ID could be reused.
+#[derive(Default)]
+struct ServiceContainment {
+	#[cfg(windows)]
+	job: Option<std::os::windows::io::OwnedHandle>,
+	#[cfg(unix)]
+	group: Option<libc::pid_t>,
+}
+
+impl ServiceContainment {
+	fn attach(service: &Child) -> io::Result<Self> {
+		#[cfg(windows)]
+		{
+			Ok(Self {
+				job: Some(attach_kill_on_close_job(service)?),
+			})
+		}
+		#[cfg(unix)]
+		{
+			Ok(Self {
+				group: Some(service.id() as libc::pid_t),
+			})
+		}
+	}
+
+	fn release(&mut self) -> io::Result<()> {
+		#[cfg(windows)]
+		{
+			self.job.take();
+		}
+		#[cfg(unix)]
+		{
+			if let Some(group) = self.group.take() {
+				// SAFETY: process_group(0) created this exact owned child's group. The
+				// leader has not been reaped, so its numeric identity cannot be reused.
+				if unsafe { libc::kill(-group, libc::SIGKILL) } != 0 {
+					let error = io::Error::last_os_error();
+					if error.raw_os_error() != Some(libc::ESRCH) {
+						return Err(error);
+					}
+				}
+			}
+		}
+		Ok(())
+	}
+
+	fn observe_exit(&mut self, child: &mut Child) -> io::Result<Option<std::process::ExitStatus>> {
+		#[cfg(unix)]
+		{
+			if self.group.is_some() {
+				// SAFETY: siginfo_t is zero-initialized output; WNOWAIT observes only
+				// our owned child without releasing its PID/process-group identity.
+				let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+				// SAFETY: child remains unreaped and info is valid writable output.
+				let result = unsafe {
+					libc::waitid(
+						libc::P_PID,
+						child.id(),
+						&mut info,
+						libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+					)
+				};
+				if result != 0 {
+					return Err(io::Error::last_os_error());
+				}
+				// SAFETY: waitid initialized the SIGCHLD variant of siginfo_t.
+				if unsafe { info.si_pid() } == 0 {
+					return Ok(None);
+				}
+				self.release()?;
+				return child.wait().map(Some);
+			}
+		}
+		let status = child.try_wait()?;
+		if status.is_some() {
+			self.release()?;
+		}
+		Ok(status)
+	}
+}
+
+fn terminate_owned_service(
+	service: &mut Child,
+	containment: &mut ServiceContainment,
+) -> (bool, String) {
+	let group = containment.release();
+	let kill = service.kill();
+	// OS termination/reaping may still block; retaining ownership is deliberate.
+	let wait = service.wait();
+	let reaped = wait.is_ok();
+	let mut state = match (kill, wait) {
+		(_, Ok(status)) => format!("terminated ({status})"),
+		(Err(kill), Err(wait)) => format!("termination failed ({kill}); wait failed ({wait})"),
+		(Ok(()), Err(wait)) => format!("terminated; wait failed ({wait})"),
+	};
+	if let Err(error) = group {
+		state.push_str(&format!("; containment cleanup failed ({error})"));
+	}
+	(reaped, state)
+}
+
 pub(crate) struct ServiceSession {
 	pub(crate) client: BoundedDogmosClient,
 	service: Child,
 	diagnostics: ServiceDiagnosticCapture,
 	reaped: bool,
-	#[cfg(windows)]
-	service_job: Option<std::os::windows::io::OwnedHandle>,
+	containment: ServiceContainment,
 }
 
 impl ServiceSession {
@@ -331,21 +443,10 @@ impl ServiceSession {
 
 	fn terminate_service(&mut self) -> String {
 		let cleanup_deadline = Instant::now() + REQUEST_WORKER_SHUTDOWN_TIMEOUT;
-		#[cfg(windows)]
-		self.service_job.take();
-		let kill_result = self.service.kill();
-		// Retain/reap the exact child. An OS that fails to complete termination cannot
-		// provide an absolute wall-time guarantee; never detach ownership to fake one.
-		let wait_result = self.service.wait();
-		self.reaped = wait_result.is_ok();
+		let (reaped, process_state) =
+			terminate_owned_service(&mut self.service, &mut self.containment);
+		self.reaped = reaped;
 		self.diagnostics.close();
-		let process_state = match (kill_result, wait_result) {
-			(_, Ok(status)) => format!("terminated ({status})"),
-			(Err(error), Err(wait_error)) => {
-				format!("termination failed ({error}); wait failed ({wait_error})")
-			}
-			(Ok(()), Err(error)) => format!("terminated; wait failed ({error})"),
-		};
 		match self
 			.client
 			.close(cleanup_deadline.saturating_duration_since(Instant::now()))
@@ -361,7 +462,7 @@ impl ServiceSession {
 		service_diagnostic: Option<String>,
 	) -> ClientError {
 		let process_id = self.service.id();
-		let process_state = match self.service.try_wait() {
+		let process_state = match self.containment.observe_exit(&mut self.service) {
 			Ok(Some(status)) => {
 				self.reaped = true;
 				format!("exited ({status})")
@@ -381,7 +482,7 @@ impl ServiceSession {
 		if self.client.is_worker_finished() {
 			return Ok(false);
 		}
-		match self.service.try_wait()? {
+		match self.containment.observe_exit(&mut self.service)? {
 			Some(_) => {
 				self.reaped = true;
 				Ok(false)
@@ -408,7 +509,7 @@ impl ServiceSession {
 		}
 		let deadline = Instant::now() + SERVICE_EXIT_GRACE;
 		loop {
-			match self.service.try_wait() {
+			match self.containment.observe_exit(&mut self.service) {
 				Ok(Some(status)) => {
 					self.reaped = true;
 					self.diagnostics.close();
@@ -485,58 +586,96 @@ pub(crate) fn start_service_session(service_path: &str) -> eyre::Result<ServiceS
 		.stdout(Stdio::null())
 		.stderr(Stdio::piped());
 	configure_service_command(&mut command);
-	let mut service = command.spawn()?;
-	let stderr = service
-		.stderr
-		.take()
-		.ok_or_else(|| eyre::eyre!("dogmosd stderr was not piped"))?;
-	let mut diagnostics = ServiceDiagnosticCapture::start(stderr);
-	#[cfg(windows)]
-	let service_job = match attach_kill_on_close_job(&service) {
-		Ok(job) => job,
-		Err(error) => {
-			let _ = service.kill();
-			let _ = service.wait();
+	start_spawned_service(
+		command.spawn()?,
+		&endpoint,
+		handshake,
+		Duration::from_secs(5),
+	)
+}
+
+/// Owns every partially initialized resource before any fallible setup step.
+struct StartingService {
+	service: Option<Child>,
+	diagnostics: Option<ServiceDiagnosticCapture>,
+	reaped: bool,
+	containment: ServiceContainment,
+}
+
+impl StartingService {
+	fn cleanup(&mut self) -> String {
+		let Some(service) = &mut self.service else {
+			return "transferred".into();
+		};
+		let (reaped, state) = terminate_owned_service(service, &mut self.containment);
+		self.reaped = reaped;
+		if let Some(diagnostics) = &mut self.diagnostics {
 			diagnostics.close();
-			return Err(error.into());
 		}
-	};
-	if let Err(error) = service
-		.stdin
-		.take()
-		.ok_or_else(|| eyre::eyre!("dogmosd stdin was not piped"))?
-		.write_all(&handshake.encode())
-	{
-		let _ = service.kill();
-		let _ = service.wait();
-		diagnostics.close();
-		return Err(error.into());
+		state
 	}
-	let client = match DogmosClient::connect(&endpoint, handshake, Duration::from_secs(5)) {
-		Ok(client) => client,
-		Err(error) => {
-			let _ = service.kill();
-			let _ = service.wait();
-			diagnostics.close();
-			return Err(error.into());
+}
+
+impl Drop for StartingService {
+	fn drop(&mut self) {
+		if self.service.is_some() && !self.reaped {
+			let _ = self.cleanup();
 		}
+	}
+}
+
+/// Concrete startup seam shared by the real command and isolated partial-init fixtures.
+fn start_spawned_service(
+	service: Child,
+	endpoint: &str,
+	handshake: HandshakePayload,
+	timeout: Duration,
+) -> eyre::Result<ServiceSession> {
+	let mut owner = StartingService {
+		service: Some(service),
+		diagnostics: None,
+		reaped: false,
+		containment: ServiceContainment::default(),
 	};
-	let client = match BoundedDogmosClient::new(client) {
+	let setup = (|| -> eyre::Result<BoundedDogmosClient> {
+		let service = owner.service.as_mut().expect("startup owns child");
+		owner.containment = ServiceContainment::attach(service)?;
+		let stderr = service
+			.stderr
+			.take()
+			.ok_or_else(|| eyre::eyre!("dogmosd stderr was not piped"))?;
+		owner.diagnostics = Some(ServiceDiagnosticCapture::start(stderr));
+		service
+			.stdin
+			.take()
+			.ok_or_else(|| eyre::eyre!("dogmosd stdin was not piped"))?
+			.write_all(&handshake.encode())?;
+		let client = DogmosClient::connect(endpoint, handshake, timeout)?;
+		Ok(BoundedDogmosClient::new(client)?)
+	})();
+	let client = match setup {
 		Ok(client) => client,
 		Err(error) => {
-			let _ = service.kill();
-			let _ = service.wait();
-			diagnostics.close();
-			return Err(error.into());
+			let pid = owner.service.as_ref().expect("startup owns child").id();
+			let cleanup = owner.cleanup();
+			let diagnostic = owner
+				.diagnostics
+				.as_ref()
+				.and_then(ServiceDiagnosticCapture::latest);
+			return Err(error.wrap_err(format!(
+				"dogmosd startup pid={pid} status={cleanup}; diagnostic={diagnostic:?}"
+			)));
 		}
 	};
 	Ok(ServiceSession {
 		client,
-		service,
-		diagnostics,
+		service: owner.service.take().expect("startup transfers child once"),
+		diagnostics: owner
+			.diagnostics
+			.take()
+			.expect("successful startup has diagnostics"),
 		reaped: false,
-		#[cfg(windows)]
-		service_job: Some(service_job),
+		containment: std::mem::take(&mut owner.containment),
 	})
 }
 
@@ -548,8 +687,11 @@ fn configure_service_command(command: &mut Command) {
 	command.creation_flags(CREATE_NO_WINDOW);
 }
 
-#[cfg(not(windows))]
-fn configure_service_command(_command: &mut Command) {}
+#[cfg(unix)]
+fn configure_service_command(command: &mut Command) {
+	use std::os::unix::process::CommandExt;
+	command.process_group(0);
+}
 
 #[cfg(windows)]
 fn attach_kill_on_close_job(service: &Child) -> io::Result<std::os::windows::io::OwnedHandle> {
@@ -677,6 +819,42 @@ mod tests {
 				info.to_string().replace('\n', " | ")
 			);
 		}));
+		if let Some(scenario) = mode.strip_prefix("descendant-probe-") {
+			run_descendant_probe(scenario);
+			return;
+		}
+		if mode == "descendant-leaf" {
+			thread::sleep(Duration::from_secs(5));
+			return;
+		}
+		if mode == "descendant-startup" {
+			// Match dogmosd's startup barrier: ownership/job attachment precedes stdin delivery.
+			std::io::stdin()
+				.read_exact(&mut [0_u8; HANDSHAKE_PAYLOAD_LEN])
+				.unwrap();
+			let _child = spawn_inherited_descendant();
+			// The helper reads this pipe before starting the real startup path.
+			println!("{}", _child.id());
+			std::io::stdout().flush().unwrap();
+			thread::sleep(Duration::from_secs(2));
+			return;
+		}
+		if mode == "startup-exit" {
+			eprintln!("fixture startup exit provenance");
+			std::process::exit(19);
+		}
+		if mode == "stderr-flood" {
+			let end = Instant::now() + Duration::from_secs(2);
+			while Instant::now() < end {
+				if std::io::stderr()
+					.write_all(b"fixture continuous diagnostics\n")
+					.is_err()
+				{
+					return;
+				}
+			}
+			return;
+		}
 		if mode == "stderr-open" {
 			eprintln!("fixture stderr remains open");
 			thread::sleep(Duration::from_secs(2));
@@ -687,13 +865,74 @@ mod tests {
 			.name(endpoint.to_ns_name::<GenericNamespaced>().unwrap())
 			.create_sync()
 			.unwrap();
+		if mode.starts_with("handshake-") {
+			eprintln!("fixture handshake listener ready");
+		}
 		let mut stream = listener.accept().unwrap();
 		let mut payload = [0_u8; HANDSHAKE_PAYLOAD_LEN];
 		let (request, size) = read_frame_into(&mut stream, &mut payload).unwrap();
 		let mut handshake = HandshakePayload::decode(&payload[..size]).unwrap();
 		handshake.process_id = std::process::id();
+		if mode == "handshake-stall" {
+			thread::sleep(Duration::from_millis(350));
+			return;
+		}
+		if mode == "handshake-truncated" {
+			stream.write_all(&request.response().encode()[..8]).unwrap();
+			thread::sleep(Duration::from_millis(350));
+			return;
+		}
+		if mode == "handshake-mismatch" {
+			handshake.auth_token[0] ^= 1;
+		}
+		if mode == "handshake-reject" {
+			let mut response = request.response();
+			response.flags |= dogmos_protocol::FLAG_ERROR;
+			response.payload_len = 4;
+			eprintln!("fixture handshake rejection provenance");
+			write_frame(
+				&mut stream,
+				response,
+				&dogmos_protocol::ServiceErrorCode::Busy.encode(),
+			)
+			.unwrap();
+			return;
+		}
 		write_frame(&mut stream, request.response(), &handshake.encode()).unwrap();
-		let (request, _) = read_frame_into(&mut stream, &mut payload).unwrap();
+		let descendant = if mode.starts_with("descendant") {
+			let child = spawn_inherited_descendant();
+			eprintln!("fixture descendant pid={}", child.id());
+			Some(child)
+		} else {
+			None
+		};
+
+		let (mut request, size) = read_frame_into(&mut stream, &mut payload).unwrap();
+		if mode == "late" {
+			eprintln!("fixture late request provenance");
+			thread::sleep(Duration::from_millis(350));
+			let _ = write_frame(&mut stream, request.response(), &payload[..size]);
+			return;
+		}
+		if mode == "server-error" {
+			eprintln!("fixture failed request provenance");
+			let mut response = request.response();
+			response.flags |= dogmos_protocol::FLAG_ERROR;
+			write_frame(
+				&mut stream,
+				response,
+				&dogmos_protocol::ServiceErrorCode::Internal.encode(),
+			)
+			.unwrap();
+			(request, _) = read_frame_into(&mut stream, &mut payload).unwrap();
+		}
+		if mode == "wrong-receipt" {
+			let mut response = request.response();
+			response.request_id += 1;
+			write_frame(&mut stream, response, &payload[..size]).unwrap();
+			thread::sleep(Duration::from_millis(350));
+			return;
+		}
 		if mode == "abrupt" {
 			eprintln!("fixture abrupt exit provenance");
 			std::process::exit(17);
@@ -705,7 +944,14 @@ mod tests {
 		}
 		assert_eq!(request.operation_kind().unwrap(), OperationKind::Shutdown);
 		write_frame(&mut stream, request.response(), &[]).unwrap();
-		if mode == "clean" {
+		if mode == "descendant-clean" {
+			// Simulate an exited service leaving a live inherited writer for its owner.
+			if let Some(mut child) = descendant {
+				child.0.take();
+			}
+			return;
+		}
+		if mode == "clean" || mode == "server-error" {
 			return;
 		}
 		eprintln!("fixture acknowledged shutdown without exiting");
@@ -737,7 +983,7 @@ mod tests {
 		}
 	}
 
-	fn spawn_fixture(mode: &str, endpoint: &str) -> FixtureChild {
+	fn fixture_command(mode: &str, endpoint: &str) -> Command {
 		let mut command = Command::new(std::env::current_exe().unwrap());
 		command
 			.args([
@@ -747,11 +993,529 @@ mod tests {
 			])
 			.env("DOGMOS_SESSION_FAULT_CHILD", mode)
 			.env("DOGMOS_SESSION_FAULT_ENDPOINT", endpoint)
-			.stdin(Stdio::null())
+			.stdin(Stdio::piped())
 			.stdout(Stdio::null())
 			.stderr(Stdio::piped());
 		configure_service_command(&mut command);
+		command
+	}
+
+	fn spawn_fixture(mode: &str, endpoint: &str) -> FixtureChild {
+		FixtureChild(Some(fixture_command(mode, endpoint).spawn().unwrap()))
+	}
+
+	fn spawn_inherited_descendant() -> FixtureChild {
+		let mut command = Command::new(std::env::current_exe().unwrap());
+		command
+			.args([
+				"--exact",
+				"session::tests::fault_service_child",
+				"--nocapture",
+			])
+			.env("DOGMOS_SESSION_FAULT_CHILD", "descendant-leaf")
+			.stdin(Stdio::null())
+			.stdout(Stdio::null())
+			.stderr(Stdio::inherit());
+		#[cfg(windows)]
+		configure_service_command(&mut command);
 		FixtureChild(Some(command.spawn().unwrap()))
+	}
+
+	#[cfg(windows)]
+	struct ProcessProbe(std::os::windows::io::OwnedHandle);
+	#[cfg(unix)]
+	struct ProcessProbe(std::os::fd::OwnedFd);
+
+	impl ProcessProbe {
+		fn open(child: &Child) -> Self {
+			#[cfg(windows)]
+			{
+				use std::os::windows::io::AsHandle;
+				Self(child.as_handle().try_clone_to_owned().unwrap())
+			}
+			#[cfg(unix)]
+			{
+				use std::os::fd::FromRawFd;
+				// SAFETY: pid identifies our still-owned child; flags zero requests a new pidfd.
+				let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, child.id(), 0) };
+				assert!(fd >= 0, "pidfd_open: {}", io::Error::last_os_error());
+				// SAFETY: syscall returned a new live descriptor, transferred exactly once.
+				Self(unsafe { std::os::fd::OwnedFd::from_raw_fd(fd as i32) })
+			}
+		}
+		fn open_pid(pid: u32) -> Self {
+			#[cfg(windows)]
+			{
+				use std::os::windows::io::FromRawHandle;
+				use windows_sys::Win32::System::Threading::{
+					OpenProcess, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
+				};
+				// SAFETY: child supplied this descendant PID while retaining its live child handle.
+				let handle =
+					unsafe { OpenProcess(PROCESS_SYNCHRONIZE | PROCESS_TERMINATE, 0, pid) };
+				assert!(
+					!handle.is_null(),
+					"OpenProcess: {}",
+					io::Error::last_os_error()
+				);
+				// SAFETY: OpenProcess returned a newly owned live process handle.
+				Self(unsafe { std::os::windows::io::OwnedHandle::from_raw_handle(handle) })
+			}
+			#[cfg(unix)]
+			{
+				use std::os::fd::FromRawFd;
+				// SAFETY: child holds the descendant live; flags zero creates an owned pidfd.
+				let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) };
+				assert!(fd >= 0, "pidfd_open: {}", io::Error::last_os_error());
+				// SAFETY: syscall returned a newly owned live descriptor.
+				Self(unsafe { std::os::fd::OwnedFd::from_raw_fd(fd as i32) })
+			}
+		}
+
+		fn exited(&self) -> bool {
+			#[cfg(windows)]
+			{
+				use std::os::windows::io::AsRawHandle;
+				// SAFETY: this duplicate handle owns the exact fixture process identity.
+				unsafe {
+					windows_sys::Win32::System::Threading::WaitForSingleObject(
+						self.0.as_raw_handle(),
+						0,
+					) == windows_sys::Win32::Foundation::WAIT_OBJECT_0
+				}
+			}
+			#[cfg(unix)]
+			{
+				use std::os::fd::AsRawFd;
+				let mut fd = libc::pollfd {
+					fd: self.0.as_raw_fd(),
+					events: libc::POLLIN,
+					revents: 0,
+				};
+				// SAFETY: one initialized descriptor points to the owned exact process pidfd.
+				unsafe { libc::poll(&mut fd, 1, 0) > 0 }
+			}
+		}
+		fn terminate(&self) {
+			#[cfg(windows)]
+			{
+				use std::os::windows::io::AsRawHandle;
+				// SAFETY: fallback cleanup targets only the owned fixture process handle.
+				unsafe {
+					windows_sys::Win32::System::Threading::TerminateProcess(
+						self.0.as_raw_handle(),
+						97,
+					);
+				}
+			}
+			#[cfg(unix)]
+			{
+				use std::os::fd::AsRawFd;
+				// SAFETY: pidfd targets only the exact fixture; no PID name lookup/race.
+				unsafe {
+					libc::syscall(
+						libc::SYS_pidfd_send_signal,
+						self.0.as_raw_fd(),
+						libc::SIGKILL,
+						std::ptr::null::<libc::siginfo_t>(),
+						0,
+					);
+				}
+			}
+		}
+	}
+
+	/// Only created inside the isolated Linux subreaper helper, or with a Windows process handle.
+	struct DescendantCleanup {
+		probe: ProcessProbe,
+		#[cfg(unix)]
+		pid: u32,
+	}
+
+	impl Drop for DescendantCleanup {
+		fn drop(&mut self) {
+			if !self.probe.exited() {
+				self.probe.terminate();
+			}
+			#[cfg(unix)]
+			{
+				let mut status = 0;
+				// SAFETY: the isolated helper is subreaper; the exact descendant is adopted after its parent is reaped.
+				let result = unsafe { libc::waitpid(self.pid as i32, &mut status, 0) };
+				assert_eq!(
+					result,
+					self.pid as i32,
+					"descendant reap: {}",
+					io::Error::last_os_error()
+				);
+			}
+		}
+	}
+
+	fn run_descendant_probe(scenario: &str) {
+		#[cfg(unix)]
+		{
+			assert_eq!(
+				// SAFETY: isolated helper executable, never the main parallel test process.
+				unsafe { libc::prctl(libc::PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) },
+				0
+			);
+		}
+		let (descendant, elapsed, cleanup) = if scenario == "startup" {
+			let endpoint = fixture_endpoint(44);
+			let mut command = fixture_command("descendant-startup", &endpoint);
+			command.stdout(Stdio::piped());
+			let mut child = FixtureChild(Some(command.spawn().unwrap()));
+			let stdout = child.stdout.take().unwrap();
+			thread::scope(|scope| {
+				let service = child.0.take().unwrap();
+				let worker = scope.spawn(|| {
+					let started = Instant::now();
+					let result = start_spawned_service(
+						service,
+						&endpoint,
+						fixture_handshake(),
+						Duration::from_millis(100),
+					);
+					(started.elapsed(), result)
+				});
+				let mut line = String::new();
+				use std::io::BufRead;
+				let mut stdout = std::io::BufReader::new(stdout);
+				// The Rust test harness also writes a preamble; find the explicit PID line.
+				let pid = loop {
+					line.clear();
+					assert!(stdout.read_line(&mut line).unwrap() != 0);
+					if let Ok(pid) = line.trim().parse::<u32>() {
+						break pid;
+					}
+				};
+				let descendant = DescendantCleanup {
+					probe: ProcessProbe::open_pid(pid),
+					#[cfg(unix)]
+					pid,
+				};
+				let (elapsed, result) = worker.join().unwrap();
+				(
+					descendant,
+					elapsed,
+					format!("{:#}", result.err().expect("no listener must fail startup")),
+				)
+			})
+		} else {
+			let mut session = fixture_session(if scenario == "forced" {
+				"descendant"
+			} else {
+				"descendant-clean"
+			});
+			let diagnostic = session
+				.diagnostics
+				.latest_after(0, Duration::from_secs(1))
+				.unwrap();
+			let pid = diagnostic
+				.strip_prefix("fixture descendant pid=")
+				.unwrap()
+				.parse::<u32>()
+				.unwrap();
+			let descendant = DescendantCleanup {
+				probe: ProcessProbe::open_pid(pid),
+				#[cfg(unix)]
+				pid,
+			};
+			assert!(!descendant.probe.exited());
+			let started = Instant::now();
+			let cleanup = if scenario == "forced" {
+				session.terminate_service()
+			} else if scenario == "health" {
+				session
+					.client
+					.round_trip(OperationKind::Shutdown, &[], 0, Duration::from_secs(1))
+					.unwrap();
+				let deadline = Instant::now() + Duration::from_secs(1);
+				while !session.reaped && Instant::now() < deadline {
+					let _ = session.is_healthy().unwrap();
+					thread::sleep(Duration::from_millis(1));
+				}
+				assert!(session.reaped);
+				session.shutdown().unwrap();
+				"health observed exit then repeated shutdown".into()
+			} else {
+				session.shutdown().unwrap();
+				session.shutdown().unwrap();
+				"clean then repeated shutdown".into()
+			};
+			let elapsed = started.elapsed();
+			assert!(
+				session.reaped
+					&& session.client.is_worker_finished()
+					&& session.diagnostics.worker.is_none()
+			);
+			// Check containment before dropping the session; drop must not hide missing shutdown cleanup.
+			let deadline = Instant::now() + Duration::from_millis(100);
+			while !descendant.probe.exited() && Instant::now() < deadline {
+				thread::sleep(Duration::from_millis(1));
+			}
+			let contained = descendant.probe.exited();
+			drop(session);
+			assert!(
+				contained,
+				"{scenario} containment missing before session drop"
+			);
+			(descendant, elapsed, cleanup)
+		};
+		let deadline = Instant::now() + Duration::from_millis(100);
+		while !descendant.probe.exited() && Instant::now() < deadline {
+			thread::sleep(Duration::from_millis(1));
+		}
+		let contained = descendant.probe.exited();
+		drop(descendant); // Kill/reap the exact leaf even when containment assertions fail.
+		eprintln!(
+			"descendant scenario={scenario} contained={contained} cleanup={elapsed:?}; {cleanup}"
+		);
+		assert!(
+			contained,
+			"{scenario} service cleanup did not contain descendant; elapsed={elapsed:?}"
+		);
+		assert!(elapsed < Duration::from_millis(750));
+	}
+
+	#[test]
+	fn exact_child_cleanup_contains_descendant_with_inherited_stderr() {
+		for scenario in ["forced", "clean", "health", "startup"] {
+			let mut helper = spawn_fixture(&format!("descendant-probe-{scenario}"), "unused");
+			let mut diagnostics = ServiceDiagnosticCapture::start(helper.stderr.take().unwrap());
+			let deadline = Instant::now() + Duration::from_secs(3);
+			let status = loop {
+				if let Some(status) = helper.try_wait().unwrap() {
+					break status;
+				}
+				if Instant::now() >= deadline {
+					let _ = helper.kill();
+					break helper.wait().unwrap();
+				}
+				thread::sleep(Duration::from_millis(5));
+			};
+			diagnostics.close();
+			eprintln!(
+				"descendant {scenario} helper status={status}; diagnostic={:?}",
+				diagnostics.latest()
+			);
+			assert!(
+				status.success(),
+				"descendant {scenario} fixture failed: {:?}",
+				diagnostics.latest()
+			);
+		}
+	}
+
+	#[test]
+	fn partial_startup_releases_exact_child_on_missing_pipes() {
+		for missing in ["stdin", "stderr"] {
+			let mut child = spawn_fixture("stderr-open", "unused");
+			let probe = ProcessProbe::open(&child);
+			let pid = child.id();
+			if missing == "stdin" {
+				child.stdin.take();
+			} else {
+				child.stderr.take();
+			}
+			let started = Instant::now();
+			let result = start_spawned_service(
+				child.0.take().unwrap(),
+				"unused",
+				fixture_handshake(),
+				Duration::from_millis(40),
+			);
+			let exited = probe.exited();
+			if !exited {
+				probe.terminate();
+			}
+			let error = result.err().expect("missing pipe must reject startup");
+			eprintln!(
+				"partial {missing} pid={pid} elapsed={:?} exact_child_exited={exited}; {error:#}",
+				started.elapsed()
+			);
+			assert!(exited);
+			assert!(format!("{error:#}").contains(&format!("dogmosd {missing} was not piped")));
+			assert!(started.elapsed() < Duration::from_millis(750));
+		}
+	}
+
+	#[test]
+	fn failed_startup_preserves_provenance_and_releases_exact_child() {
+		for mode in [
+			"startup-exit",
+			"handshake-reject",
+			"handshake-mismatch",
+			"handshake-stall",
+			"handshake-truncated",
+		] {
+			let endpoint = fixture_endpoint(43);
+			let mut child = spawn_fixture(mode, &endpoint);
+			let probe = ProcessProbe::open(&child);
+			let pid = child.id();
+			let started = Instant::now();
+			let result = start_spawned_service(
+				child.0.take().unwrap(),
+				&endpoint,
+				fixture_handshake(),
+				Duration::from_millis(100),
+			);
+			let elapsed = started.elapsed();
+			let exited = probe.exited();
+			if !exited {
+				probe.terminate();
+			}
+			let error = result.err().expect("fault startup must fail");
+			eprintln!("startup {mode} pid={pid} elapsed={elapsed:?} exact_child_exited={exited}; {error:#}");
+			assert!(exited);
+			assert!(elapsed < Duration::from_millis(750));
+			assert!(error
+				.chain()
+				.any(|error| error.downcast_ref::<ClientError>().is_some()));
+			let expected = match mode {
+				"handshake-reject" => "ServerBusy",
+				"handshake-mismatch" => "AuthenticationFailed",
+				_ => "ConnectTimeout",
+			};
+			assert!(format!("{error:#}").contains(expected), "{error:#}");
+		}
+	}
+
+	#[test]
+	fn late_request_times_out_without_restart_and_releases_workers() {
+		let mut session = fixture_session("late");
+		let probe = ProcessProbe::open(&session.service);
+		let pid = session.service.id();
+		let started = Instant::now();
+		let result: Result<(), ClientError> = session.request_with_response_timeout(
+			OperationKind::Echo,
+			b"late",
+			4,
+			Duration::from_millis(40),
+			|_| Ok(()),
+		);
+		let elapsed = started.elapsed();
+		eprintln!("late request pid={pid} elapsed={elapsed:?}; {result:?}");
+		assert!(
+			matches!(result, Err(ClientError::ServiceProcess { source, process_id, .. }) if matches!(*source, ClientError::RequestTimeout) && process_id == pid)
+		);
+		assert!(probe.exited());
+		assert!(
+			session.reaped
+				&& session.client.is_worker_finished()
+				&& session.diagnostics.worker.is_none()
+		);
+		assert!(matches!(
+			session.client.echo(b"again", Duration::from_millis(40)),
+			Err(ClientError::WorkerStopped)
+		));
+		assert_eq!(session.service.id(), pid);
+		assert!(elapsed < Duration::from_millis(750));
+		session.shutdown().unwrap();
+	}
+
+	#[test]
+	fn server_rejection_keeps_error_provenance_and_allows_owned_shutdown() {
+		let mut session = fixture_session("server-error");
+		let pid = session.service.id();
+		let result: Result<(), ClientError> = session.request_with_response_timeout(
+			OperationKind::Echo,
+			b"fail",
+			4,
+			Duration::from_secs(1),
+			|_| Ok(()),
+		);
+		assert!(
+			matches!(result, Err(ClientError::ServiceProcess { source, process_id, service_diagnostic: Some(diagnostic), .. }) if matches!(*source, ClientError::Server(dogmos_protocol::ServiceErrorCode::Internal)) && process_id == pid && diagnostic == "fixture failed request provenance")
+		);
+		assert!(session.is_healthy().unwrap());
+		session.shutdown().unwrap();
+		assert!(session.reaped && session.client.is_worker_finished());
+	}
+
+	#[test]
+	fn malformed_receipt_stops_reuse_and_exact_child_is_reaped() {
+		let mut session = fixture_session("wrong-receipt");
+		let probe = ProcessProbe::open(&session.service);
+		let result: Result<(), ClientError> = session.request_with_response_timeout(
+			OperationKind::Echo,
+			b"bad",
+			3,
+			Duration::from_secs(1),
+			|_| Ok(()),
+		);
+		assert!(matches!(result, Err(ClientError::Protocol(_))));
+		assert!(matches!(
+			session.client.echo(b"again", Duration::from_millis(40)),
+			Err(ClientError::WorkerStopped)
+		));
+		let _ = session.shutdown();
+		assert!(probe.exited());
+		assert!(
+			session.reaped
+				&& session.client.is_worker_finished()
+				&& session.diagnostics.worker.is_none()
+		);
+	}
+
+	#[test]
+	fn diagnostic_close_bounds_a_continuously_written_stream() {
+		let mut child = spawn_fixture("stderr-flood", "unused");
+		let mut capture = ServiceDiagnosticCapture::start(child.stderr.take().unwrap());
+		assert!(capture.latest_after(0, Duration::from_secs(1)).is_some());
+		let started = Instant::now();
+		capture.close();
+		let elapsed = started.elapsed();
+		let _ = child.kill();
+		child.wait().unwrap();
+		eprintln!("continuous writer diagnostic close: {elapsed:?}");
+		assert!(elapsed < Duration::from_millis(500));
+		assert!(capture.worker.is_none());
+		assert!(capture.latest().unwrap().len() <= MAX_SERVICE_DIAGNOSTIC_BYTES);
+	}
+
+	fn assert_handshake_budget(mode: &str) {
+		let endpoint = fixture_endpoint(42);
+		let mut child = spawn_fixture(mode, &endpoint);
+		let mut diagnostics = ServiceDiagnosticCapture::start(child.stderr.take().unwrap());
+		assert_eq!(
+			diagnostics
+				.latest_after(0, Duration::from_secs(1))
+				.as_deref(),
+			Some("fixture handshake listener ready")
+		);
+		let started = Instant::now();
+		let result =
+			DogmosClient::connect(&endpoint, fixture_handshake(), Duration::from_millis(40));
+		let elapsed = started.elapsed();
+		let pid = child.id();
+		let _ = child.kill();
+		child.wait().unwrap();
+		diagnostics.close();
+		eprintln!(
+			"{mode} pid={pid} connect elapsed={elapsed:?} result={:?}",
+			result.as_ref().err()
+		);
+		assert!(
+			matches!(result, Err(ClientError::ConnectTimeout)),
+			"handshake deadline lost: {:?}",
+			result.as_ref().err()
+		);
+		assert!(
+			elapsed < Duration::from_millis(250),
+			"handshake exceeded budget: {elapsed:?}"
+		);
+	}
+
+	#[test]
+	fn withheld_handshake_obeys_connection_budget() {
+		assert_handshake_budget("handshake-stall");
+	}
+
+	#[test]
+	fn truncated_handshake_obeys_connection_budget() {
+		assert_handshake_budget("handshake-truncated");
 	}
 
 	#[test]
@@ -824,25 +1588,15 @@ mod tests {
 		);
 		eprintln!("fixture mode={mode} endpoint={endpoint}");
 		let mut child = spawn_fixture(mode, &endpoint);
-		let diagnostics = ServiceDiagnosticCapture::start(child.stderr.take().unwrap());
-		#[cfg(windows)]
-		let job = attach_kill_on_close_job(&child).unwrap();
-		let client = DogmosClient::connect(&endpoint, fixture_handshake(), Duration::from_secs(2))
-			.unwrap_or_else(|error| {
-				panic!(
-					"fixture mode={mode} endpoint={endpoint} connect failed: {error:?}; diagnostic={:?}",
-					diagnostics.latest_after(0, SERVICE_DIAGNOSTIC_WAIT)
-				)
-			});
-		let client = BoundedDogmosClient::new(client).unwrap();
-		ServiceSession {
-			client,
-			service: child.0.take().unwrap(),
-			diagnostics,
-			reaped: false,
-			#[cfg(windows)]
-			service_job: Some(job),
-		}
+		start_spawned_service(
+			child.0.take().unwrap(),
+			&endpoint,
+			fixture_handshake(),
+			Duration::from_secs(2),
+		)
+		.unwrap_or_else(|error| {
+			panic!("fixture mode={mode} endpoint={endpoint} startup failed: {error:#}")
+		})
 	}
 
 	#[test]
@@ -853,7 +1607,11 @@ mod tests {
 			Err(ClientError::RequestTimeout)
 		));
 		let closed = session.client.close(Duration::from_millis(500));
-		let alive = session.service.try_wait().unwrap().is_none();
+		let alive = session
+			.containment
+			.observe_exit(&mut session.service)
+			.unwrap()
+			.is_none();
 		// Always reap the isolated child before an assertion can unwind.
 		let cleanup = session.terminate_service();
 		assert!(

@@ -58,3 +58,44 @@ selects these layouts. Process metrics retain their explicit version/reserved wo
 Unsigned wide values use little-endian 16-bit words; narrow integers and finite scalar values
 keep the existing adapter validation. Optional diagnostic bindings remain isolated: their
 benchmark scalars/JSON are observations, not part of the production numeric-record contract.
+
+## Startup, shutdown and containment contract
+
+Startup establishes one owner before pipe setup, job attachment, handshake delivery and client
+creation. Every failed step cleans that exact child and diagnostic reader. Errors retain their
+original chain and add the owned PID, observed cleanup state and latest bounded diagnostic.
+`DogmosClient::connect` uses one endpoint/handshake budget; a withheld or partial handshake now
+cancels and joins its dedicated worker before returning `ConnectTimeout`. A setup gate prevents
+handshake I/O from starting until the cancellation owner exists. Successful connection joins
+that worker without cancelling the stream it returns.
+
+A request timeout closes session reuse and terminates the existing service; there is no automatic
+replacement world. A typed server rejection preserves its error and diagnostic while leaving
+healthy session shutdown available. Shutdown acknowledgement allows one second for exit, then
+forces cleanup. Diagnostics stop without waiting for EOF and drain at most 64 KiB, retaining at
+most 4 KiB. Request and handshake workers remain owned through cancellation and joining.
+
+Windows closes its exact kill-on-close job on forced, clean, health-observed and partial-start
+paths. Unix starts the service in its own process group. `waitid(WNOWAIT)` observes an exited
+leader without reaping it; group termination precedes `Child::wait`, so the group ID cannot be
+reused before signalling. Cleanup consumes the group identity once and never signals it after
+leader reap. This covers descendants remaining in that group, including inherited stderr
+writers. The production process is not made a Linux subreaper; the isolated test helper uses
+one to reap its own deliberately created grandchildren.
+
+These are measured supported-path bounds, not unconditional OS deadlines. Connection syscalls,
+failed cancellation, termination and reaping may still delay cleanup; no worker is detached to
+make a time claim. Unix descendants that deliberately leave the group are outside this contract.
+Windows job assignment cannot capture descendants already created before assignment. The real
+`dogmos-server::run` first blocks in `read_startup_handshake`, before listener/thread creation,
+and contains no process-spawn path. The shim assigns the job before writing that handshake.
+An isolated pre-attachment counterexample is archived separately; suspended launch for arbitrary
+executables is not claimed.
+
+The maintained session tests use real isolated child processes on Windows i686 and Linux i686:
+withheld/truncated handshake, missing startup pipes, early exit, rejected/mismatched handshake,
+late and malformed requests, typed server rejection, abrupt death, acknowledgement without exit,
+repeated shutdown, health-observed exit, held/flooded diagnostics, and descendant cleanup during
+forced/clean/health/handshake-barrier startup paths. Exact process handles/pidfds distinguish
+identity from a reusable numeric PID. Existing codec, public API and generation gates remain
+independent; these fixtures do not qualify a live game's native-load behavior.

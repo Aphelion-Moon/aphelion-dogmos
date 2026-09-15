@@ -1,5 +1,7 @@
 //! Shared validation of exact DM numbers/words and bounded record shapes. No BYOND calls.
 
+#![deny(missing_docs)]
+
 pub(crate) mod callbacks;
 #[cfg(any(feature = "diagnostic-bindings", test))]
 pub(crate) mod diagnostics;

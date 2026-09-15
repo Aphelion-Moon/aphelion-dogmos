@@ -1,3 +1,5 @@
+#![deny(clippy::undocumented_unsafe_blocks)]
+
 use dogmos_protocol::{
 	read_frame_into, write_frame, HandshakePayload, OperationKind, ProtocolError, ProtocolHeader,
 	ServiceErrorCode, TransportError, FLAG_ERROR, HANDSHAKE_PAYLOAD_LEN, MAX_CONTROL_PAYLOAD,
@@ -101,6 +103,11 @@ pub struct DogmosClient {
 }
 
 impl DogmosClient {
+	/// Connect and validate the peer within one endpoint/handshake budget.
+	///
+	/// A timed-out handshake is cancelled and its owned worker joined before returning
+	/// `ConnectTimeout`. OS connection, cancellation and joining may delay cleanup;
+	/// no worker is detached and no replacement authoritative world is created.
 	pub fn connect(
 		endpoint: &str,
 		local: HandshakePayload,
@@ -108,7 +115,7 @@ impl DogmosClient {
 	) -> Result<Self, ClientError> {
 		let name = endpoint.to_ns_name::<GenericNamespaced>()?;
 		let deadline = Instant::now() + timeout;
-		let mut stream = loop {
+		let stream = loop {
 			match ConnectOptions::new().name(name.clone()).connect_sync() {
 				Ok(stream) => break stream,
 				Err(error) if Instant::now() < deadline => {
@@ -125,6 +132,55 @@ impl DogmosClient {
 				Err(_) => return Err(ClientError::ConnectTimeout),
 			}
 		};
+		Self::handshake_with_deadline(stream, local, deadline)
+	}
+
+	fn handshake_with_deadline(
+		stream: Stream,
+		local: HandshakePayload,
+		deadline: Instant,
+	) -> Result<Self, ClientError> {
+		let io_token = stream_io_handle_token(&stream)?;
+		let (setup_sender, setup_receiver) = mpsc::sync_channel(1);
+		let (start_sender, start_receiver) = mpsc::sync_channel(1);
+		let (result_sender, result_receiver) = mpsc::sync_channel(1);
+		let worker = thread::Builder::new()
+			.name("dogmos-handshake".into())
+			.spawn(move || {
+				let canceller = IoCanceller::new(current_thread_token(), io_token);
+				if setup_sender.send(canceller).is_err() || start_receiver.recv().is_err() {
+					return;
+				}
+				let _ = result_sender.send(Self::exchange_handshake(stream, local));
+			})?;
+		let mut owner = HandshakeWorker {
+			worker: Some(worker),
+			start: Some(start_sender),
+			canceller: None,
+		};
+		owner.canceller = Some(
+			setup_receiver
+				.recv_timeout(deadline.saturating_duration_since(Instant::now()))
+				.map_err(connect_receive_error)??,
+		);
+		owner
+			.start
+			.take()
+			.expect("handshake start owned once")
+			.send(())
+			.map_err(|_| ClientError::WorkerStopped)?;
+		let result = result_receiver
+			.recv_timeout(deadline.saturating_duration_since(Instant::now()))
+			.map_err(connect_receive_error)?;
+		// A successful handshake returns a live stream: join without cancelling it.
+		owner.join()?;
+		result
+	}
+
+	fn exchange_handshake(
+		mut stream: Stream,
+		local: HandshakePayload,
+	) -> Result<Self, ClientError> {
 		let request = ProtocolHeader::request(
 			OperationKind::Handshake,
 			1,
@@ -252,6 +308,56 @@ impl DogmosClient {
 	}
 }
 
+fn connect_receive_error(error: mpsc::RecvTimeoutError) -> ClientError {
+	match error {
+		mpsc::RecvTimeoutError::Timeout => ClientError::ConnectTimeout,
+		mpsc::RecvTimeoutError::Disconnected => ClientError::WorkerStopped,
+	}
+}
+
+/// Owns the startup worker even if setup fails before handshake I/O begins.
+struct HandshakeWorker {
+	worker: Option<thread::JoinHandle<()>>,
+	start: Option<SyncSender<()>>,
+	canceller: Option<IoCanceller>,
+}
+
+impl HandshakeWorker {
+	fn join(&mut self) -> Result<(), ClientError> {
+		self.start.take();
+		if let Some(worker) = self.worker.take() {
+			worker.join().map_err(|_| ClientError::WorkerStopped)?;
+		}
+		Ok(())
+	}
+}
+
+impl Drop for HandshakeWorker {
+	fn drop(&mut self) {
+		self.start.take();
+		let deadline = Instant::now() + Duration::from_secs(1);
+		while self
+			.worker
+			.as_ref()
+			.is_some_and(|worker| !worker.is_finished())
+			&& Instant::now() < deadline
+		{
+			if let Some(canceller) = &self.canceller {
+				let _ = canceller.cancel();
+			}
+			thread::sleep(Duration::from_millis(1));
+		}
+		if self
+			.worker
+			.as_ref()
+			.is_some_and(|worker| !worker.is_finished())
+		{
+			eprintln!("dogmosd handshake cleanup exceeded its deadline; waiting for owned worker");
+		}
+		let _ = self.join();
+	}
+}
+
 struct IoWorkerRequest {
 	operation: OperationKind,
 	payload: Vec<u8>,
@@ -276,7 +382,7 @@ impl BoundedDogmosClient {
 	pub fn new(mut client: DogmosClient) -> Result<Self, ClientError> {
 		let peer = *client.peer();
 		let buffer_capacity = peer.capacities.max_control_payload as usize;
-		let io_handle_token = current_io_handle_token(&client)?;
+		let io_handle_token = stream_io_handle_token(client.stream.get_ref())?;
 		let (sender, receiver) = mpsc::sync_channel::<IoWorkerRequest>(1);
 		let (response_sender, response) = mpsc::sync_channel::<IoWorkerRequest>(1);
 		let (thread_sender, thread_receiver) = mpsc::sync_channel(1);
@@ -510,12 +616,12 @@ fn current_thread_token() -> u32 {
 }
 
 #[cfg(windows)]
-fn current_io_handle_token(
-	client: &DogmosClient,
+fn stream_io_handle_token(
+	stream: &Stream,
 ) -> Result<std::os::windows::io::OwnedHandle, ClientError> {
 	use interprocess::TryClone;
 
-	match client.stream.get_ref().try_clone()? {
+	match stream.try_clone()? {
 		Stream::NamedPipe(stream) => Ok(stream.into()),
 	}
 }
@@ -543,8 +649,8 @@ fn current_thread_token() -> u32 {
 }
 
 #[cfg(not(windows))]
-fn current_io_handle_token(client: &DogmosClient) -> Result<IoHandleToken, ClientError> {
-	match client.stream.get_ref() {
+fn stream_io_handle_token(stream: &Stream) -> Result<IoHandleToken, ClientError> {
+	match stream {
 		Stream::UdSocket(stream) => Ok(IoHandleToken(stream.inner().try_clone()?)),
 	}
 }
