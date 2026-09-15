@@ -671,6 +671,12 @@ mod tests {
 		let Ok(mode) = std::env::var("DOGMOS_SESSION_FAULT_CHILD") else {
 			return;
 		};
+		std::panic::set_hook(Box::new(|info| {
+			eprintln!(
+				"fixture child panic: {}",
+				info.to_string().replace('\n', " | ")
+			);
+		}));
 		if mode == "stderr-open" {
 			eprintln!("fixture stderr remains open");
 			thread::sleep(Duration::from_secs(2));
@@ -794,21 +800,40 @@ mod tests {
 		session.shutdown().unwrap();
 	}
 
+	fn fixture_endpoint(timestamp_nanos: u128) -> String {
+		// Wall-clock samples may repeat between concurrently starting fixtures.
+		static NEXT_FIXTURE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+		let serial = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
+		format!(
+			"dogmos-session-{}-{timestamp_nanos}-{serial}",
+			std::process::id()
+		)
+	}
+
+	#[test]
+	fn fixture_endpoints_remain_distinct_when_clock_does_not_advance() {
+		assert_ne!(fixture_endpoint(42), fixture_endpoint(42));
+	}
+
 	fn fixture_session(mode: &str) -> ServiceSession {
-		let endpoint = format!(
-			"dogmos-session-{}-{}",
-			std::process::id(),
+		let endpoint = fixture_endpoint(
 			SystemTime::now()
 				.duration_since(UNIX_EPOCH)
 				.unwrap()
-				.as_nanos()
+				.as_nanos(),
 		);
+		eprintln!("fixture mode={mode} endpoint={endpoint}");
 		let mut child = spawn_fixture(mode, &endpoint);
 		let diagnostics = ServiceDiagnosticCapture::start(child.stderr.take().unwrap());
 		#[cfg(windows)]
 		let job = attach_kill_on_close_job(&child).unwrap();
-		let client =
-			DogmosClient::connect(&endpoint, fixture_handshake(), Duration::from_secs(2)).unwrap();
+		let client = DogmosClient::connect(&endpoint, fixture_handshake(), Duration::from_secs(2))
+			.unwrap_or_else(|error| {
+				panic!(
+					"fixture mode={mode} endpoint={endpoint} connect failed: {error:?}; diagnostic={:?}",
+					diagnostics.latest_after(0, SERVICE_DIAGNOSTIC_WAIT)
+				)
+			});
 		let client = BoundedDogmosClient::new(client).unwrap();
 		ServiceSession {
 			client,
@@ -853,7 +878,8 @@ mod tests {
 			result
 				.chain()
 				.any(|error| error.downcast_ref::<ClientError>().is_some()),
-			"original client error lost: {result:?}"
+			"original client error lost: {result:?}; diagnostic={:?}",
+			session.diagnostics.latest()
 		);
 		assert_eq!(session.service.id(), pid);
 		assert!(session.reaped);
