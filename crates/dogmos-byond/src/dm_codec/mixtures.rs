@@ -2,10 +2,10 @@
 
 use crate::dm_codec::{
 	exact_u16, exact_u32, finite_byond_scalar, finite_indexed_byond_scalar, fixed_batch_capacity,
-	indexed, join_u32_words, split_u32_words, PRODUCTION_MAX_BATCH_OPERATIONS,
-	PRODUCTION_MAX_MIXTURE_ADJUSTMENTS, PRODUCTION_MAX_MIXTURE_SNAPSHOT_BATCH,
-	PRODUCTION_MAX_MIXTURE_STATE_MUTATIONS, PRODUCTION_MAX_PIPENET_RECONCILE_MIXTURES,
-	PRODUCTION_MIXTURE_STATE_FIELDS, PRODUCTION_PIPENET_RESPONSE_FIELDS,
+	indexed, join_u32_words, PRODUCTION_MAX_BATCH_OPERATIONS, PRODUCTION_MAX_MIXTURE_ADJUSTMENTS,
+	PRODUCTION_MAX_MIXTURE_SNAPSHOT_BATCH, PRODUCTION_MAX_MIXTURE_STATE_MUTATIONS,
+	PRODUCTION_MAX_PIPENET_RECONCILE_MIXTURES, PRODUCTION_MIXTURE_STATE_FIELDS,
+	PRODUCTION_PIPENET_RESPONSE_FIELDS,
 };
 use dogmos_protocol::{
 	decode_pipenet_reconcile_response, encode_adjust_multiple_request, encode_lifecycle_batch,
@@ -22,22 +22,43 @@ use dogmos_protocol::{
 /// Preserves field order and little-endian word identity; invalid lengths, tags or
 /// numeric values return a caller-legible error. This adapter performs no BYOND call.
 pub fn encode_production_mixture_command(
-	fields: [f32; 11],
+	fields: [f32; crate::adapter_layout::mixtures::mixture_command::LEN],
 ) -> eyre::Result<[u8; MIXTURE_COMMAND_REQUEST_LEN]> {
+	use crate::adapter_layout::mixtures::mixture_command as fields_layout;
+
 	encode_dm_mixture_command(DmMixtureCommandFields {
-		kind: exact_u16(fields[0], "mixture command kind")?,
-		flags: exact_u16(fields[1], "mixture command flags")?,
+		kind: exact_u16(fields[fields_layout::KIND.offset], "mixture command kind")?,
+		flags: exact_u16(fields[fields_layout::FLAGS.offset], "mixture command flags")?,
 		primary: WireHandle {
-			slot: exact_u32(fields[2], "primary mixture slot")?,
-			generation: exact_u32(fields[3], "primary mixture generation")?,
+			slot: exact_u32(
+				fields[fields_layout::PRIMARY_SLOT.offset],
+				"primary mixture slot",
+			)?,
+			generation: exact_u32(
+				fields[fields_layout::PRIMARY_GENERATION.offset],
+				"primary mixture generation",
+			)?,
 		},
 		secondary: WireHandle {
-			slot: exact_u32(fields[4], "secondary mixture slot")?,
-			generation: exact_u32(fields[5], "secondary mixture generation")?,
+			slot: exact_u32(
+				fields[fields_layout::SECONDARY_SLOT.offset],
+				"secondary mixture slot",
+			)?,
+			generation: exact_u32(
+				fields[fields_layout::SECONDARY_GENERATION.offset],
+				"secondary mixture generation",
+			)?,
 		},
-		scalars: [fields[6], fields[7], fields[8]],
-		gas_id: exact_u16(fields[9], "gas id")?,
-		aux: exact_u32(fields[10], "mixture command auxiliary value")?,
+		scalars: [
+			fields[fields_layout::SCALARS.offset],
+			fields[fields_layout::SCALARS.offset + 1],
+			fields[fields_layout::SCALARS.offset + 2],
+		],
+		gas_id: exact_u16(fields[fields_layout::GAS_ID.offset], "gas id")?,
+		aux: exact_u32(
+			fields[fields_layout::AUX.offset],
+			"mixture command auxiliary value",
+		)?,
 	})
 }
 
@@ -46,23 +67,34 @@ pub fn encode_production_mixture_command(
 /// Preserves field order and little-endian word identity; invalid lengths, tags or
 /// numeric values return a caller-legible error. This adapter performs no BYOND call.
 pub fn encode_production_mixture_adjust_multiple(values: &[f32]) -> eyre::Result<Vec<u8>> {
-	if values.len() < 2 || !(values.len() - 2).is_multiple_of(2) {
+	use crate::adapter_layout::mixtures::adjustment as entry_layout;
+	use crate::adapter_layout::mixtures::handle as values_layout;
+
+	if values.len() < values_layout::LEN
+		|| !(values.len() - values_layout::LEN).is_multiple_of(entry_layout::LEN)
+	{
 		return Err(eyre::eyre!(
 			"mixture multi-adjust requires slot, generation, and gas/delta pairs"
 		));
 	}
-	let adjustment_count = (values.len() - 2) / 2;
+	let adjustment_count = (values.len() - values_layout::LEN) / entry_layout::LEN;
 	if adjustment_count > PRODUCTION_MAX_MIXTURE_ADJUSTMENTS {
 		return Err(eyre::eyre!(
 			"mixture multi-adjust contains {adjustment_count} adjustments, maximum {PRODUCTION_MAX_MIXTURE_ADJUSTMENTS}"
 		));
 	}
 	let handle = WireHandle {
-		slot: exact_u32(values[0], "multi-adjust mixture slot")?,
-		generation: exact_u32(values[1], "multi-adjust mixture generation")?,
+		slot: exact_u32(
+			values[values_layout::SLOT.offset],
+			"multi-adjust mixture slot",
+		)?,
+		generation: exact_u32(
+			values[values_layout::GENERATION.offset],
+			"multi-adjust mixture generation",
+		)?,
 	};
-	let adjustments = values[2..]
-		.as_chunks::<2>()
+	let adjustments = values[values_layout::LEN..]
+		.as_chunks::<{ entry_layout::LEN }>()
 		.0
 		.iter()
 		.enumerate()
@@ -70,15 +102,17 @@ pub fn encode_production_mixture_adjust_multiple(values: &[f32]) -> eyre::Result
 			// Avoids a &format!(...) allocation per adjustment (this can run once per gas type in
 			// a batched multi-adjust call, which is the whole point of batching) - only format
 			// the "entry N" label if the value actually fails validation.
-			let gas_id = exact_u32(entry[0], "multi-adjust entry gas id")
-				.and_then(|value| {
-					u16::try_from(value)
-						.map_err(|_| eyre::eyre!("value exceeds the u16 wire range"))
-				})
-				.map_err(|error| eyre::eyre!("multi-adjust entry {index} gas id: {error}"))?;
+			let gas_id = exact_u32(
+				entry[entry_layout::GAS_ID.offset],
+				"multi-adjust entry gas id",
+			)
+			.and_then(|value| {
+				u16::try_from(value).map_err(|_| eyre::eyre!("value exceeds the u16 wire range"))
+			})
+			.map_err(|error| eyre::eyre!("multi-adjust entry {index} gas id: {error}"))?;
 			Ok(MixtureAdjustment {
 				gas_id,
-				delta: ScalarValue(f64::from(entry[1])),
+				delta: ScalarValue(f64::from(entry[entry_layout::DELTA.offset])),
 			})
 		})
 		.collect::<eyre::Result<Vec<_>>>()?;
@@ -93,7 +127,7 @@ pub fn encode_production_mixture_adjust_multiple(values: &[f32]) -> eyre::Result
 /// numeric values return a caller-legible error. This adapter performs no BYOND call.
 pub fn decode_production_mixture_snapshot(response: &[u8]) -> eyre::Result<Vec<f32>> {
 	let snapshot = MixtureSnapshot::decode(response)?;
-	let mut fields = Vec::with_capacity(10 + MAX_GAS_SLOTS);
+	let mut fields = Vec::with_capacity(crate::adapter_layout::mixtures::mixture_snapshot::LEN);
 	append_production_mixture_snapshot(&mut fields, snapshot)?;
 	Ok(fields)
 }
@@ -102,29 +136,30 @@ pub(crate) fn append_production_mixture_snapshot(
 	fields: &mut Vec<f32>,
 	snapshot: MixtureSnapshot,
 ) -> eyre::Result<()> {
-	let revision_words = split_u32_words(snapshot.revision);
-	fields.extend([
-		f32::from(revision_words[0]),
-		f32::from(revision_words[1]),
-		snapshot.gas_count as f32,
-		finite_byond_scalar(snapshot.temperature.0, "mixture snapshot temperature")?,
-		finite_byond_scalar(snapshot.volume.0, "mixture snapshot volume")?,
-		finite_byond_scalar(
-			snapshot.minimum_heat_capacity.0,
-			"mixture snapshot minimum heat capacity",
-		)?,
-		finite_byond_scalar(snapshot.total_moles.0, "mixture snapshot total moles")?,
-		finite_byond_scalar(snapshot.pressure.0, "mixture snapshot pressure")?,
-		finite_byond_scalar(snapshot.heat_capacity.0, "mixture snapshot heat capacity")?,
-		f32::from(snapshot.immutable),
-	]);
+	use crate::adapter_layout::mixtures::mixture_snapshot as layout;
+	let mut record = [0.0; layout::LEN];
+	layout::REVISION.write_u32(&mut record, snapshot.revision);
+	record[layout::GAS_COUNT.offset] = snapshot.gas_count as f32;
+	record[layout::TEMPERATURE.offset] =
+		finite_byond_scalar(snapshot.temperature.0, "mixture snapshot temperature")?;
+	record[layout::VOLUME.offset] =
+		finite_byond_scalar(snapshot.volume.0, "mixture snapshot volume")?;
+	record[layout::MINIMUM_HEAT_CAPACITY.offset] = finite_byond_scalar(
+		snapshot.minimum_heat_capacity.0,
+		"mixture snapshot minimum heat capacity",
+	)?;
+	record[layout::TOTAL_MOLES.offset] =
+		finite_byond_scalar(snapshot.total_moles.0, "mixture snapshot total moles")?;
+	record[layout::PRESSURE.offset] =
+		finite_byond_scalar(snapshot.pressure.0, "mixture snapshot pressure")?;
+	record[layout::HEAT_CAPACITY.offset] =
+		finite_byond_scalar(snapshot.heat_capacity.0, "mixture snapshot heat capacity")?;
+	record[layout::IMMUTABLE.offset] = f32::from(snapshot.immutable);
 	for (index, gas) in snapshot.gases.into_iter().enumerate() {
-		fields.push(finite_indexed_byond_scalar(
-			gas.0,
-			"mixture snapshot gas",
-			index,
-		)?);
+		record[layout::GASES.offset + index] =
+			finite_indexed_byond_scalar(gas.0, "mixture snapshot gas", index)?;
 	}
+	fields.extend(record);
 	Ok(())
 }
 
@@ -133,12 +168,15 @@ pub(crate) fn append_production_mixture_snapshot(
 /// Preserves field order and little-endian word identity; invalid lengths, tags or
 /// numeric values return a caller-legible error. This adapter performs no BYOND call.
 pub fn encode_production_pipenet_reconcile(values: &[f32]) -> eyre::Result<Vec<u8>> {
-	if !values.len().is_multiple_of(2) {
+	if !values
+		.len()
+		.is_multiple_of(crate::adapter_layout::mixtures::handle::LEN)
+	{
 		return Err(eyre::eyre!(
 			"pipenet reconcile requires slot and generation pairs"
 		));
 	}
-	let operation_count = values.len() / 2;
+	let operation_count = values.len() / crate::adapter_layout::mixtures::handle::LEN;
 	if operation_count > PRODUCTION_MAX_PIPENET_RECONCILE_MIXTURES {
 		return Err(eyre::eyre!(
 			"pipenet reconcile contains {operation_count} mixtures, maximum {PRODUCTION_MAX_PIPENET_RECONCILE_MIXTURES}"
@@ -155,15 +193,25 @@ pub(crate) fn handles_from_slot_generation_pairs(
 	values: &[f32],
 	context: &'static str,
 ) -> eyre::Result<Vec<WireHandle>> {
+	use crate::adapter_layout::mixtures::handle as entry_layout;
+
 	values
-		.as_chunks::<2>()
+		.as_chunks::<{ entry_layout::LEN }>()
 		.0
 		.iter()
 		.enumerate()
 		.map(|(index, entry)| {
 			Ok(WireHandle {
-				slot: indexed(exact_u32(entry[0], "slot"), context, index)?,
-				generation: indexed(exact_u32(entry[1], "generation"), context, index)?,
+				slot: indexed(
+					exact_u32(entry[entry_layout::SLOT.offset], "slot"),
+					context,
+					index,
+				)?,
+				generation: indexed(
+					exact_u32(entry[entry_layout::GENERATION.offset], "generation"),
+					context,
+					index,
+				)?,
 			})
 		})
 		.collect()
@@ -178,8 +226,12 @@ pub fn decode_production_pipenet_reconcile(response: &[u8]) -> eyre::Result<Vec<
 		decode_pipenet_reconcile_response(response, MAX_PIPENET_RECONCILE_MIXTURES as u32)?;
 	let mut fields = Vec::with_capacity(entries.len() * PRODUCTION_PIPENET_RESPONSE_FIELDS);
 	for entry in entries {
-		fields.push(entry.handle.slot as f32);
-		fields.push(entry.handle.generation as f32);
+		let mut prefix = [0.0; crate::adapter_layout::mixtures::pipenet_record::SNAPSHOT.offset];
+		prefix[crate::adapter_layout::mixtures::pipenet_record::SLOT.offset] =
+			entry.handle.slot as f32;
+		prefix[crate::adapter_layout::mixtures::pipenet_record::GENERATION.offset] =
+			entry.handle.generation as f32;
+		fields.extend(prefix);
 		append_production_mixture_snapshot(&mut fields, entry.snapshot)?;
 	}
 	Ok(fields)
@@ -190,12 +242,15 @@ pub fn decode_production_pipenet_reconcile(response: &[u8]) -> eyre::Result<Vec<
 /// Preserves field order and little-endian word identity; invalid lengths, tags or
 /// numeric values return a caller-legible error. This adapter performs no BYOND call.
 pub fn encode_production_mixture_snapshot_batch(values: &[f32]) -> eyre::Result<Vec<u8>> {
-	if !values.len().is_multiple_of(2) {
+	if !values
+		.len()
+		.is_multiple_of(crate::adapter_layout::mixtures::handle::LEN)
+	{
 		return Err(eyre::eyre!(
 			"mixture snapshot batch requires slot and generation pairs"
 		));
 	}
-	let operation_count = values.len() / 2;
+	let operation_count = values.len() / crate::adapter_layout::mixtures::handle::LEN;
 	if operation_count > PRODUCTION_MAX_MIXTURE_SNAPSHOT_BATCH {
 		return Err(eyre::eyre!(
 			"mixture snapshot batch contains {operation_count} mixtures, maximum {PRODUCTION_MAX_MIXTURE_SNAPSHOT_BATCH}"
@@ -216,8 +271,12 @@ pub fn decode_production_mixture_snapshot_batch(response: &[u8]) -> eyre::Result
 	let mut fields = Vec::with_capacity(entries.len() * PRODUCTION_PIPENET_RESPONSE_FIELDS);
 	for entry in entries {
 		let entry = entry?;
-		fields.push(entry.handle.slot as f32);
-		fields.push(entry.handle.generation as f32);
+		let mut prefix = [0.0; crate::adapter_layout::mixtures::pipenet_record::SNAPSHOT.offset];
+		prefix[crate::adapter_layout::mixtures::pipenet_record::SLOT.offset] =
+			entry.handle.slot as f32;
+		prefix[crate::adapter_layout::mixtures::pipenet_record::GENERATION.offset] =
+			entry.handle.generation as f32;
+		fields.extend(prefix);
 		append_production_mixture_snapshot(&mut fields, entry.snapshot)?;
 	}
 	Ok(fields)
@@ -254,6 +313,8 @@ pub fn encode_production_mixture_state_batch(values: &[f32]) -> eyre::Result<Vec
 pub(crate) fn production_mixture_state_mutations(
 	values: &[f32],
 ) -> eyre::Result<Vec<MixtureStateMutation>> {
+	use crate::adapter_layout::mixtures::mixture_state as entry_layout;
+
 	if !values.len().is_multiple_of(PRODUCTION_MIXTURE_STATE_FIELDS) {
 		return Err(eyre::eyre!(
 			"mixture state batch requires fixed {PRODUCTION_MIXTURE_STATE_FIELDS}-field records"
@@ -267,27 +328,38 @@ pub(crate) fn production_mixture_state_mutations(
 		.map(|(index, entry)| {
 			let mut gases = [ScalarValue(0.0); MAX_GAS_SLOTS];
 			for (gas_index, gas) in gases.iter_mut().enumerate() {
-				*gas = ScalarValue(f64::from(entry[6 + gas_index]));
+				*gas = ScalarValue(f64::from(entry[entry_layout::GASES.offset + gas_index]));
 			}
 			Ok(MixtureStateMutation {
 				handle: WireHandle {
-					slot: indexed(exact_u32(entry[0], "slot"), "mixture state", index)?,
-					generation: indexed(exact_u32(entry[1], "generation"), "mixture state", index)?,
+					slot: indexed(
+						exact_u32(entry[entry_layout::SLOT.offset], "slot"),
+						"mixture state",
+						index,
+					)?,
+					generation: indexed(
+						exact_u32(entry[entry_layout::GENERATION.offset], "generation"),
+						"mixture state",
+						index,
+					)?,
 				},
 				expected_revision: join_u32_words(
 					indexed(
-						exact_u16(entry[2], "revision low word"),
+						exact_u16(entry[entry_layout::REVISION.offset], "revision low word"),
 						"mixture state",
 						index,
 					)?,
 					indexed(
-						exact_u16(entry[3], "revision high word"),
+						exact_u16(
+							entry[entry_layout::REVISION.offset + 1],
+							"revision high word",
+						),
 						"mixture state",
 						index,
 					)?,
 				),
-				temperature: ScalarValue(f64::from(entry[4])),
-				volume: ScalarValue(f64::from(entry[5])),
+				temperature: ScalarValue(f64::from(entry[entry_layout::TEMPERATURE.offset])),
+				volume: ScalarValue(f64::from(entry[entry_layout::VOLUME.offset])),
 				gases,
 			})
 		})
@@ -310,34 +382,43 @@ pub(crate) struct DmMixtureCommandFields {
 /// Preserves field order and little-endian word identity; invalid lengths, tags or
 /// numeric values return a caller-legible error. This adapter performs no BYOND call.
 pub fn encode_production_mixture_lifecycle_batch(values: &[f32]) -> eyre::Result<Vec<u8>> {
-	if !values.len().is_multiple_of(3) {
+	use crate::adapter_layout::mixtures::mixture_lifecycle as entry_layout;
+
+	if !values
+		.len()
+		.is_multiple_of(crate::adapter_layout::mixtures::mixture_lifecycle::LEN)
+	{
 		return Err(eyre::eyre!(
 			"mixture lifecycle batch requires action, slot, generation triples"
 		));
 	}
-	let operation_count = values.len() / 3;
+	let operation_count = values.len() / crate::adapter_layout::mixtures::mixture_lifecycle::LEN;
 	if operation_count > PRODUCTION_MAX_BATCH_OPERATIONS {
 		return Err(eyre::eyre!(
 			"mixture lifecycle batch contains {operation_count} operations, maximum {PRODUCTION_MAX_BATCH_OPERATIONS}"
 		));
 	}
 	let mutations = values
-		.as_chunks::<3>()
+		.as_chunks::<{ crate::adapter_layout::mixtures::mixture_lifecycle::LEN }>()
 		.0
 		.iter()
 		.enumerate()
 		.map(|(index, entry)| {
 			let action = LifecycleAction::try_from(indexed(
-				exact_u32(entry[0], "action"),
+				exact_u32(entry[entry_layout::ACTION.offset], "action"),
 				"mixture lifecycle",
 				index,
 			)?)?;
 			Ok(LifecycleMutation {
 				action,
 				handle: WireHandle {
-					slot: indexed(exact_u32(entry[1], "slot"), "mixture lifecycle", index)?,
+					slot: indexed(
+						exact_u32(entry[entry_layout::SLOT.offset], "slot"),
+						"mixture lifecycle",
+						index,
+					)?,
 					generation: indexed(
-						exact_u32(entry[2], "generation"),
+						exact_u32(entry[entry_layout::GENERATION.offset], "generation"),
 						"mixture lifecycle",
 						index,
 					)?,

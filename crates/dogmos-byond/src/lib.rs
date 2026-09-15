@@ -2,6 +2,7 @@
 
 //! Thin BYOND boundary: bindings own main-thread/session access; codecs own validation.
 
+mod adapter_layout;
 mod binding_generation;
 mod bindings;
 mod client;

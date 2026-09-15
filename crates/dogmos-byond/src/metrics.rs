@@ -1,6 +1,5 @@
 //! Pure service telemetry and process-metrics adapters. No BYOND calls or session ownership.
 
-use crate::dm_codec::{append_u32_words, append_u64_words};
 use crate::process_metrics_layout;
 use dogmos_process_metrics::{
 	CurrentProcessMetrics, PROCESS_ALL_AVAILABLE, PROCESS_CPU_AVAILABLE,
@@ -15,62 +14,76 @@ use dogmos_protocol::ServiceTelemetry;
 /// numeric values return a caller-legible error. This adapter performs no BYOND call.
 pub fn decode_production_service_telemetry(response: &[u8]) -> eyre::Result<Vec<f32>> {
 	let telemetry = ServiceTelemetry::decode(response)?;
-	let mut fields = Vec::with_capacity(236);
-	for value in [
-		telemetry.callback_depth,
-		telemetry.callback_capacity,
-		telemetry.callback_high_water,
-		telemetry.continuation_depth,
-		telemetry.continuation_capacity,
-		telemetry.continuation_high_water,
-	] {
-		append_u32_words(&mut fields, value);
+	use crate::adapter_layout::telemetry::service_telemetry as layout;
+	let mut fields = vec![0.0; layout::LEN];
+	layout::CALLBACK_DEPTH.write_u32(&mut fields, telemetry.callback_depth);
+	layout::CALLBACK_CAPACITY.write_u32(&mut fields, telemetry.callback_capacity);
+	layout::CALLBACK_HIGH_WATER.write_u32(&mut fields, telemetry.callback_high_water);
+	layout::CONTINUATION_DEPTH.write_u32(&mut fields, telemetry.continuation_depth);
+	layout::CONTINUATION_CAPACITY.write_u32(&mut fields, telemetry.continuation_capacity);
+	layout::CONTINUATION_HIGH_WATER.write_u32(&mut fields, telemetry.continuation_high_water);
+	layout::OLDEST_CALLBACK_AGE.write_u64(&mut fields, telemetry.oldest_callback_age_ticks);
+	layout::CALLBACK_ENQUEUED.write_u64(&mut fields, telemetry.callback_enqueued);
+	layout::CALLBACK_DRAINED.write_u64(&mut fields, telemetry.callback_drained);
+	layout::CALLBACK_REJECTED.write_u64(&mut fields, telemetry.callback_rejected);
+	layout::CONTINUATION_TIMEOUTS.write_u64(&mut fields, telemetry.continuation_timeouts);
+	layout::REQUEST_TIMEOUTS.write_u64(&mut fields, telemetry.request_timeouts);
+	layout::PROTOCOL_ERRORS.write_u64(&mut fields, telemetry.protocol_errors);
+	for (words, counter) in fields[layout::ENQUEUED_BY_KIND.range()]
+		.as_chunks_mut::<4>()
+		.0
+		.iter_mut()
+		.zip(telemetry.callback_enqueued_by_kind)
+	{
+		words.copy_from_slice(&crate::dm_codec::split_u64_words(counter).map(f32::from));
 	}
-	for value in [
-		telemetry.oldest_callback_age_ticks,
-		telemetry.callback_enqueued,
-		telemetry.callback_drained,
-		telemetry.callback_rejected,
-		telemetry.continuation_timeouts,
-		telemetry.request_timeouts,
-		telemetry.protocol_errors,
-	] {
-		append_u64_words(&mut fields, value);
+	for (words, counter) in fields[layout::DRAINED_BY_KIND.range()]
+		.as_chunks_mut::<4>()
+		.0
+		.iter_mut()
+		.zip(telemetry.callback_drained_by_kind)
+	{
+		words.copy_from_slice(&crate::dm_codec::split_u64_words(counter).map(f32::from));
 	}
-	for counters in [
-		telemetry.callback_enqueued_by_kind,
-		telemetry.callback_drained_by_kind,
-		telemetry.callback_rejected_by_kind,
-	] {
-		for counter in counters {
-			append_u64_words(&mut fields, counter);
-		}
+	for (words, counter) in fields[layout::REJECTED_BY_KIND.range()]
+		.as_chunks_mut::<4>()
+		.0
+		.iter_mut()
+		.zip(telemetry.callback_rejected_by_kind)
+	{
+		words.copy_from_slice(&crate::dm_codec::split_u64_words(counter).map(f32::from));
 	}
-	append_u32_words(&mut fields, telemetry.service_process_available_flags);
-	append_u64_words(&mut fields, telemetry.service_rss_bytes);
-	append_u64_words(&mut fields, telemetry.service_cpu_total_milliseconds);
-	for value in [
-		telemetry.general_callback_depth,
-		telemetry.reaction_callback_depth,
-		telemetry.reaction_transaction_depth,
-		telemetry.reaction_transaction_high_water,
-		telemetry.frontier_count,
-		telemetry.stage_kind,
-	] {
-		append_u32_words(&mut fields, value);
-	}
-	append_u64_words(&mut fields, telemetry.frontier_upload_bytes);
-	append_u64_words(&mut fields, telemetry.stage_epoch);
-	append_u32_words(&mut fields, telemetry.stage_cursor);
-	append_u32_words(&mut fields, telemetry.stage_remaining);
-	append_u64_words(&mut fields, telemetry.topology_revision);
-	append_u64_words(&mut fields, telemetry.reusable_workset_bytes);
-	append_u64_words(&mut fields, telemetry.packed_topology_bytes);
-	append_u64_words(&mut fields, telemetry.stage_jobs.job);
-	append_u32_words(&mut fields, u32::from(telemetry.stage_jobs.status));
-	for counter in telemetry.stage_jobs.counters() {
-		append_u64_words(&mut fields, counter);
-	}
+	layout::PROCESS_FLAGS.write_u32(&mut fields, telemetry.service_process_available_flags);
+	layout::RSS.write_u64(&mut fields, telemetry.service_rss_bytes);
+	layout::CPU.write_u64(&mut fields, telemetry.service_cpu_total_milliseconds);
+	layout::GENERAL_CALLBACK_DEPTH.write_u32(&mut fields, telemetry.general_callback_depth);
+	layout::REACTION_CALLBACK_DEPTH.write_u32(&mut fields, telemetry.reaction_callback_depth);
+	layout::REACTION_TRANSACTION_DEPTH.write_u32(&mut fields, telemetry.reaction_transaction_depth);
+	layout::REACTION_TRANSACTION_HIGH_WATER
+		.write_u32(&mut fields, telemetry.reaction_transaction_high_water);
+	layout::FRONTIER_COUNT.write_u32(&mut fields, telemetry.frontier_count);
+	layout::STAGE_KIND.write_u32(&mut fields, telemetry.stage_kind);
+	layout::FRONTIER_UPLOAD_BYTES.write_u64(&mut fields, telemetry.frontier_upload_bytes);
+	layout::STAGE_EPOCH.write_u64(&mut fields, telemetry.stage_epoch);
+	layout::STAGE_CURSOR.write_u32(&mut fields, telemetry.stage_cursor);
+	layout::STAGE_REMAINING.write_u32(&mut fields, telemetry.stage_remaining);
+	layout::TOPOLOGY_REVISION.write_u64(&mut fields, telemetry.topology_revision);
+	layout::REUSABLE_WORKSET_BYTES.write_u64(&mut fields, telemetry.reusable_workset_bytes);
+	layout::PACKED_TOPOLOGY_BYTES.write_u64(&mut fields, telemetry.packed_topology_bytes);
+	layout::JOB.write_u64(&mut fields, telemetry.stage_jobs.job);
+	layout::JOB_STATUS.write_u32(&mut fields, u32::from(telemetry.stage_jobs.status));
+	layout::JOB_AGE.write_u64(&mut fields, telemetry.stage_jobs.age_nanoseconds);
+	layout::PREPARE_CALLS.write_u64(&mut fields, telemetry.stage_jobs.prepare_calls);
+	layout::PREPARE_TOTAL_NS.write_u64(&mut fields, telemetry.stage_jobs.prepare_total_nanoseconds);
+	layout::PREPARE_MAX_NS.write_u64(&mut fields, telemetry.stage_jobs.prepare_max_nanoseconds);
+	layout::PREPARE_LAST_NS.write_u64(&mut fields, telemetry.stage_jobs.prepare_last_nanoseconds);
+	layout::COMMIT_CALLS.write_u64(&mut fields, telemetry.stage_jobs.commit_calls);
+	layout::COMMIT_TOTAL_NS.write_u64(&mut fields, telemetry.stage_jobs.commit_total_nanoseconds);
+	layout::COMMIT_MAX_NS.write_u64(&mut fields, telemetry.stage_jobs.commit_max_nanoseconds);
+	layout::COMMIT_LAST_NS.write_u64(&mut fields, telemetry.stage_jobs.commit_last_nanoseconds);
+	layout::PUBLICATION_RETRIES.write_u64(&mut fields, telemetry.stage_jobs.publication_retries);
+	layout::COMPLETED_JOBS.write_u64(&mut fields, telemetry.stage_jobs.completed_jobs);
+	layout::CANCELLED_JOBS.write_u64(&mut fields, telemetry.stage_jobs.cancelled_jobs);
 	Ok(fields)
 }
 

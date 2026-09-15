@@ -1,5 +1,7 @@
 //! Main-thread service bindings for topology.
 
+use crate::adapter_layout::mixtures::handle;
+
 use crate::bindings::values::{bounded_number_list, production_number_list};
 use crate::bindings::{production_counted_request, production_request_with_response};
 use crate::dm_codec::topology::{
@@ -60,16 +62,19 @@ fn dogmos_turf_heat_batch(entries: ByondValue) -> eyre::Result<ByondValue> {
 
 #[auxmacros::bind("/proc/dogmos_turf_heat_snapshot")]
 fn dogmos_turf_heat_snapshot(fields: ByondValue) -> eyre::Result<ByondValue> {
-	let fields = bounded_number_list(fields, "turf heat snapshot", 2)?;
-	if fields.len() != 2 {
+	let fields = bounded_number_list(fields, "turf heat snapshot", handle::LEN)?;
+	if fields.len() != handle::LEN {
 		return Err(eyre::eyre!(
 			"turf heat snapshot requires exactly slot and generation"
 		));
 	}
 	let request = TurfHeatSnapshotRequest {
 		turf: WireHandle {
-			slot: exact_u32(fields[0], "turf heat snapshot slot")?,
-			generation: exact_u32(fields[1], "turf heat snapshot generation")?,
+			slot: exact_u32(fields[handle::SLOT.offset], "turf heat snapshot slot")?,
+			generation: exact_u32(
+				fields[handle::GENERATION.offset],
+				"turf heat snapshot generation",
+			)?,
 		},
 	}
 	.encode();

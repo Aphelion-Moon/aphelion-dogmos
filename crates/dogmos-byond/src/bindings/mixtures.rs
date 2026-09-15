@@ -1,5 +1,6 @@
 //! Main-thread service bindings for mixtures.
 
+use crate::adapter_layout::mixtures as layout;
 use crate::bindings::values::{
 	bounded_number_list, mixture_command_response_value, production_number_list,
 };
@@ -31,8 +32,8 @@ use std::time::{Duration, Instant};
 
 #[auxmacros::bind("/proc/dogmos_mixture_command")]
 fn dogmos_mixture_command(fields: ByondValue) -> eyre::Result<ByondValue> {
-	let fields = bounded_number_list(fields, "mixture command", 11)?;
-	if fields.len() != 11 {
+	let fields = bounded_number_list(fields, "mixture command", layout::mixture_command::LEN)?;
+	if fields.len() != layout::mixture_command::LEN {
 		return Err(eyre::eyre!(
 			"mixture command requires exactly 11 numeric fields"
 		));
@@ -60,7 +61,7 @@ fn dogmos_mixture_adjust_multiple(fields: ByondValue) -> eyre::Result<ByondValue
 	let fields = bounded_number_list(
 		fields,
 		"mixture multi-adjust command",
-		2 + PRODUCTION_MAX_MIXTURE_ADJUSTMENTS * 2,
+		layout::handle::LEN + PRODUCTION_MAX_MIXTURE_ADJUSTMENTS * layout::adjustment::LEN,
 	)?;
 	let request = encode_production_mixture_adjust_multiple(&fields)?;
 	let response = production_request_with_response(
@@ -85,7 +86,7 @@ fn dogmos_mixture_lifecycle_batch(entries: ByondValue) -> eyre::Result<ByondValu
 	let values = bounded_number_list(
 		entries,
 		"mixture lifecycle batch",
-		PRODUCTION_MAX_BATCH_OPERATIONS * 3,
+		PRODUCTION_MAX_BATCH_OPERATIONS * layout::mixture_lifecycle::LEN,
 	)?;
 	let request = encode_production_mixture_lifecycle_batch(&values)?;
 	let count = production_request_with_response(
@@ -99,16 +100,19 @@ fn dogmos_mixture_lifecycle_batch(entries: ByondValue) -> eyre::Result<ByondValu
 
 #[auxmacros::bind("/proc/dogmos_mixture_snapshot")]
 fn dogmos_mixture_snapshot(fields: ByondValue) -> eyre::Result<ByondValue> {
-	let fields = bounded_number_list(fields, "mixture snapshot", 2)?;
-	if fields.len() != 2 {
+	let fields = bounded_number_list(fields, "mixture snapshot", layout::handle::LEN)?;
+	if fields.len() != layout::handle::LEN {
 		return Err(eyre::eyre!(
 			"mixture snapshot requires exactly slot and generation"
 		));
 	}
 	let request = MixtureSnapshotRequest {
 		handle: WireHandle {
-			slot: exact_u32(fields[0], "mixture snapshot slot")?,
-			generation: exact_u32(fields[1], "mixture snapshot generation")?,
+			slot: exact_u32(fields[layout::handle::SLOT.offset], "mixture snapshot slot")?,
+			generation: exact_u32(
+				fields[layout::handle::GENERATION.offset],
+				"mixture snapshot generation",
+			)?,
 		},
 	}
 	.encode();
@@ -126,9 +130,9 @@ fn dogmos_pipenet_reconcile(entries: ByondValue) -> eyre::Result<ByondValue> {
 	let values = bounded_number_list(
 		entries,
 		"pipenet reconcile",
-		PRODUCTION_MAX_PIPENET_RECONCILE_MIXTURES * 2,
+		PRODUCTION_MAX_PIPENET_RECONCILE_MIXTURES * layout::handle::LEN,
 	)?;
-	let operation_count = values.len() / 2;
+	let operation_count = values.len() / layout::handle::LEN;
 	let request = encode_production_pipenet_reconcile(&values)?;
 	let response_capacity = 4 + operation_count * PIPENET_RECONCILE_SNAPSHOT_LEN;
 	let fields = production_request_with_response(
@@ -145,9 +149,9 @@ fn dogmos_mixture_snapshot_batch(entries: ByondValue) -> eyre::Result<ByondValue
 	let values = bounded_number_list(
 		entries,
 		"mixture snapshot batch",
-		PRODUCTION_MAX_MIXTURE_SNAPSHOT_BATCH * 2,
+		PRODUCTION_MAX_MIXTURE_SNAPSHOT_BATCH * layout::handle::LEN,
 	)?;
-	let operation_count = values.len() / 2;
+	let operation_count = values.len() / layout::handle::LEN;
 	let request = encode_production_mixture_snapshot_batch(&values)?;
 	let response_capacity = 4 + operation_count * MIXTURE_SNAPSHOT_RECORD_LEN;
 	let fields = production_request_with_response(

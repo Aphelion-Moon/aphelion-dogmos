@@ -1,6 +1,6 @@
 //! Bounded BYOND list conversion and typed response presentation on the calling thread.
 
-use crate::dm_codec::{checked_declared_length, split_u64_words};
+use crate::dm_codec::checked_declared_length;
 use byondapi::prelude::ByondValue;
 use dogmos_protocol::MixtureCommandResponse;
 
@@ -92,15 +92,27 @@ pub(crate) fn mixture_command_response_value(
 			Some(transaction_id),
 		),
 	};
+	use crate::adapter_layout::mixtures::{
+		mixture_response as ordinary, reaction_response as reaction,
+	};
+	let mut fields = [0.0; reaction::LEN];
+	let length = if let Some(transaction_id) = transaction_id {
+		fields[reaction::KIND.offset] = kind;
+		fields[reaction::FLAGS.offset] = first;
+		fields[reaction::WORK_ITEMS.offset] = second;
+		fields[reaction::PENDING.offset] = third;
+		reaction::TRANSACTION.write_u64(&mut fields, transaction_id);
+		reaction::LEN
+	} else {
+		fields[ordinary::KIND.offset] = kind;
+		fields[ordinary::FIRST.offset] = first;
+		fields[ordinary::SECOND.offset] = second;
+		fields[ordinary::THIRD.offset] = third;
+		ordinary::LEN
+	};
 	let mut output = ByondValue::new_list()?;
-	output.push_list(kind.into())?;
-	output.push_list(first.into())?;
-	output.push_list(second.into())?;
-	output.push_list(third.into())?;
-	if let Some(transaction_id) = transaction_id {
-		for word in split_u64_words(transaction_id) {
-			output.push_list(f32::from(word).into())?;
-		}
+	for field in &fields[..length] {
+		output.push_list((*field).into())?;
 	}
 	Ok(output)
 }

@@ -10,50 +10,61 @@ pub(crate) mod topology;
 
 use crate::session_limits::SESSION_CONTROL_PAYLOAD_BYTES;
 use dogmos_protocol::{
-	MAX_GAS_SLOTS, MIXTURE_ADJUSTMENT_LEN, MIXTURE_ADJUST_MULTIPLE_HEADER_LEN,
-	MIXTURE_SNAPSHOT_RECORD_LEN, MIXTURE_STATE_MUTATION_LEN, PIPENET_RECONCILE_SNAPSHOT_LEN,
-	REACTION_METADATA_RECORD_LEN, TURF_ADJACENCY_MUTATION_LEN, TURF_HEAT_ADJACENCY_MUTATION_LEN,
-	TURF_HEAT_MUTATION_LEN, TURF_LIFECYCLE_MUTATION_LEN,
+	MIXTURE_ADJUSTMENT_LEN, MIXTURE_ADJUST_MULTIPLE_HEADER_LEN, MIXTURE_SNAPSHOT_RECORD_LEN,
+	MIXTURE_STATE_MUTATION_LEN, PIPENET_RECONCILE_SNAPSHOT_LEN, REACTION_METADATA_RECORD_LEN,
+	TURF_ADJACENCY_MUTATION_LEN, TURF_HEAT_ADJACENCY_MUTATION_LEN, TURF_HEAT_MUTATION_LEN,
+	TURF_LIFECYCLE_MUTATION_LEN,
 };
 
 pub(crate) const PRODUCTION_MAX_CALLBACK_EVENTS: u32 = 256;
 
-pub(crate) const PRODUCTION_CALLBACK_EVENT_FIELDS: usize = 36;
+pub(crate) const PRODUCTION_CALLBACK_EVENT_FIELDS: usize =
+	crate::adapter_layout::callbacks::callback_event::LEN;
 
-pub(crate) const PRODUCTION_CALLBACK_HEADER_FIELDS: usize = 12;
+pub(crate) const PRODUCTION_CALLBACK_HEADER_FIELDS: usize =
+	crate::adapter_layout::callbacks::callback_header::LEN;
 
-pub(crate) const PRODUCTION_CONTINUATION_TOKEN_FIELDS: usize = 10;
+pub(crate) const PRODUCTION_CONTINUATION_TOKEN_FIELDS: usize =
+	crate::adapter_layout::callbacks::continuation_token::LEN;
 
 pub(crate) const PRODUCTION_MAX_REACTION_METADATA: usize =
 	(SESSION_CONTROL_PAYLOAD_BYTES - 4) / REACTION_METADATA_RECORD_LEN;
 
-pub(crate) const PRODUCTION_REACTION_REQUIREMENT_FIELDS: usize = 3;
+pub(crate) const PRODUCTION_REACTION_REQUIREMENT_FIELDS: usize =
+	crate::adapter_layout::metadata::reaction_requirement::LEN;
 
-pub(crate) const PRODUCTION_REACTION_METADATA_FIELDS: usize = 12;
+pub(crate) const PRODUCTION_REACTION_METADATA_FIELDS: usize =
+	crate::adapter_layout::metadata::reaction_metadata::LEN;
 
-pub(crate) const PRODUCTION_GAS_PRODUCT_FIELDS: usize = 3;
+pub(crate) const PRODUCTION_GAS_PRODUCT_FIELDS: usize =
+	crate::adapter_layout::metadata::gas_product::LEN;
 
-pub(crate) const PRODUCTION_GAS_METADATA_FIELDS: usize = 13;
+pub(crate) const PRODUCTION_GAS_METADATA_FIELDS: usize =
+	crate::adapter_layout::metadata::gas_metadata::LEN;
 
 pub(crate) const PRODUCTION_MAX_TURF_HEAT_ADJACENCY_MUTATIONS: usize =
 	(SESSION_CONTROL_PAYLOAD_BYTES - 4) / TURF_HEAT_ADJACENCY_MUTATION_LEN;
 
-pub(crate) const PRODUCTION_TURF_HEAT_ADJACENCY_FIELDS: usize = 5;
+pub(crate) const PRODUCTION_TURF_HEAT_ADJACENCY_FIELDS: usize =
+	crate::adapter_layout::topology::turf_heat_adjacency::LEN;
 
 pub(crate) const PRODUCTION_MAX_TURF_HEAT_MUTATIONS: usize =
 	(SESSION_CONTROL_PAYLOAD_BYTES - 4) / TURF_HEAT_MUTATION_LEN;
 
-pub(crate) const PRODUCTION_TURF_HEAT_FIELDS: usize = 7;
+pub(crate) const PRODUCTION_TURF_HEAT_FIELDS: usize =
+	crate::adapter_layout::topology::turf_heat::LEN;
 
 pub(crate) const PRODUCTION_MAX_TURF_ADJACENCY_MUTATIONS: usize =
 	(SESSION_CONTROL_PAYLOAD_BYTES - 4) / TURF_ADJACENCY_MUTATION_LEN;
 
-pub(crate) const PRODUCTION_TURF_ADJACENCY_FIELDS: usize = 6;
+pub(crate) const PRODUCTION_TURF_ADJACENCY_FIELDS: usize =
+	crate::adapter_layout::topology::turf_adjacency::LEN;
 
 pub(crate) const PRODUCTION_MAX_TURF_LIFECYCLE_MUTATIONS: usize =
 	(SESSION_CONTROL_PAYLOAD_BYTES - 4) / TURF_LIFECYCLE_MUTATION_LEN;
 
-pub(crate) const PRODUCTION_TURF_LIFECYCLE_FIELDS: usize = 6;
+pub(crate) const PRODUCTION_TURF_LIFECYCLE_FIELDS: usize =
+	crate::adapter_layout::topology::turf_lifecycle::LEN;
 
 pub(crate) const PRODUCTION_MAX_MIXTURE_STATE_MUTATIONS: usize =
 	(SESSION_CONTROL_PAYLOAD_BYTES - 4) / MIXTURE_STATE_MUTATION_LEN;
@@ -64,9 +75,11 @@ pub(crate) const PRODUCTION_MAX_MIXTURE_SNAPSHOT_BATCH: usize =
 pub(crate) const PRODUCTION_MAX_PIPENET_RECONCILE_MIXTURES: usize =
 	(SESSION_CONTROL_PAYLOAD_BYTES - 4) / PIPENET_RECONCILE_SNAPSHOT_LEN;
 
-pub(crate) const PRODUCTION_PIPENET_RESPONSE_FIELDS: usize = 2 + 10 + MAX_GAS_SLOTS;
+pub(crate) const PRODUCTION_PIPENET_RESPONSE_FIELDS: usize =
+	crate::adapter_layout::mixtures::pipenet_record::LEN;
 
-pub(crate) const PRODUCTION_MIXTURE_STATE_FIELDS: usize = 6 + MAX_GAS_SLOTS;
+pub(crate) const PRODUCTION_MIXTURE_STATE_FIELDS: usize =
+	crate::adapter_layout::mixtures::mixture_state::LEN;
 
 pub(crate) const PRODUCTION_MAX_MIXTURE_ADJUSTMENTS: usize =
 	(SESSION_CONTROL_PAYLOAD_BYTES - MIXTURE_ADJUST_MULTIPLE_HEADER_LEN) / MIXTURE_ADJUSTMENT_LEN;

@@ -7,7 +7,7 @@ use std::{fs, path::Path};
 /// This is the maintained `generate_bindings` example's entry point. It collects the
 /// registered exports, preserves their proc/symbol identity, sorts their blocks and
 /// normalizes the deployed library selection and line endings.
-/// Appends the process-metrics adapter's generated layout definitions and reference.
+/// Appends the maintained DM adapter layouts and process-metrics reference.
 ///
 /// # Panics
 ///
@@ -26,6 +26,8 @@ fn render_bindings(bindings: &str) -> String {
 	let mut output = normalize_generated_bindings(bindings);
 	output.push('\n');
 	output.push_str(&crate::process_metrics_layout::dm_definitions());
+	output.push('\n');
+	output.push_str(&crate::adapter_layout::dm_definitions());
 	output
 }
 
@@ -124,7 +126,11 @@ mod tests {
 			.filter(|line| {
 				line.starts_with("#define DOGMOS_PROCESS_")
 					|| line.starts_with("#define DOGMOS_DREAMDAEMON_")
-					|| line.starts_with("#define DOGMOS_SERVICE_")
+					|| (line.starts_with("#define DOGMOS_SERVICE_")
+						&& line
+							.split_whitespace()
+							.nth(1)
+							.is_some_and(|name| name.ends_with("_AVAILABLE")))
 			})
 			.collect::<Vec<_>>();
 		assert_eq!(

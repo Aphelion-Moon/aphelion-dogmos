@@ -21,22 +21,45 @@ use dogmos_protocol::{
 
 #[auxmacros::bind("/proc/dogmos_callback_drain")]
 fn dogmos_callback_drain(fields: ByondValue) -> eyre::Result<ByondValue> {
-	let fields = bounded_number_list(fields, "callback drain", 7)?;
-	if fields.len() != 7 {
+	use crate::adapter_layout::callbacks::callback_request as fields_layout;
+
+	let fields = bounded_number_list(fields, "callback drain", fields_layout::LEN)?;
+	if fields.len() != fields_layout::LEN {
 		return Err(eyre::eyre!(
 			"callback drain requires scope, four transaction words, and two maximum-event words"
 		));
 	}
-	let scope = CallbackScope::try_from(exact_u16(fields[0], "callback scope")?)?;
+	let scope = CallbackScope::try_from(exact_u16(
+		fields[fields_layout::SCOPE.offset],
+		"callback scope",
+	)?)?;
 	let transaction_id = join_u64_words([
-		exact_u16(fields[1], "callback transaction word 0")?,
-		exact_u16(fields[2], "callback transaction word 1")?,
-		exact_u16(fields[3], "callback transaction word 2")?,
-		exact_u16(fields[4], "callback transaction word 3")?,
+		exact_u16(
+			fields[fields_layout::TRANSACTION.offset],
+			"callback transaction word 0",
+		)?,
+		exact_u16(
+			fields[fields_layout::TRANSACTION.offset + 1],
+			"callback transaction word 1",
+		)?,
+		exact_u16(
+			fields[fields_layout::TRANSACTION.offset + 2],
+			"callback transaction word 2",
+		)?,
+		exact_u16(
+			fields[fields_layout::TRANSACTION.offset + 3],
+			"callback transaction word 3",
+		)?,
 	]);
 	let max_events = join_u32_words(
-		exact_u16(fields[5], "callback maximum word 0")?,
-		exact_u16(fields[6], "callback maximum word 1")?,
+		exact_u16(
+			fields[fields_layout::MAX_EVENTS.offset],
+			"callback maximum word 0",
+		)?,
+		exact_u16(
+			fields[fields_layout::MAX_EVENTS.offset + 1],
+			"callback maximum word 1",
+		)?,
 	);
 	if max_events > PRODUCTION_MAX_CALLBACK_EVENTS {
 		return Err(eyre::eyre!(
@@ -64,7 +87,7 @@ fn dogmos_continuation_command(fields: ByondValue) -> eyre::Result<ByondValue> {
 	let fields = bounded_number_list(
 		fields,
 		"continuation command",
-		PRODUCTION_CONTINUATION_TOKEN_FIELDS + 11,
+		crate::adapter_layout::callbacks::continuation_command::LEN,
 	)?;
 	let request = encode_production_continuation_command(&fields)?;
 	let response = production_request_with_response(
@@ -81,7 +104,9 @@ fn dogmos_continuation_adjust_multiple(fields: ByondValue) -> eyre::Result<Byond
 	let fields = bounded_number_list(
 		fields,
 		"continuation multi-adjust",
-		PRODUCTION_CONTINUATION_TOKEN_FIELDS + 2 + PRODUCTION_MAX_MIXTURE_ADJUSTMENTS * 2,
+		PRODUCTION_CONTINUATION_TOKEN_FIELDS
+			+ crate::adapter_layout::mixtures::handle::LEN
+			+ PRODUCTION_MAX_MIXTURE_ADJUSTMENTS * crate::adapter_layout::mixtures::adjustment::LEN,
 	)?;
 	let request = encode_production_continuation_adjust_multiple(&fields)?;
 	let response = production_request_with_response(
@@ -98,7 +123,7 @@ fn dogmos_continuation_resume(fields: ByondValue) -> eyre::Result<ByondValue> {
 	let fields = bounded_number_list(
 		fields,
 		"continuation resume",
-		PRODUCTION_CONTINUATION_TOKEN_FIELDS + 1,
+		crate::adapter_layout::callbacks::continuation_resume::LEN,
 	)?;
 	let request = encode_production_continuation_resume(&fields)?;
 	let response = production_request_with_response(

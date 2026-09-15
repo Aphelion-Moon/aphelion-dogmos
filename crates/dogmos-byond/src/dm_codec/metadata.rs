@@ -23,6 +23,9 @@ pub fn encode_production_gas_metadata(
 	names: &[String],
 	product_records: &[f32],
 ) -> eyre::Result<Vec<u8>> {
+	use crate::adapter_layout::metadata::gas_metadata as fields_layout;
+	use crate::adapter_layout::metadata::gas_product as entry_layout;
+
 	validate_fixed_records(
 		numeric_records,
 		PRODUCTION_GAS_METADATA_FIELDS,
@@ -48,7 +51,11 @@ pub fn encode_production_gas_metadata(
 		.iter()
 		.enumerate()
 	{
-		let owner = indexed(exact_u32(entry[0], "owner index"), "gas product", index)? as usize;
+		let owner = indexed(
+			exact_u32(entry[entry_layout::OWNER.offset], "owner index"),
+			"gas product",
+			index,
+		)? as usize;
 		let owner_products = products
 			.get_mut(owner)
 			.ok_or_else(|| eyre::eyre!("gas product entry {index} owner index is out of range"))?;
@@ -58,8 +65,12 @@ pub fn encode_production_gas_metadata(
 			));
 		}
 		owner_products.push(WireGasProduct {
-			gas_id: indexed(exact_u16(entry[1], "gas id"), "gas product", index)?,
-			ratio: ScalarValue(f64::from(entry[2])),
+			gas_id: indexed(
+				exact_u16(entry[entry_layout::GAS_ID.offset], "gas id"),
+				"gas product",
+				index,
+			)?,
+			ratio: ScalarValue(f64::from(entry[entry_layout::RATIO.offset])),
 		});
 	}
 	let entries = numeric_records
@@ -69,65 +80,92 @@ pub fn encode_production_gas_metadata(
 		.enumerate()
 		.map(|(index, fields)| {
 			let moles_visible_present = indexed(
-				exact_bool(fields[5], "moles-visible flag"),
+				exact_bool(
+					fields[fields_layout::MOLES_VISIBLE_PRESENT.offset],
+					"moles-visible flag",
+				),
 				"gas metadata",
 				index,
 			)?;
-			if !moles_visible_present && fields[6] != 0.0 {
+			if !moles_visible_present && fields[fields_layout::MOLES_VISIBLE.offset] != 0.0 {
 				return Err(eyre::eyre!(
 					"gas metadata entry {index} has moles-visible data while the flag is false"
 				));
 			}
-			let fire_role = match indexed(exact_u32(fields[9], "fire role"), "gas metadata", index)?
-			{
-				0 if fields[10] == 0.0 && fields[11] == 0.0 => WireGasFireRole::None,
+			let fire_role = match indexed(
+				exact_u32(fields[fields_layout::FIRE_ROLE.offset], "fire role"),
+				"gas metadata",
+				index,
+			)? {
+				0 if fields[fields_layout::FIRE_MINIMUM_TEMPERATURE.offset] == 0.0
+					&& fields[fields_layout::FIRE_POWER_OR_RATE.offset] == 0.0 =>
+				{
+					WireGasFireRole::None
+				}
 				0 => {
 					return Err(eyre::eyre!(
 						"gas metadata entry {index} has fire-role values for role none"
 					));
 				}
 				1 => WireGasFireRole::Oxidizer {
-					minimum_temperature: ScalarValue(f64::from(fields[10])),
-					power: ScalarValue(f64::from(fields[11])),
+					minimum_temperature: ScalarValue(f64::from(
+						fields[fields_layout::FIRE_MINIMUM_TEMPERATURE.offset],
+					)),
+					power: ScalarValue(f64::from(fields[fields_layout::FIRE_POWER_OR_RATE.offset])),
 				},
 				2 => WireGasFireRole::Fuel {
-					minimum_temperature: ScalarValue(f64::from(fields[10])),
-					burn_rate: ScalarValue(f64::from(fields[11])),
+					minimum_temperature: ScalarValue(f64::from(
+						fields[fields_layout::FIRE_MINIMUM_TEMPERATURE.offset],
+					)),
+					burn_rate: ScalarValue(f64::from(
+						fields[fields_layout::FIRE_POWER_OR_RATE.offset],
+					)),
 				},
 				actual => return Err(eyre::eyre!("unknown gas fire role {actual}")),
 			};
-			let fire_products =
-				match indexed(exact_u32(fields[12], "product kind"), "gas metadata", index)? {
-					0 if products[index].is_empty() => None,
-					1 => Some(WireFireProducts::Generic(products[index].clone())),
-					2 if products[index].is_empty() => Some(WireFireProducts::Plasma),
-					actual => {
-						return Err(eyre::eyre!(
+			let fire_products = match indexed(
+				exact_u32(fields[fields_layout::PRODUCT_KIND.offset], "product kind"),
+				"gas metadata",
+				index,
+			)? {
+				0 if products[index].is_empty() => None,
+				1 => Some(WireFireProducts::Generic(products[index].clone())),
+				2 if products[index].is_empty() => Some(WireFireProducts::Plasma),
+				actual => {
+					return Err(eyre::eyre!(
 						"gas metadata entry {index} has invalid product kind or unexpected product records: {actual}"
 					));
-					}
-				};
+				}
+			};
 			Ok(GasMetadataRegistration {
-				id: indexed(exact_u16(fields[0], "id"), "gas metadata", index)?,
+				id: indexed(
+					exact_u16(fields[fields_layout::ID.offset], "id"),
+					"gas metadata",
+					index,
+				)?,
 				key: keys[index].clone(),
 				name: names[index].clone(),
 				flags: join_u32_words(
 					indexed(
-						exact_u16(fields[1], "flags low word"),
+						exact_u16(fields[fields_layout::FLAGS.offset], "flags low word"),
 						"gas metadata",
 						index,
 					)?,
 					indexed(
-						exact_u16(fields[2], "flags high word"),
+						exact_u16(fields[fields_layout::FLAGS.offset + 1], "flags high word"),
 						"gas metadata",
 						index,
 					)?,
 				),
-				specific_heat: ScalarValue(f64::from(fields[3])),
-				fusion_power: ScalarValue(f64::from(fields[4])),
-				moles_visible: moles_visible_present.then_some(ScalarValue(f64::from(fields[6]))),
-				enthalpy: ScalarValue(f64::from(fields[7])),
-				fire_radiation_released: ScalarValue(f64::from(fields[8])),
+				specific_heat: ScalarValue(f64::from(fields[fields_layout::SPECIFIC_HEAT.offset])),
+				fusion_power: ScalarValue(f64::from(fields[fields_layout::FUSION_POWER.offset])),
+				moles_visible: moles_visible_present.then_some(ScalarValue(f64::from(
+					fields[fields_layout::MOLES_VISIBLE.offset],
+				))),
+				enthalpy: ScalarValue(f64::from(fields[fields_layout::ENTHALPY.offset])),
+				fire_radiation_released: ScalarValue(f64::from(
+					fields[fields_layout::FIRE_RADIATION.offset],
+				)),
 				fire_role,
 				fire_products,
 			})
@@ -150,6 +188,9 @@ pub fn encode_production_reaction_metadata(
 	keys: &[String],
 	requirement_records: &[f32],
 ) -> eyre::Result<Vec<u8>> {
+	use crate::adapter_layout::metadata::reaction_metadata as fields_layout;
+	use crate::adapter_layout::metadata::reaction_requirement as entry_layout;
+
 	validate_fixed_records(
 		numeric_records,
 		PRODUCTION_REACTION_METADATA_FIELDS,
@@ -176,7 +217,7 @@ pub fn encode_production_reaction_metadata(
 		.enumerate()
 	{
 		let owner = indexed(
-			exact_u32(entry[0], "owner index"),
+			exact_u32(entry[entry_layout::OWNER.offset], "owner index"),
 			"reaction requirement",
 			index,
 		)? as usize;
@@ -189,8 +230,12 @@ pub fn encode_production_reaction_metadata(
 			));
 		}
 		owner_requirements.push(WireGasRequirement {
-			gas_id: indexed(exact_u16(entry[1], "gas id"), "reaction requirement", index)?,
-			minimum_moles: ScalarValue(f64::from(entry[2])),
+			gas_id: indexed(
+				exact_u16(entry[entry_layout::GAS_ID.offset], "gas id"),
+				"reaction requirement",
+				index,
+			)?,
+			minimum_moles: ScalarValue(f64::from(entry[entry_layout::MINIMUM_MOLES.offset])),
 		});
 	}
 	let entries = numeric_records
@@ -200,7 +245,7 @@ pub fn encode_production_reaction_metadata(
 		.enumerate()
 		.map(|(index, fields)| {
 			let execution = match indexed(
-				exact_u32(fields[2], "execution"),
+				exact_u32(fields[fields_layout::EXECUTION.offset], "execution"),
 				"reaction metadata",
 				index,
 			)? {
@@ -221,35 +266,51 @@ pub fn encode_production_reaction_metadata(
 			Ok(ReactionMetadataRegistration {
 				id: join_u32_words(
 					indexed(
-						exact_u16(fields[0], "id low word"),
+						exact_u16(fields[fields_layout::ID.offset], "id low word"),
 						"reaction metadata",
 						index,
 					)?,
 					indexed(
-						exact_u16(fields[1], "id high word"),
+						exact_u16(fields[fields_layout::ID.offset + 1], "id high word"),
 						"reaction metadata",
 						index,
 					)?,
 				),
 				key: keys[index].clone(),
-				priority: ScalarValue(f64::from(fields[3])),
+				priority: ScalarValue(f64::from(fields[fields_layout::PRIORITY.offset])),
 				minimum_temperature: indexed(
-					option(fields[4], fields[5], "minimum-temperature"),
+					option(
+						fields[fields_layout::MINIMUM_TEMPERATURE_PRESENT.offset],
+						fields[fields_layout::MINIMUM_TEMPERATURE.offset],
+						"minimum-temperature",
+					),
 					"reaction metadata",
 					index,
 				)?,
 				maximum_temperature: indexed(
-					option(fields[6], fields[7], "maximum-temperature"),
+					option(
+						fields[fields_layout::MAXIMUM_TEMPERATURE_PRESENT.offset],
+						fields[fields_layout::MAXIMUM_TEMPERATURE.offset],
+						"maximum-temperature",
+					),
 					"reaction metadata",
 					index,
 				)?,
 				minimum_energy: indexed(
-					option(fields[8], fields[9], "minimum-energy"),
+					option(
+						fields[fields_layout::MINIMUM_ENERGY_PRESENT.offset],
+						fields[fields_layout::MINIMUM_ENERGY.offset],
+						"minimum-energy",
+					),
 					"reaction metadata",
 					index,
 				)?,
 				minimum_fire_reagents: indexed(
-					option(fields[10], fields[11], "minimum-fire-reagents"),
+					option(
+						fields[fields_layout::MINIMUM_FIRE_REAGENTS_PRESENT.offset],
+						fields[fields_layout::MINIMUM_FIRE_REAGENTS.offset],
+						"minimum-fire-reagents",
+					),
 					"reaction metadata",
 					index,
 				)?,
