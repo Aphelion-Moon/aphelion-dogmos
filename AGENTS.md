@@ -2,6 +2,12 @@
 
 aphelion-dogmos is the Rust half of Meridian-Rift's Dogmos atmosphere integration. Be direct, inspect existing implementations before changing them, preserve unrelated work, and leave changes uncommitted unless the user explicitly authorizes a commit.
 
+## Generated documentation and verification outputs
+
+Store generated plans, audits, handoffs, patch archives, profiles and verification artifacts in the central `GitHub/.agent_docs/aphelion-dogmos/` directory. This location is shared across checkouts; do not create another `.agent_docs` inside a repository or worktree.
+
+Keep maintained source documentation, agent instructions, workload definitions, build caches and required shipped artifacts with their code. When maintained verification tooling requires a repository-local output directory, move completed outputs to the central archive at handoff, preserving their manifests and hashes. Move registered qualification worktrees with `git worktree move` so their Git metadata remains valid.
+
 ## Required reading
 
 - Routing and authority: [docs/agent/README.md](docs/agent/README.md) and [docs/agent/source-authority.md](docs/agent/source-authority.md).
