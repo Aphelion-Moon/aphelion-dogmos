@@ -285,6 +285,7 @@ dependencies = [
  "dashmap",
  "dogmos-core",
  "dogmos-perf",
+ "dogmos-process-metrics",
  "eyre",
  "float-ord",
  "flume",

@@ -1,5 +1,5 @@
 use super::*;
-use crate::{react_hook, GasArena};
+use crate::GasArena;
 use auxcallback::process_callbacks_for_millis;
 use byondapi::{byond_string, prelude::*};
 use coarsetime::{Duration, Instant};
@@ -629,7 +629,12 @@ fn post_process() {
 					let turf = ByondValue::new_ref(ValueType::Turf, id);
 					match turf.read_var_id(byond_string!("air")) {
 						Ok(air) if !air.is_null() => {
-							if let Err(error) = react_hook(air, turf).wrap_err("Reacting") {
+							// Use the public mixture wrapper so reaction signals and the current
+							// cycle's settlement bookkeeping survive the backend switch.
+							if let Err(error) = turf
+								.call_id(byond_string!("dogmos_react"), &[])
+								.wrap_err("Reacting")
+							{
 								first_error.get_or_insert(error);
 							}
 						}

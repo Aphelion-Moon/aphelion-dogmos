@@ -43,6 +43,24 @@ fn dogmos_in_process_identity() -> Result<ByondValue> {
 		.map_err(Into::into)
 }
 
+/// Samples the host directly without scanning the gas arena or claiming a service is running.
+#[auxmacros::bind("/proc/dogmos_in_process_metrics")]
+fn dogmos_in_process_metrics() -> Result<ByondValue> {
+	use dogmos_process_metrics::{
+		sample_current_process, PROCESS_PRIVATE_BYTES_AVAILABLE, PROCESS_VIRTUAL_BYTES_AVAILABLE,
+		PROCESS_WORKING_SET_AVAILABLE,
+	};
+	let metrics = sample_current_process();
+	let required = PROCESS_PRIVATE_BYTES_AVAILABLE
+		| PROCESS_VIRTUAL_BYTES_AVAILABLE
+		| PROCESS_WORKING_SET_AVAILABLE;
+	ByondValue::new_str(format!(
+		"{{\"dreamdaemon\":{{\"private_bytes\":{},\"virtual_bytes\":{},\"working_set_bytes\":{},\"available\":{}}},\"dogmosd\":{{\"rss_bytes\":0,\"cpu_total_milliseconds\":0,\"available\":false}}}}",
+		metrics.private_bytes, metrics.virtual_bytes, metrics.working_set_bytes,
+		metrics.available_flags & required == required,
+	).into_bytes()).map_err(Into::into)
+}
+
 fn refresh_runtime_metrics() {
 	use dogmos_perf::RuntimeMetric;
 
@@ -1211,6 +1229,9 @@ pub fn generate_bindings_file() {
 	let bindings = std::fs::read_to_string(bindings_path)
 		.expect("generated DreamMaker bindings must be readable");
 	let mut bindings = normalize_generated_bindings(&bindings);
+	// A Windows play-test must never load the retained Linux service shim by accident.
+	bindings = bindings.replace("\"libdogmos\"", "\"libdogmos_in_process\"");
+	bindings.push_str("\n#define DOGMOS_IN_PROCESS\n");
 	bindings.push_str(&format!(
 		"\n// Local in-process build identity; generated with the matching DLL.\n#define DOGMOS_IN_PROCESS_IDENTITY \"in-process:{IN_PROCESS_SOURCE_SHA256}\"\n"
 	));

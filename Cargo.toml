@@ -60,6 +60,7 @@ auxcallback = { path = "./crates/auxcallback" }
 auxmacros = { path = "./crates/auxmacros" }
 dogmos-core = { path = "./crates/dogmos-core" }
 dogmos-perf = { path = "./crates/dogmos-perf" }
+dogmos-process-metrics = { path = "./crates/dogmos-process-metrics" }
 itertools = "0.14.0"
 rayon = "1.10.0"
 float-ord = "0.3.2"

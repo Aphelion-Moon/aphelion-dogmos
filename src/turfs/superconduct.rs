@@ -335,20 +335,16 @@ pub fn supercond_update_adjacencies(id: u32, max_x: i32, max_y: i32) -> Result<(
 // This overrides the existing atom temperature proc for registered heat nodes.
 #[auxmacros::bind("/turf/return_temperature")]
 fn hook_turf_temperature(src: ByondValue) -> Result<ByondValue> {
-	let id = src.get_ref()?;
-	with_turf_heat_read(|arena| -> Result<ByondValue> {
-		if let Some(&node_index) = arena.get_id(&id) {
-			let info = arena.get(node_index).unwrap();
-			let read = info.temperature.read();
-			if read.is_normal() {
-				Ok((*read).into())
-			} else {
-				Ok(300.0_f32.into())
-			}
-		} else {
-			Ok(102.0_f32.into())
-		}
-	})
+	let native_temperature = hook_dogmos_heat_temperature(src)?;
+	if !native_temperature.is_null() {
+		return Ok(native_temperature);
+	}
+	// Preserve the game's DM fallback for unregistered or nonconducting turfs.
+	let temperature = src.read_number_id(byond_string!("temperature"))?;
+	if !temperature.is_finite() {
+		return Err(eyre::eyre!("Turf fallback temperature must be finite"));
+	}
+	Ok(temperature.into())
 }
 
 // Return null for unregistered nodes so DM can use its compatibility temperature.
