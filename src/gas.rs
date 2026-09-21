@@ -112,6 +112,47 @@ pub(crate) fn install_mixtures_for_test(mixtures: Vec<Mixture>) {
 }
 
 impl GasArena {
+	/// Read-only settlement classification: source immutability, then 0 for equal,
+	/// 1 for a differing immutable neighbor, or 2 for a differing mutable neighbor.
+	pub(crate) fn settlement_batch(src: usize, neighbors: &[usize]) -> Result<Vec<u8>> {
+		if neighbors.len() > 6 {
+			return Err(eyre::eyre!(
+				"Settlement accepts at most six cardinal neighbors"
+			));
+		}
+		let arena = GAS_MIXTURES.read();
+		let mixtures = arena
+			.as_ref()
+			.ok_or_else(|| eyre::eyre!("Gas arena is not initialized"))?;
+		let source = mixtures
+			.get(src)
+			.ok_or_else(|| eyre::eyre!("No gas mixture with ID {src} exists!"))?
+			.read();
+		let mut result = Vec::with_capacity(neighbors.len() + 1);
+		result.push(u8::from(source.is_immutable()));
+		for &slot in neighbors {
+			// Do not recursively acquire the same lock behind a waiting writer.
+			if slot == src {
+				result.push(0);
+				continue;
+			}
+			let neighbor = mixtures
+				.get(slot)
+				.ok_or_else(|| eyre::eyre!("No gas mixture with ID {slot} exists!"))?
+				.read();
+			let differs = source.temperature_compare(&neighbor)
+				|| source.compare_with(&neighbor, constants::MINIMUM_MOLES_DELTA_TO_MOVE);
+			result.push(if !differs {
+				0
+			} else if neighbor.is_immutable() {
+				1
+			} else {
+				2
+			});
+		}
+		Ok(result)
+	}
+
 	/// Locks the gas arena and and runs the given closure with it locked.
 	/// # Panics
 	/// if `GAS_MIXTURES` hasn't been initialized, somehow.
@@ -486,6 +527,86 @@ mod tests {
 		prepare_gases_for_world, shut_down_gases, GasArena, GAS_MIXTURES, GAS_TEST_LOCK,
 		NEXT_GAS_IDS,
 	};
+
+	#[test]
+	fn settlement_batch_preserves_direction_immutability_and_aliases() {
+		use super::{constants::MINIMUM_MOLES_DELTA_TO_MOVE, types::*, Mixture};
+		let _guard = GAS_TEST_LOCK.lock().unwrap();
+		set_gas_statics_manually();
+		register_gas_manually("o2", 20.0);
+		let mut source = Mixture::new();
+		source.set_moles(0, 10.0).unwrap();
+		source.set_temperature(300.0);
+		let mut hotter = source.clone();
+		hotter.set_temperature(1000.0);
+		let mut fixed = hotter.clone();
+		fixed.mark_immutable();
+		let empty = Mixture::new();
+		*GAS_MIXTURES.write() = Some(
+			[source, hotter, fixed, empty]
+				.into_iter()
+				.map(parking_lot::RwLock::new)
+				.collect(),
+		);
+		assert_eq!(
+			GasArena::settlement_batch(0, &[0, 1, 2, 3, 1, 0]).unwrap(),
+			vec![0, 0, 2, 1, 2, 2, 0]
+		);
+		assert_eq!(
+			GasArena::settlement_batch(2, &[0, 2]).unwrap(),
+			vec![1, 2, 0]
+		);
+		assert_eq!(GasArena::settlement_batch(0, &[]).unwrap(), vec![0]);
+		// Each call must see mutations; never reuse a pre-simulation answer.
+		GasArena::with_gas_mixture_mut(1, |mix| {
+			mix.set_temperature(300.0);
+			Ok(())
+		})
+		.unwrap();
+		assert_eq!(GasArena::settlement_batch(0, &[1]).unwrap(), vec![0, 0]);
+		// Compare direction matters for sparse mixtures and the exact mole threshold.
+		GasArena::with_gas_mixture_mut(3, |mix| {
+			mix.set_moles(0, MINIMUM_MOLES_DELTA_TO_MOVE)?;
+			Ok(())
+		})
+		.unwrap();
+		for source in 0..4 {
+			for neighbor in 0..4 {
+				let expected = GasArena::with_gas_mixture(source, |left| {
+					GasArena::with_gas_mixture(neighbor, |right| {
+						let differs = left.temperature_compare(right)
+							|| left.compare_with(right, MINIMUM_MOLES_DELTA_TO_MOVE);
+						Ok(vec![
+							u8::from(left.is_immutable()),
+							if !differs {
+								0
+							} else if right.is_immutable() {
+								1
+							} else {
+								2
+							},
+						])
+					})
+				})
+				.unwrap();
+				assert_eq!(
+					GasArena::settlement_batch(source, &[neighbor]).unwrap(),
+					expected
+				);
+			}
+		}
+	}
+
+	#[test]
+	fn settlement_batch_rejects_invalid_slots_and_oversized_batches() {
+		let _guard = GAS_TEST_LOCK.lock().unwrap();
+		*GAS_MIXTURES.write() = Some(vec![parking_lot::RwLock::new(super::Mixture::new())]);
+		assert!(GasArena::settlement_batch(1, &[]).is_err());
+		assert!(GasArena::settlement_batch(0, &[1]).is_err());
+		assert!(GasArena::settlement_batch(0, &[0; 7]).is_err());
+		*GAS_MIXTURES.write() = None;
+		assert!(GasArena::settlement_batch(0, &[]).is_err());
+	}
 
 	#[test]
 	fn rejects_invalid_or_stale_gas_arena_slots() {

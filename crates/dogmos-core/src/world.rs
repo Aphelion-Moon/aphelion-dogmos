@@ -87,7 +87,7 @@ struct ProjectedSlot {
 
 const MINIMUM_TEMPERATURE_K: f32 = 2.7;
 const DEFAULT_MIXTURE_VOLUME_LITERS: f32 = 2500.0;
-const MINIMUM_CALCULATED_MOLES: f32 = 0.01;
+const GAS_MIN_MOLES: f32 = 0.0001;
 const MOLAR_ACCURACY: f32 = 0.0001;
 const MINIMUM_HEAT_CAPACITY: f32 = 0.0003;
 const DEFAULT_EVENT_CAPACITY: u32 = 4096;
@@ -1965,11 +1965,7 @@ impl DogmosWorld {
 				if !amount.is_finite() || amount < 0.0 {
 					return Err(WorldError::InvalidMoleAmount);
 				}
-				let amount = if amount < MINIMUM_CALCULATED_MOLES {
-					0.0
-				} else {
-					amount
-				};
+				let amount = if amount <= GAS_MIN_MOLES { 0.0 } else { amount };
 				let updated = self.mutate_mixture(handle, |mixture| {
 					if mixture.immutable || mixture.gases[gas_index] == amount {
 						return false;
@@ -2089,11 +2085,7 @@ impl DogmosWorld {
 					let mut changed = false;
 					for (gas_index, amount) in adjusted {
 						let amount = amount as f32;
-						let amount = if amount < MINIMUM_CALCULATED_MOLES {
-							0.0
-						} else {
-							amount
-						};
+						let amount = if amount <= GAS_MIN_MOLES { 0.0 } else { amount };
 						changed |= mixture.gases[gas_index] != amount;
 						mixture.gases[gas_index] = amount;
 					}
@@ -2176,7 +2168,7 @@ impl DogmosWorld {
 				let mut fuel_amount = 0.0;
 				for gas in gases.iter() {
 					let amount = mixture.gases[usize::from(gas.id.0)];
-					if amount < MINIMUM_CALCULATED_MOLES {
+					if amount <= GAS_MIN_MOLES {
 						continue;
 					}
 					match gas.fire_role {
@@ -2280,7 +2272,7 @@ impl DogmosWorld {
 						let adjusted = (f64::from(*moles) + f64::from(amount))
 							.clamp(0.0, f64::from(f32::MAX)) as f32;
 						changed |= *moles != adjusted;
-						*moles = if adjusted < MINIMUM_CALCULATED_MOLES {
+						*moles = if adjusted <= GAS_MIN_MOLES {
 							0.0
 						} else {
 							adjusted
@@ -2304,7 +2296,7 @@ impl DogmosWorld {
 					for moles in &mut mixture.gases {
 						let adjusted =
 							(f64::from(*moles) * f64::from(factor)).min(f64::from(f32::MAX)) as f32;
-						let adjusted = if adjusted < MINIMUM_CALCULATED_MOLES {
+						let adjusted = if adjusted <= GAS_MIN_MOLES {
 							0.0
 						} else {
 							adjusted
@@ -2388,7 +2380,7 @@ impl DogmosWorld {
 					let gases = total.gases.map(|amount| {
 						let scaled =
 							(f64::from(amount) * f64::from(ratio)).min(f64::from(f32::MAX)) as f32;
-						if scaled < MINIMUM_CALCULATED_MOLES {
+						if scaled <= GAS_MIN_MOLES {
 							0.0
 						} else {
 							scaled
@@ -3866,11 +3858,7 @@ impl DogmosWorld {
 				let mixture = self.mixtures[handle.slot as usize]
 					.mixture
 					.prepared_mut(&state.publication);
-				if mixture
-					.gases
-					.iter()
-					.any(|amount| *amount >= MINIMUM_CALCULATED_MOLES)
-				{
+				if mixture.gases.iter().any(|amount| *amount > GAS_MIN_MOLES) {
 					temperature.max(mixture.temperature)
 				} else {
 					temperature
@@ -6084,11 +6072,7 @@ impl DogmosWorld {
 			return Ok(closed_turf_temperature);
 		};
 		let mixture = self.require_handle(mixture)?;
-		if !mixture
-			.gases
-			.iter()
-			.any(|amount| *amount >= MINIMUM_CALCULATED_MOLES)
-		{
+		if !mixture.gases.iter().any(|amount| *amount > GAS_MIN_MOLES) {
 			return Ok(closed_turf_temperature);
 		}
 		Ok(closed_turf_temperature.max(mixture.temperature))
@@ -6304,7 +6288,7 @@ fn quantize(amount: f32) -> f32 {
 
 fn canonicalize_gases(gases: &mut [f32; MAX_GAS_SLOTS]) {
 	for amount in gases {
-		if *amount < MINIMUM_CALCULATED_MOLES {
+		if *amount <= GAS_MIN_MOLES {
 			*amount = 0.0;
 		}
 	}

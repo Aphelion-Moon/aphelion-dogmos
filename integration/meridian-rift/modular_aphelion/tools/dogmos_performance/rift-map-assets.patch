@@ -1,0 +1,10 @@
+diff --git a/tools/rift/rift.ts b/tools/rift/rift.ts
+--- a/tools/rift/rift.ts
++++ b/tools/rift/rift.ts
+@@ -1771,4 +1771,6 @@ export const DEPLOY_TREES = [
+ const DEPLOY_GLOBS = [
++  'modular_nova/**/*.dmm',
++  'modular_aphelion/**/*.dmm',
+   'modular_nova/**/*.dmi',
+   'modular_nova/modules/GAGS/json_configs/**/*.json',
+   'modular_nova/modules/GAGS/nsfw/json_configs/**/*.json',

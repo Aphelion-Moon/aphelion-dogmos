@@ -1,0 +1,1232 @@
+{
+  "native_base": "9d3d2c16078ffe9e462c554a76f6f705dc1c69cb",
+  "meridian_base": "0a53bfa562e697180fee60c80f4b10164d636cc0",
+  "meridian_branch": "dogmos",
+  "files": [
+    {
+      "path": ".github/workflows/run_linters.yml",
+      "sha256": "d684e67170b18e2e14a689a3bddf093abdfcd16bbe5bfe571e4a4da1d344f8bd",
+      "size": 5634,
+      "mode": "100644"
+    },
+    {
+      "path": ".gitignore",
+      "sha256": "0d208ca26c15f72ddfba03c83e2a64ade38332d1861244d53e92d3ba33d7fe71",
+      "size": 5397,
+      "mode": "100644"
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "55037d148f3ba31ae8827ac9fe106a4d975c8cf57e3bb05953ef4b069d42288d",
+      "size": 5622,
+      "mode": "100644"
+    },
+    {
+      "path": "Dockerfile",
+      "sha256": "39a4231a8a9f97c1c167f84182f71cb787c0031278dcc00d99d62a314f7a1cfa",
+      "size": 3303,
+      "mode": "100644"
+    },
+    {
+      "path": "code/__DEFINES/atmospherics/atmos_helpers.dm",
+      "sha256": "07a000c31292d0126c0172b7875265cb02433f55409797131f6335a402bb6924",
+      "size": 6063,
+      "mode": "100644"
+    },
+    {
+      "path": "code/__DEFINES/dogmos_bindings.dm",
+      "sha256": "09a55e1244bc4176ef95231507b9d5a01790d23195b1d6639c5f2c61b11634ad",
+      "size": 21016,
+      "mode": "100644"
+    },
+    {
+      "path": "code/__DEFINES/dogmos_contract.dm",
+      "sha256": "c1f297e77398e3a26149144693468eb132c26fa4ed53370c77360bea71c3c16e",
+      "size": 519,
+      "mode": "100644"
+    },
+    {
+      "path": "code/__DEFINES/dogmos_defines.dm",
+      "sha256": "6d31bac7c076b79d6f9744fbd20220176490fd856438c69a6751a296da24458d",
+      "size": 4510,
+      "mode": "100644"
+    },
+    {
+      "path": "code/_globalvars/logging.dm",
+      "sha256": "721496a09a94aaa93a9917460bdbb8252d8aae82bb4523386e3be4ada5bbb059",
+      "size": 3438,
+      "mode": "100644"
+    },
+    {
+      "path": "code/controllers/configuration/entries/general.dm",
+      "sha256": "37bc2873d1a4e1fd946c682adb498f29f75e476b580fc4985a5325ff6365cc9b",
+      "size": 24106,
+      "mode": "100644"
+    },
+    {
+      "path": "code/controllers/master.dm",
+      "sha256": "ffd46d9d8be29309f3163c28ab323a320ac2ce395d4915e13e3bdd5de4092cf2",
+      "size": 39023,
+      "mode": "100644"
+    },
+    {
+      "path": "code/controllers/subsystem.dm",
+      "sha256": "b9dcad771d1128526fc3ebde43f1158fdf36caa88e29b1623d5d614fe163127a",
+      "size": 12807,
+      "mode": "100644"
+    },
+    {
+      "path": "code/controllers/subsystem/air.dm",
+      "sha256": "5f29d057989322c88d8f4d855b90724137ca1bda5e0837eb248a0efd30faf086",
+      "size": 75109,
+      "mode": "100644"
+    },
+    {
+      "path": "code/controllers/subsystem/dogmos_kennel.dm",
+      "sha256": "5a754eb3008bb27b2fd314204c6684873b47f092ec1bb2cd0afcb45dd912636a",
+      "size": 12275,
+      "mode": "100644"
+    },
+    {
+      "path": "code/controllers/subsystem/dogmos_kennel_events.dm",
+      "sha256": "c9b036d8585eb5c7a602b08c79c7b54fe5993779bf9bf0689489927ae513a840",
+      "size": 14373,
+      "mode": "100644"
+    },
+    {
+      "path": "code/controllers/subsystem/time_track.dm",
+      "sha256": "9a9ecbdab0ceac6d42fab5e30468ce79723280f90f1c680e4018bbb542b85e59",
+      "size": 7655,
+      "mode": "100644"
+    },
+    {
+      "path": "code/datums/helper_datums/teleport.dm",
+      "sha256": "1b97c29d917bb4f2f61f2f3557572d2fdc6139413a623ebf4875852ad8c468be",
+      "size": 13054,
+      "mode": "100644"
+    },
+    {
+      "path": "code/game/machinery/spaceheater.dm",
+      "sha256": "a921360258d8592260e28350b39ab4432dae8537a176ba0c8fc9aec391a533af",
+      "size": 19444,
+      "mode": "100644"
+    },
+    {
+      "path": "code/game/objects/items/weaponry/ranged/flamethrower.dm",
+      "sha256": "445803326672c94e77ea8f7d840f4391661326c06c38b1676e149be9b38e71e3",
+      "size": 10704,
+      "mode": "100644"
+    },
+    {
+      "path": "code/game/turfs/change_turf.dm",
+      "sha256": "970b049095a256e17e230f81716f52ce621d818fef953e782b13bed2cea423fa",
+      "size": 14923,
+      "mode": "100644"
+    },
+    {
+      "path": "code/game/turfs/open/_open.dm",
+      "sha256": "034dd6200f52f7cc5669985fa7b1019638b4ecec720da34888d98014ca582b4a",
+      "size": 24973,
+      "mode": "100644"
+    },
+    {
+      "path": "code/game/turfs/open/space/space.dm",
+      "sha256": "46969751abf61e2899ac5bccaa07860874935384b2b3fdcc29c4a04b926c4356",
+      "size": 10822,
+      "mode": "100644"
+    },
+    {
+      "path": "code/game/turfs/turf.dm",
+      "sha256": "b7b21a657c1d1a9b97ecc4433753ebcfd62a10a912e856d2c3b9cc3321d1a72a",
+      "size": 32853,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/admin/admin_verbs.dm",
+      "sha256": "ac639df33fddc2ab4a855126d2b3a0be22cb748b61052d5c0384d72caae58f69",
+      "size": 38862,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/atmospherics/Atmospherics.md",
+      "sha256": "2daf8dfb06965c28059da54b596c5504025b67a8cf70c94c4ff79b1b10fc5065",
+      "size": 8994,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/atmospherics/environmental/LINDA_fire.dm",
+      "sha256": "fec45c0687a8c31b9197cd8c09c71a3a1e07ce49ccf925a046cd2719ef2e8e59",
+      "size": 18948,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/atmospherics/environmental/LINDA_system.dm",
+      "sha256": "945677ea3476577457fa3e8e58c3620796af880fe3b23ce971336ca8a9632e0d",
+      "size": 10870,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/atmospherics/environmental/LINDA_turf_tile.dm",
+      "sha256": "908bf0d78f8753be502c1b598c4abe639e837aaddcd4f184afd741e5b8c22ea7",
+      "size": 20018,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/atmospherics/gasmixtures/gas_mixture.dm",
+      "sha256": "5de07d95c16301b4e48072e0f95f06b6600617c810d2c315bcc4cd0bb05ddbdc",
+      "size": 27844,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/atmospherics/gasmixtures/gas_types.dm",
+      "sha256": "b83907a5eb283892104200de40b4910f754c98da9eefa874e8ceb7fb19b011aa",
+      "size": 11624,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/atmospherics/gasmixtures/reactions.dm",
+      "sha256": "784c9b32197dc0cd150537b52d80e0ceab2a69043e07666a9f9904bc31327814",
+      "size": 54798,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/atmospherics/machinery/atmosmachinery.dm",
+      "sha256": "3fc9aeb6a936869f9127114843c56160cc212683d11d5080a56c45888d818b13",
+      "size": 26343,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/atmospherics/machinery/components/binary_devices/pump.dm",
+      "sha256": "863f194a268dc4277f6fd2f7f52d39343470bc79333b2e0f2f7b305ca6f6f931",
+      "size": 8737,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/atmospherics/machinery/components/components_base.dm",
+      "sha256": "668574d4476888ccdcfdd8e31153ba2a527c12de37e7ed8f50963cf66246a112",
+      "size": 13597,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/atmospherics/machinery/components/electrolyzer/electrolyzer_reactions.dm",
+      "sha256": "5be70bda9530d305b59dabdf18708ab784e65f30baadb26bdce9eb4503ca841c",
+      "size": 6524,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/atmospherics/machinery/components/tank.dm",
+      "sha256": "0c2e2fa418aa89a9c6c08750b37b2c0d97c9d69880528cee0eb2e161ee79d0f2",
+      "size": 25694,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/atmospherics/machinery/components/trinary_devices/filter.dm",
+      "sha256": "c0dcab18dd96e4e910bf7223053c647cc6d859dfc7248bf5f482577b63a0233b",
+      "size": 13812,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/atmospherics/machinery/components/unary_devices/vent_pump.dm",
+      "sha256": "f1e834affab3ecb83987d2f0b89d30e36180895446f6a0b99a29da8894a2a985",
+      "size": 16185,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/atmospherics/machinery/datum_pipeline.dm",
+      "sha256": "93561c5680b31d161876172c8ac713229f3c85cf98bb9b2e8e6c31fd2d16ee4a",
+      "size": 16256,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/atmospherics/machinery/other/meter.dm",
+      "sha256": "3d23db139337f8257533dfa4db380dd913164cbfad8121e18c521b441722210f",
+      "size": 7444,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/atmospherics/machinery/pipes/heat_exchange/he_pipes.dm",
+      "sha256": "c96bdb46904b9793169022018cb5442a92ef3133b0e3576a24b1af08f033c4d5",
+      "size": 4358,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/atmospherics/machinery/pipes/pipes.dm",
+      "sha256": "a01a7475cc66b502bdcaa1831cbc5589959f1727bbf60304f6ff33be0b4d91dc",
+      "size": 4992,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/cargo/exports/large_objects.dm",
+      "sha256": "2ad9cb7b6f571efa2b92ebca1233dc6de6a44817ea9f0fdf39a61105c499877f",
+      "size": 5639,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/error_handler/error_handler.dm",
+      "sha256": "e33d546562e34ad8656d90b4e1510b99447aab95da91b46ad6e118fe8190768c",
+      "size": 7769,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/mapping/map_template.dm",
+      "sha256": "e4698a17dd00227daec304d77dde5528ebf24b38668ecb16ef86bb2358fd08f6",
+      "size": 8736,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/mob/living/carbon/life.dm",
+      "sha256": "c45906115c14f4135d6405369a6870a2aee622164ff44f1ef504b31f5a0e23e7",
+      "size": 32805,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/reagents/chemistry/reagents/other_reagents.dm",
+      "sha256": "e69a464d929c150b4da7ff12da90e6a766b8f975b0ce4da75d70253f51b9216a",
+      "size": 155977,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/research/techweb/nodes/engi_nodes.dm",
+      "sha256": "107b9421e6758336adc1fc6895b7ec598b81b05d322095a3741bd371303c4b85",
+      "size": 10183,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/shuttle/mobile_port/shuttle_move.dm",
+      "sha256": "13505d3260984243b8aeadd1c9bd4936308a573db006e632c6a5b36bac3a6ad3",
+      "size": 10225,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/shuttle/mobile_port/shuttle_move_callbacks.dm",
+      "sha256": "e8a395977f4367f4915cda47c6bcc9f912bfb3270589957704c0cb6fc91c8304",
+      "size": 18508,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/surgery/organs/internal/lungs/_lungs.dm",
+      "sha256": "8ae21da6a06f21cb8f4a97645eaeec133d4b8a9bf3c5dd02ac5827798b8ab6b5",
+      "size": 53635,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/_unit_tests.dm",
+      "sha256": "cb8208d9a64db6f6b6d8b9e21ed94c84f07f17df7c8c5e3941ce8da3b91d5089",
+      "size": 15651,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_active_turfs_bloat.dm",
+      "sha256": "a30b269d4318c3ca3fb8bb8daa979f2b992b68cf8e13edb1d575e57828cc440f",
+      "size": 3626,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_aphelion_reactions.dm",
+      "sha256": "c2670effa05ff68ac1fa96d39f17c6517f851afd6400dbdaccd498f855d97b96",
+      "size": 7035,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_assimilate_air_temperature_sync.dm",
+      "sha256": "e0d91bca2c4dc526ac9498c236510df7318daa74b2149da43b1759af69f2097a",
+      "size": 2171,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_breach_radiative_cooling.dm",
+      "sha256": "94e5447f4fefbb9e10e89c7af760f8a09370847c265d889c063f56294debe148",
+      "size": 3488,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_callback_delivery.dm",
+      "sha256": "eec9dab20d80a10cf920735f93676caffe186b921086c58369e125cbd482bea1",
+      "size": 889,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_decompression_feedback.dm",
+      "sha256": "e6e68d4214b0c1ce4b45b75bb7c5c73282155c0769d62241d1e55d13c2dd8a2e",
+      "size": 1517,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_decompression_floor_rip.dm",
+      "sha256": "2d3e3530c263595e65ac5f60b08950f380cdd46fb68dd17be8e28d3c836f657f",
+      "size": 2231,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_del_cost.dm",
+      "sha256": "3d29bd71b89d3e46819e46230d68eb26c1c9fac0eca21e0633288fc4d98870e7",
+      "size": 2228,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_excited_groups.dm",
+      "sha256": "3aafe9f23b581c11f934d84e645444c9fa08fb7ee7ef9a2b7e2a50f517a4e7a0",
+      "size": 2125,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_flamethrower_projection.dm",
+      "sha256": "e4fecc3371928ab8bd66ede63bb23e50fd121a3c8e396ccad3543a12af68fda3",
+      "size": 3520,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_gas_fdm_golden.dm",
+      "sha256": "3a9529c030750b3bf3a26045c3d882f2cf3a010e0b8f3f190d87b2c62822360b",
+      "size": 2449,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_gas_overlays.dm",
+      "sha256": "37a66235a31868026034364808a0ad870c35e4bec0826426f01c6bbf4fa4b187",
+      "size": 2302,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_goggle_modes.dm",
+      "sha256": "959ddd268d4fa0d855de67ea7524fc5be475a615ff2d7c0144c5ea71e8edcef7",
+      "size": 2274,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_highpressure_equalize.dm",
+      "sha256": "62aa75e9811f46690793c02f0f6510fac7782fb7adc1a255753b72eee7bb92ca",
+      "size": 2817,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_ignore_air_temperature_reset.dm",
+      "sha256": "a29d7277115b1d25ad92fa39ef2fd1f719b6b1a906031be05211899e5cb18850",
+      "size": 2440,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_immutable_mixture_contract.dm",
+      "sha256": "59102a4c71c366fb02f8d2ca399cb89b5a64c3012f6065cc599d5ed53d215a15",
+      "size": 1474,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_infinite_heat_capacity_conduction.dm",
+      "sha256": "3966afcab57ddf51cfaf93cf937545e2ca808e705e9d61450dee3f88a0d7e26d",
+      "size": 4293,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_init_health.dm",
+      "sha256": "4f0693283b6aa433353d5a80fa5d9787c7e00a79d167e50e0f7bbdc3545df1f1",
+      "size": 2698,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_internals_breath.dm",
+      "sha256": "73483af20ad667778ad1293b7b2c47a294a1be809e23b4c32b51e19fe57265fe",
+      "size": 2337,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_kennel_fire_groups.dm",
+      "sha256": "1f49414604eac0d31e3b6a7295fc4a2b113991e792b4234a078eaffb01dd4497",
+      "size": 4669,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_kennel_overlays.dm",
+      "sha256": "3910ff01d1a8c36316705711dc873f37ebdb59ca45e8201d5fa4dc11153a632a",
+      "size": 4803,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_kennel_process_metrics.dm",
+      "sha256": "7446ddbc31247b33313b715f8f3d747981bcaea2d230b6584a832331fb62221f",
+      "size": 12438,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_kennel_reaction_profiling.dm",
+      "sha256": "760df4b2d57ec918697142c37562791ae4e2e0fdacfd6b669522406a15dbc5a7",
+      "size": 3492,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_kennel_reactions_of_interest.dm",
+      "sha256": "49233b753d46733aa43e445ef056c75bf631f6ec75eda1b0bea00e9551a9491b",
+      "size": 3253,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_kennel_record_event.dm",
+      "sha256": "3ae497cb012551d59517f1bbbe98e02b951bbafdfd6420cd90bed905494e749d",
+      "size": 2802,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_kennel_slow_mode_payload.dm",
+      "sha256": "466fb8eefc1693a799333f9f7810ae78f001984f5bdf0a0e024729c664e9be22",
+      "size": 6788,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_kennel_structures.dm",
+      "sha256": "0abf2d9bd8c89ed470842ccb9a7e8810df44069bef9161d6c614d1ab6360c7db",
+      "size": 4048,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_kennel_thresholds.dm",
+      "sha256": "ef58a723eda0e776e88be05a1599dc56c7ebd338eaf4d73b25e9667b8270e440",
+      "size": 2936,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_registration.dm",
+      "sha256": "5300100947192639128bcb63c964603d031363257917349a57562a798dc6c3ea",
+      "size": 5327,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_space_boundary_registration.dm",
+      "sha256": "327dc84a4c16ac69871a47873b747ebc15599135baa101a5a0596bd3f1098003",
+      "size": 7410,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_ssair_recovery.dm",
+      "sha256": "da7e6202a33f33798334dd4bf46617ef87af936c824a4d1023d21485aa8a06b2",
+      "size": 24806,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_superconduction_golden.dm",
+      "sha256": "771df1f51109555b2dd293b2865ee4d397ae38ea382bfbe3a598ece2643c691e",
+      "size": 8731,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_temperature_authority.dm",
+      "sha256": "03781d994fa99d28b29a2c49c3d43bc6efa56f5d0e3b55a5054807fac1dc4b3e",
+      "size": 1760,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_turf_adjacency_sync.dm",
+      "sha256": "6e4077b1c70c6866d3f49e9ee50928dc1e089671bc5a7a87f5a31227ae482ceb",
+      "size": 4588,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_turf_lifecycle.dm",
+      "sha256": "8e32797d2ae385e6f31d261b36b32c86e82ad298443b9e14fd8c1868e1cc39d4",
+      "size": 1412,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_turf_registration.dm",
+      "sha256": "4c3a4eacb7a51df9642da1148c6bb409ff0c535f1c166fa13cdbce06b235b472",
+      "size": 3151,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_turf_temperature_setter.dm",
+      "sha256": "af91490282fb061a7fba22d4eeaa7f201601ae15efc5498c0a35e4fe75b7c660",
+      "size": 1733,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/dogmos_volume_sites.dm",
+      "sha256": "44647bb68f617d7356d5a56f1e21c58552a928e6cf0a27da21f45b086c9289b3",
+      "size": 4004,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/gas_mixture_golden.dm",
+      "sha256": "7f7f8631f250597155ec4e91a323d88a3545f59596f2ef424d7cbd0deaedcfee",
+      "size": 7982,
+      "mode": "100644"
+    },
+    {
+      "path": "code/modules/unit_tests/unit_test.dm",
+      "sha256": "7ed0bc999f5a943bd5f4c048ec560740373202697ed65b7bdc0d46942ef2cc33",
+      "size": 29812,
+      "mode": "100644"
+    },
+    {
+      "path": "dependencies.sh",
+      "sha256": "65e12e05e0d7e1688c49aa3d847c153003f328a5dfeeb50056fafafce4b9fe3d",
+      "size": 849,
+      "mode": "100644"
+    },
+    {
+      "path": "docs/agent/README.md",
+      "sha256": "1398da748b12e2a07fb46ed0586c46c9a1c974d1e9e7f450b9402f99f6691d8a",
+      "size": 4017,
+      "mode": "100644"
+    },
+    {
+      "path": "docs/agent/dogmos-gameplay-events.md",
+      "sha256": "ef5bcaf0e65b159855c2740ead8a2c76c273ec71a1b3cc5a5df621cf0274ff95",
+      "size": 7982,
+      "mode": "100644"
+    },
+    {
+      "path": "docs/agent/dogmos-in-process.md",
+      "sha256": "5fcf154579d33bada1d2ef27ea3917edba43bbe0fa6d45e3049cbd3acf6e68a0",
+      "size": 1879,
+      "mode": "100644"
+    },
+    {
+      "path": "docs/agent/dogmos-integration.md",
+      "sha256": "dcefa2ed73f7abaacec03b4f897e7ea80b40fbaa8132b15a115d6f1c8c06c123",
+      "size": 3358,
+      "mode": "100644"
+    },
+    {
+      "path": "docs/agent/dogmos-performance-and-memory.md",
+      "sha256": "cc4043710e46a1ca1ff026b5ac666d6f0fb70ee3927d50ca4853d37108d10378",
+      "size": 2944,
+      "mode": "100644"
+    },
+    {
+      "path": "docs/agent/dogmos-service-lifecycle.md",
+      "sha256": "3426606e7f3c81c2ac552f0e8b7992c239a7fe41dbb3cf081e0cc7fd25aff6f3",
+      "size": 6713,
+      "mode": "100644"
+    },
+    {
+      "path": "docs/agent/dogmos-verification.md",
+      "sha256": "8ce41989c1c044b6f776943b50f881a9d2fedebdec3ac7c3d445eaf7b6ef9d5b",
+      "size": 1990,
+      "mode": "100644"
+    },
+    {
+      "path": "docs/agent/generated-content.md",
+      "sha256": "3adad3b844a99c66338e034b25f49c70bf0fd991776819b3d9ecbc3639f4e23e",
+      "size": 1140,
+      "mode": "100644"
+    },
+    {
+      "path": "docs/agent/meridian-mcp.md",
+      "sha256": "0b27f0c609c391841016f935b97ab7b661e0544615a9bd763474bd417047f7f4",
+      "size": 1440,
+      "mode": "100644"
+    },
+    {
+      "path": "docs/agent/native-artifacts.md",
+      "sha256": "2bc76c9942d95f597e134174707160a021dc246fa9d737111be061a48c5864e7",
+      "size": 2030,
+      "mode": "100644"
+    },
+    {
+      "path": "docs/agent/placement-and-markers.md",
+      "sha256": "9c634161484c1eb4718a44b58ff50bf9ae15ac5129ac9238ada7478a7f030854",
+      "size": 1608,
+      "mode": "100644"
+    },
+    {
+      "path": "docs/agent/rift-controller.md",
+      "sha256": "ec6e93ed2b09eb70bd7ce44029284055e7e3b5de40da30e37f5d746991086a8b",
+      "size": 2991,
+      "mode": "100644"
+    },
+    {
+      "path": "docs/agent/source-authority.md",
+      "sha256": "42342e7a256a166f19cb8d9d674823f5c2a93e9d00f6c15e657af6e3dc54ed38",
+      "size": 2040,
+      "mode": "100644"
+    },
+    {
+      "path": "docs/agent/upstream-drift.md",
+      "sha256": "49b68c798ada485d4e1218644f5c58edc817f5144d6d9517068182d78652ac49",
+      "size": 1204,
+      "mode": "100644"
+    },
+    {
+      "path": "docs/agent/verification.md",
+      "sha256": "b1367e45760a8375e8a74f1859eb4220018984bd71633a8376c377890d9f4339",
+      "size": 2517,
+      "mode": "100644"
+    },
+    {
+      "path": "docs/tech-memos/dogmos.md",
+      "sha256": "77fc87dd4468737038e239499a59d68183356200a613308a09a9a8860167e1bb",
+      "size": 17946,
+      "mode": "100644"
+    },
+    {
+      "path": "dogmos.dll",
+      "sha256": "64b127c169ae1ff2387a5c595f2d4e80f6ddb36123d6b59d819a9bf22ded71ff",
+      "size": 1154560,
+      "mode": "100644"
+    },
+    {
+      "path": "dogmos.lock.json",
+      "sha256": "b1699cfec36e738931e90a6d90ece05293ef300e9d01c2c02d97b2aa72eab5a3",
+      "size": 1245,
+      "mode": "100644"
+    },
+    {
+      "path": "dogmosd",
+      "sha256": "9da56de301a5bd66d38547e362cc7e6063fb5517278b0325572d525cae309ad2",
+      "size": 1379720,
+      "mode": "100644"
+    },
+    {
+      "path": "dogmosd.exe",
+      "sha256": "56de62e18b524b67e67c2b0e6e4f9d28718be827940cb967dc7d025a473570f4",
+      "size": 1085952,
+      "mode": "100644"
+    },
+    {
+      "path": "libdogmos.so",
+      "sha256": "6a1f8d05b347c6e807729db5fb6773e17d7d343789155cd6fef63d67833e4e32",
+      "size": 1295592,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/master_files/code/game/turfs/open/_open.dm",
+      "sha256": "a4ea1dd6c19bb967f4295f6bbe5142a64dd6772037f33f3b0560ed737e05d16e",
+      "size": 69,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/master_files/code/game/turfs/open/space/space.dm",
+      "sha256": "c85267f00274867aa9289ae831f813c606a769b35c9797fa4b9f3694f2b4f9d3",
+      "size": 1065,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/master_files/code/game/turfs/turf.dm",
+      "sha256": "d1f539ea720b86f0e1f84b407f741e52d82e54d1766b4e824555ef0a781427af",
+      "size": 4651,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/AGENTS.md",
+      "sha256": "aa7058ef9a20faff3159e2781edc2e25efc046b3f6590db292183ccfe2a1ea7b",
+      "size": 1418,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/dogmos.dm",
+      "sha256": "b854f4e9f62a1c1cd51d70cfa4c98b783b69b7cd455124fa1b5c731cfd20e1df",
+      "size": 3423,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/dogmos_goggles.dm",
+      "sha256": "37eb92d4678b2177b24b018e8c5091a6705e7ff625b6c45fcfd81f6d0198d604",
+      "size": 5247,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/dogmos_service_state.dm",
+      "sha256": "35449f07751ef3665d7ee1e8e78196c3322eb828919bfe44ce36b06ed9361378",
+      "size": 10816,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/in_process_backend.dm",
+      "sha256": "542792e4415be3fdab70dd8bd5a11502fb3f8d0b69e24a56cac152c658cd1ed5",
+      "size": 2251,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/legacy_mixture_transcript.dm",
+      "sha256": "ce289b2547d82a8e490907b87a6721cb7c8d51453360930d03f0837069ca34ce",
+      "size": 3636,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/service_backend/_defines.dm",
+      "sha256": "329564f355a2e202b0e073fa776c3cc0b9f9a43acbccadf92c0f46e589b55b6b",
+      "size": 4242,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/service_backend/cache.dm",
+      "sha256": "b7477f86cb4b0b6102f0c202a5a15935d69634def1d67b15da072fbc5eb25ec1",
+      "size": 8808,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/service_backend/callbacks.dm",
+      "sha256": "72aed0bb871f45005a4ebde92d3dfd8748139282d8e144c73be7575b8facbf6d",
+      "size": 19262,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/service_backend/compatibility.dm",
+      "sha256": "ff7e746bf9b8df04a5d22e4cb5a7e1ae04cfe7d5a60779f3d1e1bb963b1b01ec",
+      "size": 1261,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/service_backend/frontier.dm",
+      "sha256": "607fe0cd7e8f5a42e0325923a00021128eae72d33c8d942846e844697504597e",
+      "size": 16853,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/service_backend/identity.dm",
+      "sha256": "f5fb64f1e814ee7eabace7b424aa90de0dae52c22a67b40ad5c10b87bdcff2e6",
+      "size": 7186,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/service_backend/lifecycle.dm",
+      "sha256": "b47ec4aac729ab39725073f5be3a1768d480710c77f41d492a0684452f4ad35d",
+      "size": 6264,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/service_backend/mixtures.dm",
+      "sha256": "61c68165888701ddd8c1373b19d486d54e9b587c950fef43cd9976270fdfa4c9",
+      "size": 17052,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/service_backend/observations.dm",
+      "sha256": "6b4bba47741ba8ac709050ce358add3203d96fb17cd9adeee33a3b7614b655d9",
+      "size": 8980,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/service_backend/stages.dm",
+      "sha256": "29f8a39f871c42f31cb44ae026e3e88d896fe498caff40eb4e188c5a35f36237",
+      "size": 17574,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/service_backend/topology.dm",
+      "sha256": "4d80c24e468693236e414ddc0e3782ba10018e864c4526473cbf3ff2ca90b955",
+      "size": 16765,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/service_backend/turfs.dm",
+      "sha256": "8b5db779c0878b11442f5f6ca10d2096f917e15c76cec9ffd276d6feedd78fc9",
+      "size": 9486,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/service_backend/zz_undef.dm",
+      "sha256": "52f09e4cf7bb207928a6fa8e8e5d7a373bcecf3d9e6d11cbe35fc9b6636d58ea",
+      "size": 2868,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/shift_start_performance_test.dm",
+      "sha256": "169a29929d330c58ecdf983042c4247c0509cada41bb93ac338e727d78d2744d",
+      "size": 5246,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/tests/callbacks_test.dm",
+      "sha256": "b000c5b29db42829e9cc138f9344504835212d80eacc45ac8bace6220ad42dc8",
+      "size": 13020,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/tests/copy_recovery_test.dm",
+      "sha256": "383da5ded5ce10a651ca636068883148edf118ed3ce39fadba5b505f94755f8a",
+      "size": 11914,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/tests/failure_admission_test.dm",
+      "sha256": "8fb38f6ae48a733888c8f911cf10e119f5607986bf3edd5588001e448099b606",
+      "size": 22115,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/tests/failure_walk_test.dm",
+      "sha256": "6babba3f9b7e1055a29ed8854d7e980978009dc54450f4e05aab125bf7bf62e1",
+      "size": 10874,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/tests/frontier_test.dm",
+      "sha256": "ff4534ffabfc09bd5456167fd24af0928e670bbcacd09d8587822bea22fce81c",
+      "size": 34706,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/tests/identity_test.dm",
+      "sha256": "66706dc75679fd6af726a10cbe11e3a816afef3ff229f632fa5108e7969acc86",
+      "size": 5704,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/tests/machinery_test.dm",
+      "sha256": "be8724f87cdf2ff2e4399d831fa5afb3c9d495783824a77070ce63bc9495a1ab",
+      "size": 13472,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/tests/mixtures_test.dm",
+      "sha256": "ac8de35765074b1323352111bae4d0f1dfecfa6b0ed48ca428147093b359f679",
+      "size": 19860,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/tests/observations_test.dm",
+      "sha256": "3e9bd84cf54f4b3a136354f015e79425c193d2dc4b6f534f87595e9a5c5cb4b3",
+      "size": 11440,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/tests/prefetch_test.dm",
+      "sha256": "7c7b19fcd1607c3f26ef6aff1d58fa1514de0c2dd3a0fbc8303a3d5d4bd50bf2",
+      "size": 15975,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/tests/recovery_test.dm",
+      "sha256": "87057ae75f11612c05d2fb10402ee19ac8fba3fa9469264ac221f7261ee2fea8",
+      "size": 7450,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/tests/scheduling_test.dm",
+      "sha256": "e37229fcac9711dd48f184063141b93e2807718cda81dfb84c0e4bee49edfd82",
+      "size": 28122,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/tests/stages_test.dm",
+      "sha256": "5a6520724ff88e47325f4fd88ea23ddff72058838d9ddb09853faeda8cf5871a",
+      "size": 41902,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/tests/startup_cache_test.dm",
+      "sha256": "78b1b5e0dfa7ea2b246071b5bdc5b05a2ff720ea3a5fc8c303d72de7fd6c1d7c",
+      "size": 18456,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/tests/topology_dedup_test.dm",
+      "sha256": "3b889e37167ec25155619af2b478562c870f60726a242a541638b9f9ded2edfd",
+      "size": 16034,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/tests/topology_frontier_exception_test.dm",
+      "sha256": "f75c0135770ef6c70845f5788a2ab08468dc9d552065f7999b88e751c7bbe834",
+      "size": 1350,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/tests/topology_multiz_test.dm",
+      "sha256": "b188a8318c327defe80c64d997fcfcf34ad1ff57aecb664e15f38710239e70e8",
+      "size": 32093,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/tests/topology_publication_test.dm",
+      "sha256": "c95fac3ad42bbc54a68343369e094bcee2ee7541404307f5ab879dc7493c8e00",
+      "size": 3786,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/tests/topology_runtime_test.dm",
+      "sha256": "bcd26ab717bb38c681b070384642f0ad1ac7e838fb9e2d9840580f492e16f748",
+      "size": 21668,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/tests/topology_scopes_test.dm",
+      "sha256": "67ecdcf5760633a88e251288124d3fa963fa70b7fd245b55c724706686d2eabc",
+      "size": 15373,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/code/tests/topology_startup_test.dm",
+      "sha256": "875fecc8097e962dc23e7f0b9cb07d1e20ed11229565de2b084fd7c413641fc1",
+      "size": 10324,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/modules/dogmos/readme.md",
+      "sha256": "da6c5bcc5ba9a1bde99852a3d685c8f03df2a38a06ecafda02e8bba032567947",
+      "size": 3902,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/tools/aphelion_marker_check.py",
+      "sha256": "418aee532eb74fd2f326d43787ff87f43a366960b63600fb1ea91d72daa03040",
+      "size": 6500,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/tools/dogmos_performance/README.md",
+      "sha256": "b028f082f2b623a913b04f9f183e46401281cc4540e26d4bda557114cc8ea3ba",
+      "size": 6917,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/tools/dogmos_performance/Sample-RiftProcesses.ps1",
+      "sha256": "0f5ae1276d61de20e28373eabfd727634f5600e53339238c87b2cb34a33b05a8",
+      "size": 5730,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/tools/dogmos_performance/analyze.py",
+      "sha256": "bba51355a5411a011d8fca9627d036086fef68b116cf05cbece4e27cdeacb222",
+      "size": 7502,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/tools/dogmos_performance/compare-repository.ts",
+      "sha256": "9cb3c99de94b8e21a973cfc39236ce5c1471af254ee98035ec2ceb1c5f62052f",
+      "size": 15983,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/tools/dogmos_performance/deployment_assets.test.ts",
+      "sha256": "69287f9482715c5b055119f4c1175118fc2a291a43b375a347ccd5c48dc39d5c",
+      "size": 2287,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/tools/dogmos_performance/rift-map-assets.patch",
+      "sha256": "02b2683da4090ce90d73d90645afb0ebaf9c6fa385217488d547a9c5dd8196de",
+      "size": 392,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/tools/dogmos_performance/shared_baseline_observer.dm",
+      "sha256": "35c27c4f75228eb2a7bb2b34a78f26cf6bdd66752c5986861feb6f53acac0ffd",
+      "size": 5781,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/tools/dogmos_performance/test_analyze.py",
+      "sha256": "757e13eca394c5e6ee52928efd4ce281eed401cf291bac5b1ff75cc74b37ba10",
+      "size": 4002,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/tools/dogmos_tracy/Capture-Dogmos.ps1",
+      "sha256": "ad546f9416ad1c5e9d146bd9302cd352375ba910f52e43c3e24cbc71b1db42b5",
+      "size": 18864,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/tools/dogmos_tracy/README.md",
+      "sha256": "e445e77f09bac916a46ecf95ed204ae0b1ec91eea8f924b3162c25cf6a28f24d",
+      "size": 8668,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/tools/dogmos_tracy/START_CAPTURE.cmd",
+      "sha256": "0e21e1b8ddbfb3bb1ed1b641bf8c32a713d235c4e888625c2df5c89f635d1f82",
+      "size": 712,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/tools/dogmos_tracy/Start-DogmosCapture.ps1",
+      "sha256": "f7ea6f5cb85c62b6a602491c79effe86d132170175588c79bf01982d39183615",
+      "size": 10399,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/tools/dogmos_tracy/Test-CaptureCleanup.ps1",
+      "sha256": "e2e00c979582257fdec3b336ab319bc951affacc85816baf61f865eb5cf45bfc",
+      "size": 4224,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/tools/dogmos_tracy/Test-OneClickCapture.ps1",
+      "sha256": "a579cbdde57784edf23630ec8c99a9a78b99ee6e6c5c5e48d7a7f356896a3636",
+      "size": 7550,
+      "mode": "100644"
+    },
+    {
+      "path": "modular_aphelion/tools/tests/test_aphelion_marker_check.py",
+      "sha256": "ecb8685bb74ad15e167d2fd94075940c87520d3c2511dc3938cf6e95613a4b82",
+      "size": 6295,
+      "mode": "100644"
+    },
+    {
+      "path": "tgstation.dme",
+      "sha256": "e90bb048060fdf5e83fe3302e234a13db9b7c6165892ccb575b02f52c4f5f1a6",
+      "size": 637816,
+      "mode": "100644"
+    },
+    {
+      "path": "tgui/packages/tgui/interfaces/AtmosControlPanel.jsx",
+      "sha256": "c823b64609165506182085ab3f325c5104c266eb25b5144987c14281ee8b7239",
+      "size": 5185,
+      "mode": "100644"
+    },
+    {
+      "path": "tgui/packages/tgui/interfaces/DogmosKennel.tsx",
+      "sha256": "a00605318c68beda6d9305f3ba953aaa9a995ebc2b590d6fa393ffacaa805277",
+      "size": 31035,
+      "mode": "100644"
+    },
+    {
+      "path": "tgui/packages/tgui/interfaces/DogmosKennel/docs/about.md",
+      "sha256": "d93f9bf8885fa1c7dc7d65deb829eb071527516366e7e446032506b16adb03b7",
+      "size": 3075,
+      "mode": "100644"
+    },
+    {
+      "path": "tgui/packages/tgui/interfaces/DogmosKennel/docs/credits.md",
+      "sha256": "3472819f3237508a71c402a42324681f9fe041eba7e145c908768f80d9241f73",
+      "size": 860,
+      "mode": "100644"
+    },
+    {
+      "path": "tgui/packages/tgui/interfaces/DogmosKennel/docs/glossary.md",
+      "sha256": "d09b8575936a46587276f9432a3dd08aa5ab6d8bc06757fe198b56c091df3e25",
+      "size": 4461,
+      "mode": "100644"
+    },
+    {
+      "path": "tools/ci/check_agent_docs.py",
+      "sha256": "de6e413b36ea1ec1c9a69f9af39650e6c4d16bfdba7c1bb03b1482308da07b3f",
+      "size": 5803,
+      "mode": "100644"
+    },
+    {
+      "path": "tools/ci/check_dogmos_frontier_writers.py",
+      "sha256": "607807daceb546d9c6599429aabae7905e16e8d09f2e6cca92581db0c22f8230",
+      "size": 3906,
+      "mode": "100644"
+    },
+    {
+      "path": "tools/ci/run_server.sh",
+      "sha256": "83c6b165745a1795b4c7f226c88330bab0f49aec51cfbc31f4e51da497f643d3",
+      "size": 847,
+      "mode": "100644"
+    },
+    {
+      "path": "tools/ci/tests/test_check_agent_docs.py",
+      "sha256": "a3151817b95ead34f296c419477e202a4cad33eb7186be4216541eebecf879c1",
+      "size": 6899,
+      "mode": "100644"
+    },
+    {
+      "path": "tools/ci/tests/test_dogmos_frontier_writers.py",
+      "sha256": "3a494e95a006b0ed571e54f614b675d6dd9147fb9bd3e90c39ef4b7fc8b26ec5",
+      "size": 2539,
+      "mode": "100644"
+    },
+    {
+      "path": "tools/ci/tests/test_dogmos_perf_columns.py",
+      "sha256": "dcf5e316f9676a777cd44d2507796580abeacadfb76c55ec25fc22fea3b63b36",
+      "size": 614,
+      "mode": "100644"
+    },
+    {
+      "path": "tools/dogmos/_common.ps1",
+      "sha256": "6af646dbdde9023709076fd8b656942a06696e4ac800db7dd24c49c85d4b49be",
+      "size": 8427,
+      "mode": "100644"
+    },
+    {
+      "path": "tools/dogmos/boot_probe.ps1",
+      "sha256": "d14cea29f81c9c3b1e5b9d729c8df86bb3dc0fda91cbd43d5f5d27fa628fd2e9",
+      "size": 4236,
+      "mode": "100644"
+    },
+    {
+      "path": "tools/dogmos/run_liveness_soak.ps1",
+      "sha256": "156dfabc23b659ca15a1a92165ee59452ec4a99a752c5edae059d8246d2eec77",
+      "size": 6798,
+      "mode": "100644"
+    },
+    {
+      "path": "tools/dogmos/run_tests.ps1",
+      "sha256": "f6dda14626859c5986f44b197e24057a55fc94af9150e4611c7f54f5078ea390",
+      "size": 5819,
+      "mode": "100644"
+    },
+    {
+      "path": "tools/dogmos/stage_ci_runtime.py",
+      "sha256": "62af012b76c6d9eb857b1553776ed9fe060a81fe919e132d68387ef41c051e16",
+      "size": 1741,
+      "mode": "100644"
+    },
+    {
+      "path": "tools/dogmos/sync_contract.ps1",
+      "sha256": "7a3ac9afea06454694ebea8f4cee327479407c8ea8bf4bf1eea837c52e0cc764",
+      "size": 7314,
+      "mode": "100644"
+    },
+    {
+      "path": "tools/dogmos/sync_in_process.py",
+      "sha256": "e619299d3c222eb8c0bbe9f7bef3f2dfda13e335e2429477f0ef968bd5d1af50",
+      "size": 3217,
+      "mode": "100644"
+    },
+    {
+      "path": "tools/dogmos/test_compile_check.ps1",
+      "sha256": "dac4b9d4b81633dfc5b414b09007098457d0f1babd3dbb3638c481b31c405355",
+      "size": 1574,
+      "mode": "100644"
+    },
+    {
+      "path": "tools/dogmos/tests/ProcessHelpers.Tests.ps1",
+      "sha256": "fd5e888e4505a3296e7a71b01f74dd13e201b6082294b2269db11aa83e432d9e",
+      "size": 5301,
+      "mode": "100644"
+    },
+    {
+      "path": "tools/dogmos/tests/test_contract.py",
+      "sha256": "dfaacbea1ddf4cd5b2f7121cb9cf485550c9cc5e461227e8b0f406609c7e4600",
+      "size": 13653,
+      "mode": "100644"
+    },
+    {
+      "path": "tools/dogmos/tests/test_stage_ci_runtime.py",
+      "sha256": "11578804879532c5b54aaa4ea24505f9768232fef397953a1d37963020eb1e6d",
+      "size": 8792,
+      "mode": "100644"
+    },
+    {
+      "path": "tools/dogmos/verify_contract.py",
+      "sha256": "09261799725b8f65623b1c03e2f405a07a56064cd3e41b989f7104f579ed30d3",
+      "size": 23376,
+      "mode": "100644"
+    },
+    {
+      "path": "tools/rift/README.md",
+      "sha256": "4727bc6ff3692cd29f5e097d767442ed71ff863478d08b5b57d9d5db8a05bc85",
+      "size": 11507,
+      "mode": "100644"
+    },
+    {
+      "path": "tools/rift/profiles.json",
+      "sha256": "34d23df3f9e44243a9469241634b1160c2f15da60e72e024fd8166369893f6d0",
+      "size": 6550,
+      "mode": "100644"
+    },
+    {
+      "path": "tools/rift/rift.test.ts",
+      "sha256": "ffa377122793635dfe7e064af0a0a06b737af6f42670680683e9a54270d5dee0",
+      "size": 117267,
+      "mode": "100644"
+    },
+    {
+      "path": "tools/rift/rift.ts",
+      "sha256": "a75905a8a77e761f30e09f80992155a256bcb4bd294cf33704da82455fa6c099",
+      "size": 132780,
+      "mode": "100644"
+    },
+    {
+      "path": "tools/ticked_file_enforcement/schemas/tgstation_dme.json",
+      "sha256": "383acececf395833f1285b80e5dc60729185accd05b91741f75cb1a126cbda60",
+      "size": 607,
+      "mode": "100644"
+    }
+  ],
+  "qualification": "Historical source snapshot, including pre-cleanup local repairs; not a service release."
+}

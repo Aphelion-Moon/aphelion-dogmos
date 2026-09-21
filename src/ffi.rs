@@ -53,6 +53,7 @@ pub(crate) fn guard_with_arity<T>(
 		binding,
 		"/proc/dogmos_shutdown"
 			| "/proc/dogmos_in_process_identity"
+			| "/proc/dogmos_in_process_metrics"
 			| "/proc/dogmos_perf_snapshot"
 			| "/proc/dogmos_perf_set_detailed"
 			| "/proc/dogmos_ffi_panic_count"
@@ -122,6 +123,10 @@ mod tests {
 		assert_eq!(
 			guard_with_arity("/proc/dogmos_perf_snapshot", 0, || Ok(7)).unwrap(),
 			7
+		);
+		assert_eq!(
+			guard_with_arity("/proc/dogmos_in_process_metrics", 0, || Ok(8)).unwrap(),
+			8
 		);
 		guard_with_arity("/proc/dogmos_shutdown", 0, || {
 			auxcallback::clean_callbacks();

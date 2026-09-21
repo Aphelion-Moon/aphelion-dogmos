@@ -137,7 +137,7 @@ mod tests {
 			.unwrap();
 		let created = world.require_handle(handle(1)).unwrap();
 		assert_eq!(created.revision, 2);
-		assert_eq!(created.gases[0], 0.0);
+		assert_eq!(created.gases[0], 0.009);
 		assert_eq!(created.gases[1], 0.01);
 		assert_eq!(created.minimum_heat_capacity, 0.0);
 		assert!(!created.immutable);

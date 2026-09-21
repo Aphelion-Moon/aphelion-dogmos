@@ -140,7 +140,7 @@ fn mixture_state_batches_reject_invalid_physical_values() {
 }
 
 #[test]
-fn mixture_state_canonicalizes_sub_centimole_traces() {
+fn mixture_state_preserves_sub_centimole_traces() {
 	let trace = handle(0, 1);
 	let minimum = handle(1, 1);
 	let mut world = DogmosWorld::new(1024 * 1024);
@@ -162,7 +162,7 @@ fn mixture_state_canonicalizes_sub_centimole_traces() {
 		.apply_mixture_state(&[state(trace, 0, 0.0099), state(minimum, 0, 0.01)])
 		.unwrap();
 
-	assert_eq!(world.snapshot(trace).unwrap().gases[0], 0.0);
+	assert_eq!(world.snapshot(trace).unwrap().gases[0], 0.0099);
 	assert_eq!(world.snapshot(minimum).unwrap().gases[0], 0.01);
 	world
 		.apply_command(Command::AdjustMoles {
@@ -171,11 +171,11 @@ fn mixture_state_canonicalizes_sub_centimole_traces() {
 			delta: -0.0001,
 		})
 		.unwrap();
-	assert_eq!(world.snapshot(minimum).unwrap().gases[0], 0.0);
+	assert!((world.snapshot(minimum).unwrap().gases[0] - 0.0099).abs() < 1e-8);
 }
 
 #[test]
-fn pipenet_reconcile_sinks_sub_centimole_components() {
+fn pipenet_reconcile_conserves_sub_centimole_components() {
 	let first = handle(0, 1);
 	let second = handle(1, 1);
 	let mut world = DogmosWorld::new(1024 * 1024);
@@ -198,8 +198,8 @@ fn pipenet_reconcile_sinks_sub_centimole_components() {
 
 	world.reconcile_pipenet(&[first, second]).unwrap();
 
-	assert_eq!(world.snapshot(first).unwrap().gases[0], 0.0);
-	assert_eq!(world.snapshot(second).unwrap().gases[0], 0.0);
+	assert_eq!(world.snapshot(first).unwrap().gases[0], 0.005);
+	assert_eq!(world.snapshot(second).unwrap().gases[0], 0.005);
 }
 
 #[test]
@@ -264,7 +264,7 @@ fn explicit_sub_centimole_amount_removal_preserves_the_breath() {
 }
 
 #[test]
-fn sunk_transfer_trace_does_not_heat_unrelated_destination_gas() {
+fn sub_centimole_transfer_conserves_energy() {
 	let source = handle(0, 1);
 	let destination = handle(1, 1);
 	let mut world = DogmosWorld::new(1024 * 1024);
@@ -299,12 +299,13 @@ fn sunk_transfer_trace_does_not_heat_unrelated_destination_gas() {
 		.unwrap();
 
 	let destination_after = world.snapshot(destination).unwrap();
-	assert_eq!(destination_after.gases[0], 0.0);
-	assert_eq!(destination_after.temperature, 300.0);
+	assert_eq!(destination_after.gases[0], 0.0075);
+	assert!((destination_after.temperature - 302.23325).abs() < 0.0001);
+	assert_eq!(world.snapshot(source).unwrap().gases[0], 0.0075);
 }
 
 #[test]
-fn sunk_selected_gas_trace_does_not_heat_unrelated_destination_gas() {
+fn sub_centimole_selected_transfer_conserves_energy() {
 	let source = handle(0, 1);
 	let destination = handle(1, 1);
 	let mut world = DogmosWorld::new(1024 * 1024);
@@ -340,12 +341,13 @@ fn sunk_selected_gas_trace_does_not_heat_unrelated_destination_gas() {
 		.unwrap();
 
 	let destination_after = world.snapshot(destination).unwrap();
-	assert_eq!(destination_after.gases[0], 0.0);
-	assert_eq!(destination_after.temperature, 300.0);
+	assert_eq!(destination_after.gases[0], 0.0075);
+	assert!((destination_after.temperature - 302.23325).abs() < 0.0001);
+	assert_eq!(world.snapshot(source).unwrap().gases[0], 0.0075);
 }
 
 #[test]
-fn sub_centimole_hot_trace_does_not_activate_turf_heat() {
+fn sub_centimole_hot_trace_retains_heat_capacity() {
 	let mixture = handle(0, 1);
 	let turf = turf_handle(0, 1);
 	let mut world = DogmosWorld::new(1024 * 1024);
@@ -377,12 +379,11 @@ fn sub_centimole_hot_trace_does_not_activate_turf_heat() {
 		}])
 		.unwrap();
 
-	assert_eq!(
-		world
-			.process_stage_cancellable(WorldStage::TurfHeat, 0.5, || false)
-			.unwrap(),
-		dogmos_core::world::StageResult { work_items: 0 }
-	);
+	assert_eq!(world.snapshot(mixture).unwrap().gases[0], 0.0099);
+	world
+		.process_stage_cancellable(WorldStage::TurfHeat, 0.5, || false)
+		.unwrap();
+	assert!(world.snapshot(mixture).unwrap().temperature < 733.0);
 }
 
 #[test]

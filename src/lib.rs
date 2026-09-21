@@ -858,6 +858,29 @@ fn compare_hook(src: ByondValue, other: ByondValue) -> Result<ByondValue> {
 	})
 }
 
+/// Read-only, per-turf batch. Returns source immutability followed by neighbor states:
+/// 0 = matching, 1 = differing immutable, 2 = differing mutable. No state is cached.
+#[auxmacros::bind("/datum/gas_mixture/proc/__settlement_batch")]
+fn settlement_batch_hook(src: ByondValue, neighbors: ByondValue) -> Result<ByondValue> {
+	if !neighbors.is_list() || neighbors.builtin_length()?.get_number()? > 6.0 {
+		return Err(eyre::eyre!(
+			"Settlement requires a list of at most six gas mixtures"
+		));
+	}
+	let source = gas::gas_slot_for_mix(&src)?;
+	let slots = neighbors
+		.iter()?
+		.map(|(value, _)| gas::gas_slot_for_mix(&value))
+		.collect::<Result<Vec<_>>>()?;
+	let states = GasArena::settlement_batch(source, &slots)?;
+	// Release every native lock before allocating or returning BYOND values.
+	let mut result = ByondValue::new_list()?;
+	for state in states {
+		result.push_list(ByondValue::from(f32::from(state)))?;
+	}
+	Ok(result)
+}
+
 /// Args: (holder). Runs all reactions on this gas mixture. Holder is used by the reactions, and can be any arbitrary datum or null.
 /// Underscored because DM keeps a `react()` wrapper of its own, carrying behaviour Dogmos has no
 /// equivalent for: the hypernoblium oppression gate that stops all reactions before any are

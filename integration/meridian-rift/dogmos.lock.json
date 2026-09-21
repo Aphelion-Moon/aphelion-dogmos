@@ -1,0 +1,40 @@
+{
+  "artifacts": {
+    "dogmos-source-snapshot.json": "ba2c9b62f2e5f92ac276f7a49e498ebeca23ed23d536d1a78e7290cc78e9cbc0",
+    "dogmos.dll": "64b127c169ae1ff2387a5c595f2d4e80f6ddb36123d6b59d819a9bf22ded71ff",
+    "dogmos.pdb": "8937a9c29b0c62a9a1838df7a8404436ffc234c1b72528b86f5a96cd3cd40dd9",
+    "dogmos_bindings.dm": "09a55e1244bc4176ef95231507b9d5a01790d23195b1d6639c5f2c61b11634ad"
+  },
+  "backend": "in-process",
+  "cargo_arguments": [
+    "+1.98.0",
+    "build",
+    "-p",
+    "dogmos",
+    "--lib",
+    "--example",
+    "generate_bindings",
+    "--release",
+    "--locked",
+    "--target",
+    "i686-pc-windows-msvc",
+    "--no-default-features",
+    "--features",
+    "aphelion_reactions,katmos,katmos_slow_decompression,superconductivity,turf_processing"
+  ],
+  "features": [
+    "aphelion_reactions",
+    "katmos",
+    "katmos_slow_decompression",
+    "superconductivity",
+    "turf_processing"
+  ],
+  "kind": "unqualified-in-process-playtest",
+  "runtime_qualified": false,
+  "schema_version": 1,
+  "source_revision": "9d3d2c16078ffe9e462c554a76f6f705dc1c69cb",
+  "source_sha256": "ba2c9b62f2e5f92ac276f7a49e498ebeca23ed23d536d1a78e7290cc78e9cbc0",
+  "target": "i686-pc-windows-msvc",
+  "tests_run": false,
+  "toolchain": "1.98.0"
+}
