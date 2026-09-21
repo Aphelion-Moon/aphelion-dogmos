@@ -137,7 +137,7 @@ SUBSYSTEM_DEF(settlement_regression)
 	qdel(left)
 	qdel(right)
 
-/** Checks list order, prefetch cursor repair, duplicate activation, and wake-after-stop. */
+/** Checks list order, queue removal, duplicate activation, and wake-after-stop. */
 /proc/verify_settlement_scheduling()
 	var/turf/open/floor/site
 	for(var/turf/open/floor/candidate in world)
@@ -166,12 +166,9 @@ SUBSYSTEM_DEF(settlement_regression)
 		CRASH("An already-active turf did not wake its newly dormant machine.")
 	probe.currentpart = SSAIR_ATMOSMACHINERY
 	probe.currentrun = list(first, second)
-	probe.dogmos_machine_prefetch_start = 1
-	probe.dogmos_machine_prefetch_end = 2
-	probe.dogmos_machine_prefetch_cursor = 2
 	probe.stop_processing_machine(first)
-	if(length(probe.currentrun) != 1 || probe.currentrun[1] != second || probe.dogmos_machine_prefetch_end != 1 || probe.dogmos_machine_prefetch_cursor != 1)
-		CRASH("Queued removal changed order or lost the prefetch continuation.")
+	if(length(probe.currentrun) != 1 || probe.currentrun[1] != second)
+		CRASH("Queued removal changed the remaining processing order.")
 	probe.currentrun.len--
 	probe.stop_processing_machine(second, currentrun_entry_removed = TRUE)
 	if(length(probe.currentrun) || first.atmos_processing || second.atmos_processing || length(probe.atmos_machinery))
