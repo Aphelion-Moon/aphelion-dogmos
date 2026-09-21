@@ -49,7 +49,7 @@ aphelion_reactions = ["reaction_hooks"]
 tracy = ["dep:tracing-tracy", "dep:tracing-subscriber", "dep:tracing"]
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 byondapi = { workspace = true }

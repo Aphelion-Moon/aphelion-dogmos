@@ -439,9 +439,8 @@ pub fn wait_for_tasks() {
 }
 #[auxmacros::init]
 pub fn initialize_turfs() {
-	// 10x 255x255 zlevels
-	// Reserve room for the graph's expected node and edge counts.
-	*TURF_GASES.write() = Some(TurfGases::with_capacity(650_250, 1_300_500));
+	// Grow from registered map content rather than reserving ten full z-levels at load.
+	*TURF_GASES.write() = Some(TurfGases::with_capacity(0, 0));
 	*PLANETARY_ATMOS.write() = Some(Default::default());
 }
 
@@ -950,9 +949,9 @@ mod tests {
 		initialize_turfs();
 		let metrics = turf_runtime_metrics();
 		assert_eq!(metrics.turf_mixture_bytes, 32);
-		assert_eq!(metrics.node_capacity, 650_250);
-		assert_eq!(metrics.edge_capacity, 1_300_500);
-		assert_eq!(metrics.map_capacity, 650_250);
+		assert_eq!(metrics.node_capacity, 0);
+		assert_eq!(metrics.edge_capacity, 0);
+		assert_eq!(metrics.map_capacity, 0);
 	}
 
 	#[test]
@@ -969,8 +968,8 @@ mod tests {
 
 		initialize_turfs();
 		let metrics = turf_runtime_metrics();
-		assert_eq!(metrics.node_capacity, 650_250);
-		assert_eq!(metrics.edge_capacity, 1_300_500);
-		assert_eq!(metrics.map_capacity, 650_250);
+		assert_eq!(metrics.node_capacity, 0);
+		assert_eq!(metrics.edge_capacity, 0);
+		assert_eq!(metrics.map_capacity, 0);
 	}
 }

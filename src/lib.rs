@@ -31,6 +31,18 @@ static _SIMD_DETECTED: ::std::sync::OnceLock<bool> = ::std::sync::OnceLock::new(
 static DOGMOS_SHUTDOWN: AtomicBool = AtomicBool::new(false);
 pub(crate) static DOGMOS_TELEMETRY: dogmos_perf::Telemetry = dogmos_perf::Telemetry::new();
 
+const IN_PROCESS_SOURCE_SHA256: &str = match option_env!("DOGMOS_SOURCE_SHA256") {
+	Some(identity) => identity,
+	None => "development",
+};
+
+/// Identifies the in-process backend and the local source snapshot used to build it.
+#[auxmacros::bind("/proc/dogmos_in_process_identity")]
+fn dogmos_in_process_identity() -> Result<ByondValue> {
+	ByondValue::new_str(format!("in-process:{IN_PROCESS_SOURCE_SHA256}").into_bytes())
+		.map_err(Into::into)
+}
+
 fn refresh_runtime_metrics() {
 	use dogmos_perf::RuntimeMetric;
 
@@ -1161,11 +1173,21 @@ mod reaction_tests {
 ))]
 mod legacy_transcript_tests;
 
-#[cfg(test)]
 fn normalize_generated_bindings(contents: &str) -> String {
-	let mut normalized = contents.trim_end_matches(&['\r', '\n'][..]).to_owned();
-	normalized.push('\n');
-	normalized
+	let normalized = contents.replace("\r\n", "\n").replace('\r', "\n");
+	let Some(header_end) = normalized
+		.find("#define DOGMOS ")
+		.and_then(|start| normalized[start..].find('\n').map(|end| start + end))
+	else {
+		return format!("{}\n", normalized.trim_end_matches('\n'));
+	};
+	let mut blocks = normalized[header_end..]
+		.trim()
+		.split("\n\n")
+		.collect::<Vec<_>>();
+	// Linker inventory order is not a public contract; sort whole proc/comment blocks.
+	blocks.sort_unstable();
+	format!("{}\n\n{}\n", &normalized[..header_end], blocks.join("\n\n"))
 }
 
 #[test]
@@ -1176,10 +1198,22 @@ fn generated_bindings_have_one_trailing_newline() {
 
 #[test]
 fn generate_binds() {
-	byondapi::generate_bindings(env!("CARGO_CRATE_NAME"));
+	generate_bindings_file();
+}
+
+/// Generates the in-process DM exports without running the test suite or initializing BYOND.
+///
+/// # Panics
+/// Panics if the generated bindings cannot be read or written.
+pub fn generate_bindings_file() {
+	byondapi::generate_bindings("dogmos");
 	let bindings_path = "bindings.dm";
 	let bindings = std::fs::read_to_string(bindings_path)
 		.expect("generated DreamMaker bindings must be readable");
-	std::fs::write(bindings_path, normalize_generated_bindings(&bindings))
+	let mut bindings = normalize_generated_bindings(&bindings);
+	bindings.push_str(&format!(
+		"\n// Local in-process build identity; generated with the matching DLL.\n#define DOGMOS_IN_PROCESS_IDENTITY \"in-process:{IN_PROCESS_SOURCE_SHA256}\"\n"
+	));
+	std::fs::write(bindings_path, bindings)
 		.expect("generated DreamMaker bindings must be normalized");
 }

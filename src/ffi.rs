@@ -52,6 +52,7 @@ pub(crate) fn guard_with_arity<T>(
 	let diagnostic_or_shutdown = matches!(
 		binding,
 		"/proc/dogmos_shutdown"
+			| "/proc/dogmos_in_process_identity"
 			| "/proc/dogmos_perf_snapshot"
 			| "/proc/dogmos_perf_set_detailed"
 			| "/proc/dogmos_ffi_panic_count"

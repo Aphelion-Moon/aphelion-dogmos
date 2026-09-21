@@ -19,6 +19,12 @@ Keep maintained source documentation, agent instructions, workload definitions, 
 
 ## Ownership and implementation rules
 
+The production target is now the 32-bit in-process root `dogmos` engine. See
+[the in-process build contract](docs/agent/in-process.md). Service-only ownership,
+protocol, paired-artifact and footprint requirements below and in the linked guides
+apply to the preserved service implementation. Local play-test builds are distinct
+from qualified releases; the service release workflow remains preserved.
+
 The [architecture guide](docs/agent/architecture-and-ownership.md) owns the current component map. The paired build selects a thin 32-bit `dogmos-byond` shim and a 64-bit `dogmosd` service; the root crate remains the legacy in-process implementation. Shim and legacy DLL allocations consume DreamDaemon address space. Route BYOND conversion and main-thread dispatch to `dogmos-byond`, domain rules and numerical kernels to `dogmos-core`, wire types to `dogmos-protocol`, and service lifecycle/state to `dogmos-server`. In the service architecture only the shim may depend on `byondapi`; retained legacy `dogmos` and `auxcallback` are explicit exceptions. Source implementation, artifact selection and runtime qualification are separate facts.
 
 Preserve public DM proc paths and caller-legible errors. No panic may unwind across the BYOND FFI boundary. Inputs and numerical state must be finite and validated; do not change atmosphere coefficients from intuition.

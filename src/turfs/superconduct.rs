@@ -31,8 +31,8 @@ static HEAT_WORKER_RUNNING: AtomicBool = AtomicBool::new(false);
 
 fn new_turf_heat() -> TurfHeat {
 	TurfHeat {
-		graph: StableDiGraph::with_capacity(650_250, 1_300_500),
-		map: IndexMap::with_capacity_and_hasher(650_250, FxBuildHasher),
+		graph: StableDiGraph::with_capacity(0, 0),
+		map: IndexMap::with_hasher(FxBuildHasher),
 	}
 }
 
@@ -785,9 +785,9 @@ mod tests {
 		let arena = new_turf_heat();
 		let metrics = arena.runtime_metrics();
 		assert_eq!(metrics.thermal_info_bytes, 28);
-		assert_eq!(metrics.node_capacity, 650_250);
-		assert_eq!(metrics.edge_capacity, 1_300_500);
-		assert_eq!(metrics.map_capacity, 650_250);
+		assert_eq!(metrics.node_capacity, 0);
+		assert_eq!(metrics.edge_capacity, 0);
+		assert_eq!(metrics.map_capacity, 0);
 	}
 }
 

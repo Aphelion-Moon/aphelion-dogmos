@@ -22,6 +22,11 @@ static NEXT_GAS_IDS: RwLock<Option<Vec<usize>>> = const_rwlock(None);
 static ACTIVE_MIXTURE_SLOTS: AtomicUsize = AtomicUsize::new(0);
 static MIXTURE_SLOT_HIGH_WATER: AtomicUsize = AtomicUsize::new(0);
 
+// Bound unused slot storage instead of doubling a large contiguous i686 allocation.
+const MIXTURE_GROWTH_SLOTS: usize = 4096;
+// BYOND numbers must represent every slot exactly.
+const MAX_MIXTURE_SLOTS: usize = 1 << 24;
+
 #[cfg(test)]
 pub(crate) static GAS_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -76,8 +81,8 @@ pub(crate) fn gas_slot_for_mix(mix: &ByondValue) -> Result<usize> {
 
 #[auxmacros::init]
 pub fn initialize_gases() {
-	*GAS_MIXTURES.write() = Some(Vec::with_capacity(240_000));
-	*NEXT_GAS_IDS.write() = Some(Vec::with_capacity(2000));
+	*GAS_MIXTURES.write() = Some(Vec::new());
+	*NEXT_GAS_IDS.write() = Some(Vec::new());
 	ACTIVE_MIXTURE_SLOTS.store(0, Ordering::Relaxed);
 	MIXTURE_SLOT_HIGH_WATER.store(0, Ordering::Relaxed);
 }
@@ -311,34 +316,41 @@ impl GasArena {
 				})?
 				.write()
 				.clear_with_vol(init_volume);
-			mix.write_var_id(
+			if let Err(error) = mix.write_var_id(
 				byond_string!("_extools_pointer_gasmixture"),
 				&(idx as f32).into(),
-			)?;
+			) {
+				// Removal left room in the free list; restoring it cannot allocate.
+				NEXT_GAS_IDS.write().as_mut().unwrap().push(idx);
+				return Err(error.into());
+			}
 		} else {
 			let mut gas_lock = GAS_MIXTURES.write();
 			let gas_mixtures = gas_lock.as_mut().unwrap();
 			let next_idx = gas_mixtures.len();
+			if next_idx >= MAX_MIXTURE_SLOTS {
+				return Err(eyre::eyre!(
+					"Gas arena exhausted exact BYOND slot identities"
+				));
+			}
+			if next_idx == gas_mixtures.capacity() {
+				gas_mixtures
+					.try_reserve_exact(MIXTURE_GROWTH_SLOTS)
+					.map_err(|error| {
+						eyre::eyre!("Unable to grow the gas mixture arena: {error}")
+					})?;
+			}
 			gas_mixtures.push(RwLock::new(Mixture::from_vol(init_volume)));
 
-			mix.write_var_id(
+			if let Err(error) = mix.write_var_id(
 				byond_string!("_extools_pointer_gasmixture"),
 				&(next_idx as f32).into(),
-			)?;
+			) {
+				gas_mixtures.pop();
+				return Err(error.into());
+			}
 
-			let mut ids_lock = NEXT_GAS_IDS.write();
-			let cur_last = gas_mixtures.len();
-			let next_gas_ids = ids_lock.as_mut().unwrap();
-			let cap = {
-				let to_cap = gas_mixtures.capacity().saturating_sub(cur_last);
-				if to_cap == 0 {
-					next_gas_ids.capacity().saturating_sub(100)
-				} else {
-					(next_gas_ids.capacity().saturating_sub(100)).min(to_cap)
-				}
-			};
-			next_gas_ids.extend(cur_last..(cur_last + cap));
-			gas_mixtures.resize_with(cur_last + cap, Default::default);
+			// Spare capacity stays uninitialized; only retired live slots enter the free list.
 		}
 		let active_slots = ACTIVE_MIXTURE_SLOTS.fetch_add(1, Ordering::Relaxed) + 1;
 		MIXTURE_SLOT_HIGH_WATER.fetch_max(active_slots, Ordering::Relaxed);
@@ -356,6 +368,9 @@ impl GasArena {
 			.as_mut()
 			.ok_or_else(|| eyre::eyre!("Gas arena is not initialized"))?;
 		if !next_gas_ids.contains(&idx) {
+			next_gas_ids
+				.try_reserve(1)
+				.map_err(|error| eyre::eyre!("Unable to retire gas mixture slot {idx}: {error}"))?;
 			next_gas_ids.push(idx);
 			ACTIVE_MIXTURE_SLOTS.fetch_sub(1, Ordering::Relaxed);
 		}
@@ -494,7 +509,7 @@ mod tests {
 		let metrics = gas_runtime_metrics();
 		assert_eq!(metrics.mixture_bytes, 60);
 		assert_eq!(metrics.mixture_lock_bytes, 64);
-		assert_eq!(metrics.arena_capacity, 240_000);
+		assert_eq!(metrics.arena_capacity, 0);
 		assert_eq!(metrics.active_slots, 0);
 	}
 
@@ -513,6 +528,6 @@ mod tests {
 		assert!(error.to_string().contains("not initialized"));
 
 		prepare_gases_for_world();
-		assert_eq!(gas_runtime_metrics().arena_capacity, 240_000);
+		assert_eq!(gas_runtime_metrics().arena_capacity, 0);
 	}
 }
