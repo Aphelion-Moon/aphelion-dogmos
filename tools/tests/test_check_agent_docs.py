@@ -39,17 +39,13 @@ class AgentDocumentTests(unittest.TestCase):
 			),
 			"docs/agent/architecture-and-ownership.md": (
 				"# Architecture and ownership\n\n"
-				"dogmos-byond is the thin shim and is the only crate allowed to depend on byondapi. "
-				"dogmosd owns growing simulation state.\n"
-			),
-			"docs/agent/process-boundary-and-protocol.md": (
-				"# Process boundary and protocol\n\n"
-				"A Rust DLL allocation remains a DreamDaemon allocation because the DLL is in-process.\n"
+				"The in-process root engine uses byondapi on the main thread. "
+				"DreamDaemon owns native numerical allocations.\n"
 			),
 			"docs/agent/gameplay-events.md": (
 				"# Gameplay events\n\n"
-				"Protocol v3 uses a 64-byte event. A fixed buffer holds 1,023 complete events. "
-				"Kinds include reaction finished and pressure difference. Do not add a visual-update kind "
+				"Main-thread callbacks preserve gameplay ordering. "
+				"Callbacks include reactions and pressure differences. Do not add visual updates "
 				"without its bounded payload. Only DreamDaemon memory is the footprint target.\n"
 			),
 			"docs/agent/performance-and-memory.md": "# Performance and memory\n",
@@ -104,10 +100,10 @@ class AgentDocumentTests(unittest.TestCase):
 	def test_component_api_readme_links_cannot_drift_after_module_moves(self) -> None:
 		root, errors = self.errors_for_valid_fixture()
 		self.assertEqual(errors, [])
-		component = root / "crates" / "dogmos-byond"
+		component = root / "crates" / "dogmos-core"
 		component.mkdir(parents=True)
 		(component / "README.md").write_text("[codec](src/codec.rs)\n", encoding="utf-8")
-		self.assertTrue(any("crates/dogmos-byond/README.md" in error.replace("\\", "/") for error in check_repository(root)))
+		self.assertTrue(any("crates/dogmos-core/README.md" in error.replace("\\", "/") for error in check_repository(root)))
 		(component / "src").mkdir()
 		(component / "src" / "codec.rs").write_text("// Maintained codec\n", encoding="utf-8")
 		self.assertEqual(check_repository(root), [])
@@ -140,17 +136,17 @@ class AgentDocumentTests(unittest.TestCase):
 		guide.write_text("# FFI and generated bindings\n", encoding="utf-8")
 		self.assertTrue(any("generated binding policy" in error for error in check_repository(root)))
 
-	def test_shim_and_service_ownership_is_required(self) -> None:
+	def test_native_ownership_is_required(self) -> None:
 		root, errors = self.errors_for_valid_fixture()
 		self.assertEqual(errors, [])
 		guide = root / "docs" / "agent" / "architecture-and-ownership.md"
 		guide.write_text("# Architecture and ownership\n", encoding="utf-8")
-		self.assertTrue(any("shim/service ownership" in error for error in check_repository(root)))
+		self.assertTrue(any("in-process ownership" in error for error in check_repository(root)))
 
 	def test_in_process_dll_memory_must_be_attributed_to_dreamdaemon(self) -> None:
 		root, errors = self.errors_for_valid_fixture()
 		self.assertEqual(errors, [])
-		guide = root / "docs" / "agent" / "process-boundary-and-protocol.md"
+		guide = root / "docs" / "agent" / "architecture-and-ownership.md"
 		guide.write_text(
 			"# Process boundary and protocol\n\nRust DLL allocations are outside DreamDaemon.\n",
 			encoding="utf-8",
@@ -162,7 +158,7 @@ class AgentDocumentTests(unittest.TestCase):
 		self.assertEqual(errors, [])
 		guide = root / "docs" / "agent" / "gameplay-events.md"
 		guide.write_text("# Gameplay events\n", encoding="utf-8")
-		self.assertTrue(any("bounded gameplay event contract" in error for error in check_repository(root)))
+		self.assertTrue(any("main-thread callback contract" in error for error in check_repository(root)))
 
 	def test_checked_in_repository_documents_are_current(self) -> None:
 		root = Path(__file__).resolve().parents[2]

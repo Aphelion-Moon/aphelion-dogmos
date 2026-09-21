@@ -1,11 +1,10 @@
 name: Check Dogmos
-
 on:
   pull_request:
-
+  push:
+    branches: [master]
 permissions:
   contents: read
-
 jobs:
   check:
     strategy:
@@ -13,74 +12,27 @@ jobs:
       matrix:
         include:
           - os: ubuntu-24.04
-            shim: i686-unknown-linux-gnu
-            service: x86_64-unknown-linux-gnu
+            target: i686-unknown-linux-gnu
           - os: windows-latest
-            shim: i686-pc-windows-msvc
-            service: x86_64-pc-windows-msvc
+            target: i686-pc-windows-msvc
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Install Rust 1.98.0
-        uses: dtolnay/rust-toolchain@1.98.0
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.98.0
         with:
           components: clippy, rustfmt
-          targets: ${{ matrix.shim }},${{ matrix.service }}
-
-      - name: Install 32-bit linker support
+          targets: ${{ matrix.target }}
+      - name: Install Linux build dependencies
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes g++-multilib libclang-dev
-
-      - name: Check formatting
-        run: cargo +1.98.0 fmt --all -- --check
-
-      - name: Run repository tooling tests
-        run: python -B -m unittest discover -s tools/tests -v
-
-      - name: Check maintained documentation and resolved architecture
+        run: sudo apt-get update && sudo apt-get install --yes g++-multilib libclang-dev
+      - run: cargo +1.98.0 fmt --all -- --check
+      - run: python -B -m unittest discover -s tools/tests -v
+      - run: python -B tools/check_agent_docs.py
+      - run: python -B tools/check_dependency_direction.py --target ${{ matrix.target }}
+      - run: cargo +1.98.0 clippy --workspace --locked --target ${{ matrix.target }} --all-targets -- -D warnings
+      - run: cargo +1.98.0 test --workspace --locked --target ${{ matrix.target }}
+      - name: Check supported features
         shell: pwsh
-        run: |
-          python -B tools/check_agent_docs.py
-          if ($LASTEXITCODE -ne 0) { throw 'Agent documentation drift.' }
-          python -B tools/check_dependency_direction.py --target '${{ matrix.shim }}'
-          if ($LASTEXITCODE -ne 0) { throw 'Shim dependency direction failed.' }
-          python -B tools/check_dependency_direction.py --target '${{ matrix.service }}'
-          if ($LASTEXITCODE -ne 0) { throw 'Service dependency direction failed.' }
-
-      - name: Run Clippy
-        run: cargo +1.98.0 clippy --workspace --locked --target ${{ matrix.shim }} --all-targets -- -D warnings
-
-      - name: Run tests
-        run: cargo +1.98.0 test --workspace --locked --target ${{ matrix.shim }}
-
-      - name: Check diagnostic bindings and 64-bit service
-        shell: pwsh
-        run: |
-          cargo +1.98.0 clippy -p dogmos-byond --locked --target '${{ matrix.shim }}' --features diagnostic-bindings --all-targets -- -D warnings
-          if ($LASTEXITCODE -ne 0) { throw 'Diagnostic shim Clippy failed.' }
-          cargo +1.98.0 test -p dogmos-byond --locked --target '${{ matrix.shim }}' --features diagnostic-bindings
-          if ($LASTEXITCODE -ne 0) { throw 'Diagnostic shim tests failed.' }
-          cargo +1.98.0 clippy -p dogmos-server --locked --target '${{ matrix.service }}' --all-targets -- -D warnings
-          if ($LASTEXITCODE -ne 0) { throw '64-bit service Clippy failed.' }
-          cargo +1.98.0 test -p dogmos-server --locked --target '${{ matrix.service }}'
-          if ($LASTEXITCODE -ne 0) { throw '64-bit service tests failed.' }
-
-      - name: Check production binding drift
-        shell: pwsh
-        working-directory: crates/dogmos-byond
-        run: |
-          cargo +1.98.0 run --quiet --locked --target '${{ matrix.shim }}' --example generate_bindings
-          if ($LASTEXITCODE -ne 0) { throw 'Binding generation failed.' }
-          git diff --exit-code -- bindings.dm
-          if ($LASTEXITCODE -ne 0) { throw 'Generated production bindings drifted.' }
-
-      - name: Check supported feature matrix
-        shell: pwsh
-        run: tools/check_feature_matrix.ps1 -Target '${{ matrix.shim }}'
-
-  paired-artifacts:
+        run: tools/check_feature_matrix.ps1 -Target '${{ matrix.target }}'
+  artifacts:
     uses: ./.github/workflows/build.yml

@@ -43,7 +43,7 @@ fn dogmos_in_process_identity() -> Result<ByondValue> {
 		.map_err(Into::into)
 }
 
-/// Samples the host directly without scanning the gas arena or claiming a service is running.
+/// Samples the host directly without scanning the gas arena.
 #[auxmacros::bind("/proc/dogmos_in_process_metrics")]
 fn dogmos_in_process_metrics() -> Result<ByondValue> {
 	use dogmos_process_metrics::{
@@ -55,7 +55,7 @@ fn dogmos_in_process_metrics() -> Result<ByondValue> {
 		| PROCESS_VIRTUAL_BYTES_AVAILABLE
 		| PROCESS_WORKING_SET_AVAILABLE;
 	ByondValue::new_str(format!(
-		"{{\"dreamdaemon\":{{\"private_bytes\":{},\"virtual_bytes\":{},\"working_set_bytes\":{},\"available\":{}}},\"dogmosd\":{{\"rss_bytes\":0,\"cpu_total_milliseconds\":0,\"available\":false}}}}",
+		"{{\"dreamdaemon\":{{\"private_bytes\":{},\"virtual_bytes\":{},\"working_set_bytes\":{},\"available\":{}}}}}",
 		metrics.private_bytes, metrics.virtual_bytes, metrics.working_set_bytes,
 		metrics.available_flags & required == required,
 	).into_bytes()).map_err(Into::into)
@@ -279,7 +279,7 @@ fn dogmos_perf_set_detailed(enabled: ByondValue) -> Result<ByondValue> {
 }
 
 /// Returns Dogmos' Rust-side operation and arena telemetry as JSON. Process memory is sampled
-/// externally so DreamDaemon and any future Dogmos service remain separate measurements.
+/// externally to measure complete DreamDaemon memory.
 #[auxmacros::bind("/proc/dogmos_perf_snapshot")]
 fn dogmos_perf_snapshot() -> Result<ByondValue> {
 	ByondValue::new_str(collect_performance_snapshot_json().into_bytes()).map_err(Into::into)
@@ -858,6 +858,29 @@ fn compare_hook(src: ByondValue, other: ByondValue) -> Result<ByondValue> {
 	})
 }
 
+/// Read-only, per-turf batch. Returns source immutability followed by neighbor states:
+/// 0 = matching, 1 = differing immutable, 2 = differing mutable. No state is cached.
+#[auxmacros::bind("/datum/gas_mixture/proc/__settlement_batch")]
+fn settlement_batch_hook(src: ByondValue, neighbors: ByondValue) -> Result<ByondValue> {
+	if !neighbors.is_list() || neighbors.builtin_length()?.get_number()? > 6.0 {
+		return Err(eyre::eyre!(
+			"Settlement requires a list of at most six gas mixtures"
+		));
+	}
+	let source = gas::gas_slot_for_mix(&src)?;
+	let slots = neighbors
+		.iter()?
+		.map(|(value, _)| gas::gas_slot_for_mix(&value))
+		.collect::<Result<Vec<_>>>()?;
+	let states = GasArena::settlement_batch(source, &slots)?;
+	// Release every native lock before allocating or returning BYOND values.
+	let mut result = ByondValue::new_list()?;
+	for state in states {
+		result.push_list(ByondValue::from(f32::from(state)))?;
+	}
+	Ok(result)
+}
+
 /// Args: (holder). Runs all reactions on this gas mixture. Holder is used by the reactions, and can be any arbitrary datum or null.
 /// Underscored because DM keeps a `react()` wrapper of its own, carrying behaviour Dogmos has no
 /// equivalent for: the hypernoblium oppression gate that stops all reactions before any are
@@ -1229,7 +1252,7 @@ pub fn generate_bindings_file() {
 	let bindings = std::fs::read_to_string(bindings_path)
 		.expect("generated DreamMaker bindings must be readable");
 	let mut bindings = normalize_generated_bindings(&bindings);
-	// A Windows play-test must never load the retained Linux service shim by accident.
+	// Linux uses an explicit in-process library name.
 	bindings = bindings.replace("\"libdogmos\"", "\"libdogmos_in_process\"");
 	bindings.push_str("\n#define DOGMOS_IN_PROCESS\n");
 	bindings.push_str(&format!(

@@ -1,11 +1,5 @@
 # FFI and generated bindings
 
-Every BYOND-bound proc is a panic boundary. Convert and validate `ByondValue` inputs at the edge, call typed domain/protocol code, and translate errors into caller-legible BYOND failures. A Rust panic is caught, attributed to the exported proc, recorded through bounded diagnostics/telemetry, and returned as an error; it never unwinds into DreamDaemon.
+Every BYOND export is a panic boundary. Validate types, arity and finite numeric inputs, preserve caller-legible errors, and never unwind into DreamDaemon. `auxmacros` routes exports through the guarded FFI boundary. BYOND callbacks run on the main thread.
 
-Keep public DM proc paths stable. Raw binds that require a DM compatibility wrapper retain the established `__` convention until the generated contract replaces it. Main-thread callbacks and DM references stay inside the shim; core/server code receives only typed handles and immutable metadata.
-
-`dogmos_bindings.dm`, contract defines, release manifests, and binding inventories are generated bindings or generated contract artifacts. Never hand-edit them. Regenerate them from the reviewed Rust revision with the maintained tool, compare normalized proc paths/symbols and then exact deterministic bytes, and review any public addition/removal as an ABI change.
-
-Generated output uses stable ordering and one LF ending. Release generation rejects a development source revision. The game consumes bindings only together with the matching shim, service, ABI/protocol metadata, feature fingerprint, and hashes.
-
-FFI tests cover malformed types, missing arguments, non-finite numbers, stale handles, panics with string/non-string payloads, service timeout/death, response mismatch, and reentrancy continuations. A generated binding-count check is useful drift evidence but does not replace native-load boot verification.
+Never hand-edit generated bindings, contract defines or artifact manifests. Regenerate with `tools/build_in_process.ps1`, compare deterministic bytes and install the complete matching set through Meridian-Rift's synchronizer. The source snapshot identity identifies exact build inputs. Binding inventories do not substitute for a real i686 native-load test.

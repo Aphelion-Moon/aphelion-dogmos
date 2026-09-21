@@ -89,13 +89,9 @@ fn process_turf(
 		let start_time = Instant::now();
 		let (low_pressure_turfs, high_pressure_turfs) =
 			fdm((&start_time, remaining), fdm_max_steps, equalize_enabled);
-		let bench = start_time.elapsed().as_millis();
 		let (lpt, hpt) = (low_pressure_turfs.len(), high_pressure_turfs.len());
-		let prev_cost = ssair.read_number_id(byond_string!("cost_turfs"))?;
-		ssair.write_var_id(
-			byond_string!("cost_turfs"),
-			&(0.8 * prev_cost + 0.2 * (bench as f32)).into(),
-		)?;
+		// DM owns cost_turfs for the complete resumable active-turf phase. Mixing
+		// this FDM-only duration into the same EMA understates that phase's cost.
 		ssair.write_var_id(byond_string!("low_pressure_turfs"), &(lpt as f32).into())?;
 		ssair.write_var_id(byond_string!("high_pressure_turfs"), &(hpt as f32).into())?;
 		(low_pressure_turfs, high_pressure_turfs)

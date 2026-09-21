@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/*"]
+members = ["crates/auxcallback", "crates/auxmacros", "crates/dogmos-core", "crates/dogmos-perf", "crates/dogmos-process-metrics"]
 
 [workspace.dependencies]
 # BYOND changed the byondapi ABI at 516.1682, which crates.io does not carry - the newest published
@@ -11,16 +11,6 @@ coarsetime = "0.1.35"
 flume = "0.11.1"
 eyre = "0.6.12"
 tracing = "0.1.41"
-interprocess = { version = "2.4.3", default-features = false }
-windows-sys = { version = "0.61.2", features = [
-	"Win32_Foundation",
-	"Win32_Security",
-	"Win32_Security_Cryptography",
-	"Win32_System_IO",
-	"Win32_System_JobObjects",
-	"Win32_System_Memory",
-	"Win32_System_Threading",
-] }
 
 [package]
 name = "dogmos"

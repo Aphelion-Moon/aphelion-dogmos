@@ -1,28 +1,64 @@
 # Dogmos performance tooling
 
-This directory keeps the maintained workloads, acceptance budgets and observation contracts.
-Generated plans, reports, profiles and verification artifacts belong in the central
-`GitHub/.agent_docs/aphelion-dogmos/` archive. Historical reports and raw outputs retain their
-original paths beneath that archive, including `docs/performance/`, `target/` and `tmp/`.
+Maintained workloads live here. Generated profiles and verification artifacts belong in the central `GitHub/.agent_docs/aphelion-dogmos/` archive. Record exact source/artifacts, map, seed where controllable, BYOND version and duration. Compare repeated equivalent workloads and measure whole DreamDaemon memory. Use `tools/perf/Measure-DogmosProcesses.ps1` for exact-process address-space sampling.
 
-This directory defines reproducible workloads and acceptance budgets for the current in-process
-Dogmos backend and the later 64-bit service. DreamDaemon memory and service-process memory are
-always recorded separately. Only DreamDaemon footprint is used for the BYOND memory target.
+## Full-map fusion diagnostic (Windows, in-process)
 
-Every live result records the exact map, seed, Rust revision, feature set, BYOND version, duration,
-and SHA-256 of the workload file. Results with different identities are not comparable. Set
-`DOGMOS_EVIDENCE_DIR` to an existing run directory under `GitHub/.agent_docs/aphelion-dogmos/`
-for the examples below. Move completed outputs there when a maintained runner requires a
-repository-local scratch directory, preserving the original manifests and hashes.
+`tools/perf/run_fusion_profile.ps1 -GameRoot <game-checkout> -OutputDirectory <fresh-archive-directory>`
+compiles the opt-in `workloads/fusion_canister_storm.dm` against the installed in-process
+contract and stages full MetaStation with RIFT's asset stager. It requires Python, Bun,
+DreamMaker and DreamDaemon. Use `-DmPath` and `-DreamDaemonPath` for non-default BYOND installs.
+It never adds the fixture to the game's maintained DME. The isolated deployment uses fresh
+data and an empty configuration. It explicitly keeps an unattended world awake.
 
-Use `tools/perf/Invoke-DogmosWorkload.ps1 -ValidateOnly` to validate the corpus. Use
-`tools/perf/Measure-DogmosProcesses.ps1` to sample exact DreamDaemon and optional `dogmosd` PIDs.
-Use `tools/perf/Compare-DogmosPerformance.ps1` to reject incompatible runs and calculate deltas.
-DreamMaker source discovery and Tracy capture must go through Meridian-MCP after
-`dm_parse_environment`; PowerShell owns process sampling and checked-in build/test entry points.
+The diagnostic ruptures 40 then 80 stock fusion canisters at deterministic hallway indices,
+using their normal gas-release path and scripted 0/0/3 blasts. Observe 30 seconds before the
+waves, 90 seconds per wave, and 90 seconds recovery. Map generation and other game randomness
+remain uncontrolled; this is not a replay of manual placements or a matched benchmark.
+Startup can overlap the initial observation period. These are wall-time windows, and the
+native engine's simulation cadence is left unchanged.
 
-The live workload profiles require explicit in-game markers. A profile is not accepted merely
-because DreamDaemon remained alive: every listed marker and correctness assertion must be recorded.
+The runner captures independent process memory/CPU samples, artifact identities, gameplay
+counters, cumulative BYOND procedure profiles and native telemetry at each phase boundary.
+Subtract consecutive procedure snapshots; do not sum inclusive timings. Completion requires
+all ruptures, advancing air cycles, healthy native counters, valid phase artifacts, no runtime
+errors and successful shutdown. A sentinel checks that native FDM leaves the DM-owned
+`cost_turfs` counter untouched. A 900-second process limit and 3400 MiB private-memory stop
+bound this diagnostic; neither is a release acceptance threshold. Use the separate process
+sampler above for address-space checkpoints while the exact recorded PID is alive.
+
+The included `fusion_damage_regressions.dm` also checks repeated blast/fire exposure of
+zero-integrity objects, ordinary damage to healthy objects, and consumption during a
+pre-fire signal. These cover the retained-grenade failure observed during overlapping blasts.
+
+`-ResumePrepared` only retries a deployment that never launched and whose prepared artifacts
+and fixture still match their hashes. Preserve failed attempts separately. This focused fixture
+does not enable the full game unit-test suite and does not qualify a populated server, numerical
+equivalence or LINDA performance parity.
+
+## Focused manual-playtest regressions
+
+`workloads/settlement_regressions.dm` is an opt-in DreamMaker fixture for an isolated
+RuntimeStation deployment. It includes `manual_playtest_regressions.dm`; neither file belongs
+in the production DME. The checks run after initialization with normal subsystem processing
+stopped, then request native and world shutdown. A runner must bound the process lifetime and
+record whether DreamDaemon exits naturally after the native shutdown marker.
+
+The manual-playtest checks exercise real pipeline traversal on a fixed cyclic graph with
+duplicate edges, checking membership, gas, volume and forced pause/resume behavior. Three
+4,096-pipe traversals record wall time in `pipeline-measurements.jsonl`; setup and teardown are
+outside the measured interval. Compare identical fixtures and BYOND versions, retain all three
+samples per variant, and interpret this as a traversal microbenchmark, not a frame-time result.
+Additional checks cover action ID allocation during HUD construction, storage cleanup after
+HUD deletion, and infiltrator activation/deactivation after tongue removal. Failures are recorded
+independently so an unpatched control can demonstrate each reproduced runtime.
+
+The same fixture includes `pipenet_reconcile_regressions.dm`. It checks the public
+in-process adapter and native bulk equalizer against literal mass, trace-mole,
+energy, duplicate and zero-volume cases, then records three 1,000-call samples
+on 64-mixture networks in `reconcile-measurements.jsonl`. The timer resolves to
+100 ms; a zero sample means below that resolution. These are focused native/DM
+boundary measurements, not populated-server performance acceptance.
 
 ## Core stage allocation probe
 

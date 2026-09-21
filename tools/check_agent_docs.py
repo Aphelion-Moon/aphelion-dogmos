@@ -12,7 +12,6 @@ REQUIRED_GUIDES = (
 	"docs/agent/README.md",
 	"docs/agent/source-authority.md",
 	"docs/agent/architecture-and-ownership.md",
-	"docs/agent/process-boundary-and-protocol.md",
 	"docs/agent/gameplay-events.md",
 	"docs/agent/performance-and-memory.md",
 	"docs/agent/numerical-invariants.md",
@@ -95,31 +94,15 @@ def check_repository(root: Path) -> list[str]:
 	ownership = root / "docs/agent/architecture-and-ownership.md"
 	if ownership.is_file():
 		text = ownership.read_text(encoding="utf-8").lower()
-		if not all(term in text for term in ("dogmos-byond", "dogmosd", "only", "byondapi")):
-			errors.append("docs/agent/architecture-and-ownership.md lacks shim/service ownership")
-
-	boundary = root / "docs/agent/process-boundary-and-protocol.md"
-	if boundary.is_file():
-		text = boundary.read_text(encoding="utf-8").lower()
-		attributes_dll_memory = all(term in text for term in ("in-process", "dll", "allocation", "dreamdaemon"))
-		claims_external_memory = "dll allocations are outside dreamdaemon" in text
-		if not attributes_dll_memory or claims_external_memory:
-			errors.append("docs/agent/process-boundary-and-protocol.md misstates in-process DLL memory")
-
+		if not all(term in text for term in ("in-process", "dreamdaemon", "byondapi", "main thread")):
+			errors.append("architecture guide lacks in-process ownership")
+		if "dll allocations are outside dreamdaemon" in text:
+			errors.append("architecture guide misstates in-process DLL memory")
 	events = root / "docs/agent/gameplay-events.md"
 	if events.is_file():
 		text = events.read_text(encoding="utf-8").lower()
-		required = (
-			"protocol v3",
-			"64-byte event",
-			"1,023 complete events",
-			"reaction finished",
-			"pressure difference",
-			"visual-update kind",
-			"only dreamdaemon memory",
-		)
-		if any(term not in text for term in required):
-			errors.append("docs/agent/gameplay-events.md lacks the bounded gameplay event contract")
+		if not all(term in text for term in ("main-thread", "callback", "pressure", "reaction")):
+			errors.append("gameplay guide lacks the main-thread callback contract")
 
 	return errors
 

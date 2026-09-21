@@ -14,7 +14,7 @@ Reviewed on: `2026-08-26`
 | BYOND ABI behavior | Official BYOND behavior plus a real i686 native-load compile/boot test. |
 | Rust dependency behavior | The exact revisions in `Cargo.lock` and their primary documentation/source. |
 | Numerical correctness | Explicit invariants, differential fixtures, and reproducible tests. |
-| Performance | Repeated identical workloads with separate DreamDaemon and service measurements. |
+| Performance | Repeated identical workloads with whole DreamDaemon measurements. |
 
 The reviewed local revision is a source baseline, so the checker requires it to be an ancestor of current `HEAD`. Requiring a document to contain the hash of the commit that contains the document would be self-referential. Update this anchor after reviewing a new baseline, not after every unrelated commit.
 

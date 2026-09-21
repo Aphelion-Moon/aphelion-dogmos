@@ -1,7 +1,6 @@
 [CmdletBinding()]
 param(
 	[Parameter(Mandatory)][int]$DreamDaemonPid,
-	[int]$ServerPid = 0,
 	[Parameter(Mandatory)][string]$OutputDirectory,
 	[double]$DurationSeconds = 60,
 	[int]$SampleIntervalMilliseconds = 250
@@ -11,8 +10,6 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 if($DreamDaemonPid -le 0) { throw '-DreamDaemonPid must be a positive exact PID.' }
-if($ServerPid -lt 0) { throw '-ServerPid must be zero or a positive exact PID.' }
-if($ServerPid -eq $DreamDaemonPid) { throw 'DreamDaemon and server must be different processes.' }
 if($DurationSeconds -le 0) { throw '-DurationSeconds must be positive.' }
 if($SampleIntervalMilliseconds -lt 25) { throw '-SampleIntervalMilliseconds must be at least 25.' }
 
@@ -137,9 +134,6 @@ function Get-ExactProcess {
 
 $processes = [ordered]@{
 	dreamdaemon = Get-ExactProcess -ExactPid $DreamDaemonPid -Role 'DreamDaemon'
-}
-if($ServerPid -gt 0) {
-	$processes.server = Get-ExactProcess -ExactPid $ServerPid -Role 'server'
 }
 
 $checkpoints = [ordered]@{}

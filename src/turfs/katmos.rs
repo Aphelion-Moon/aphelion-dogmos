@@ -566,15 +566,13 @@ fn explosively_depressurize(initial_index: TurfID, equalize_hard_turf_limit: usi
 
 #[cfg(feature = "katmos_slow_decompression")]
 const DECOMP_BASE_REMOVE_RATIO: f32 = 4.0;
-#[cfg(feature = "katmos_slow_decompression")]
-const DECOMP_MAX_FRONTAGE_TURFS: usize = 4;
 
 #[cfg(feature = "katmos_slow_decompression")]
-fn decompression_moles_per_turf(average_moles: f32, space_turf_len: usize) -> f32 {
-	// A wider opening exposes more room air to space during the same equalizer pass. Cap the frontage
-	// multiplier so a map-scale boundary remains a slow drain rather than becoming an instant clear.
-	let frontage_turfs = space_turf_len.clamp(1, DECOMP_MAX_FRONTAGE_TURFS) as f32;
-	average_moles * frontage_turfs / DECOMP_BASE_REMOVE_RATIO
+fn decompression_moles_per_turf(average_moles: f32, _space_turf_len: usize) -> f32 {
+	// Restore the established slow-decompression limit. Multiplying the per-turf
+	// loss by frontage applied the whole opening's drain to every connected turf
+	// and cleared a uniform room in one pass at four space tiles.
+	average_moles / DECOMP_BASE_REMOVE_RATIO
 }
 
 enum FloodFillResult {
@@ -750,14 +748,10 @@ mod tests {
 
 	#[cfg(feature = "katmos_slow_decompression")]
 	#[test]
-	fn slow_decompression_scales_with_breach_frontage() {
-		assert_eq!(decompression_moles_per_turf(100.0, 1), 25.0);
-		assert_eq!(decompression_moles_per_turf(100.0, 2), 50.0);
-		assert_eq!(decompression_moles_per_turf(100.0, 4), 100.0);
-		assert_eq!(
-			decompression_moles_per_turf(100.0, DECOMP_MAX_FRONTAGE_TURFS + 1),
-			100.0,
-		);
+	fn slow_decompression_does_not_clear_a_room_at_wide_breaches() {
+		for frontage in [1, 2, 4, 100, 2790] {
+			assert_eq!(decompression_moles_per_turf(100.0, frontage), 25.0);
+		}
 	}
 }
 

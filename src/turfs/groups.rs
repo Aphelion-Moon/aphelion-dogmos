@@ -98,6 +98,8 @@ fn excited_group_processing(
 				let mut turfs: Vec<&TurfMixture> = Vec::with_capacity(200);
 				let mut min_pressure = initial_lock.read().return_pressure();
 				let mut max_pressure = min_pressure;
+				let mut min_temperature = initial_lock.read().get_temperature();
+				let mut max_temperature = min_temperature;
 				let mut fully_mixed = Mixture::new();
 
 				border_turfs.push_back((initial_turf, initial_index));
@@ -112,12 +114,24 @@ fn excited_group_processing(
 					};
 					if let Some(lock) = all_mixtures.get(tmix.mix) {
 						let mix = lock.read();
+						let temperature = mix.get_temperature();
+						let this_min_temperature = min_temperature.min(temperature);
+						let this_max_temperature = max_temperature.max(temperature);
+						// Similar pressure does not imply thermal equilibrium. Leave fronts to
+						// local diffusion/conduction rather than globally flattening them each cycle.
+						if this_max_temperature - this_min_temperature
+							> MINIMUM_TEMPERATURE_DELTA_TO_SUSPEND
+						{
+							continue;
+						}
 						let pressure = mix.return_pressure();
 						let this_max = max_pressure.max(pressure);
 						let this_min = min_pressure.min(pressure);
 						if (this_max - this_min).abs() >= pressure_goal {
 							continue;
 						}
+						min_temperature = this_min_temperature;
+						max_temperature = this_max_temperature;
 						min_pressure = this_min;
 						max_pressure = this_max;
 						turfs.push(tmix);
@@ -153,4 +167,75 @@ fn excited_group_processing(
 		});
 	});
 	(found_turfs.len(), is_cancelled)
+}
+
+#[cfg(all(test, feature = "katmos", feature = "superconductivity"))]
+mod tests {
+	use super::*;
+	use crate::gas::{types::*, GAS_TEST_LOCK};
+
+	#[test]
+	fn equal_pressure_group_does_not_flatten_a_thermal_front() {
+		let guard = GAS_TEST_LOCK.lock().unwrap();
+		set_gas_statics_manually();
+		register_gas_manually("o2", 20.0);
+		let mut hot = Mixture::new();
+		hot.set_moles(0, 10.0).unwrap();
+		hot.set_temperature(1200.0);
+		let mut cold = Mixture::new();
+		cold.set_moles(0, 40.0).unwrap();
+		cold.set_temperature(300.0);
+		// Both cells have exactly the same pressure; only the thermal front differs.
+		assert_eq!(hot.return_pressure(), cold.return_pressure());
+		crate::gas::install_mixtures_for_test(vec![hot, cold]);
+		initialize_turfs();
+		with_turf_gases_write(|arena| {
+			for (mix, id) in [(0, 10), (1, 11)] {
+				arena.insert_turf(TurfMixture {
+					mix,
+					id,
+					generation: 1,
+					flags: SimulationFlags::SIMULATION_ALL,
+					..Default::default()
+				});
+			}
+			let left = arena.get_id(10).unwrap();
+			let right = arena.get_id(11).unwrap();
+			arena.graph.add_edge(left, right, AdjacentFlags::empty());
+			arena.graph.add_edge(right, left, AdjacentFlags::empty());
+		});
+		excited_group_processing(
+			0.5,
+			BTreeSet::from([10, 11]),
+			(&Instant::now(), Duration::from_secs(10)),
+		);
+		let temperatures = GasArena::with_all_mixtures(|mixes| {
+			[
+				mixes[0].read().get_temperature(),
+				mixes[1].read().get_temperature(),
+			]
+		});
+		// The optimization still mixes an isothermal, nearly settled component.
+		GasArena::with_all_mixtures(|mixes| {
+			for (index, moles) in [10.0, 10.1].into_iter().enumerate() {
+				let mut mix = mixes[index].write();
+				mix.set_moles(0, moles).unwrap();
+				mix.set_temperature(300.0);
+			}
+		});
+		excited_group_processing(
+			0.5,
+			BTreeSet::from([10, 11]),
+			(&Instant::now(), Duration::from_secs(10)),
+		);
+		let settled_moles = GasArena::with_all_mixtures(|mixes| {
+			[mixes[0].read().total_moles(), mixes[1].read().total_moles()]
+		});
+		shutdown_turfs();
+		crate::gas::shut_down_gases();
+		destroy_gas_statics();
+		drop(guard);
+		assert_eq!(temperatures, [1200.0, 300.0]);
+		assert_eq!(settled_moles, [10.05, 10.05]);
+	}
 }

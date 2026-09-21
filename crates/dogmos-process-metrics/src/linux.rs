@@ -49,7 +49,7 @@ mod tests {
 
 	#[test]
 	fn proc_status_parser_requires_exact_field_units() {
-		let status = "Name:\tdogmosd\nVmSize:\t123 kB\nVmRSS:\t45 kB\n";
+		let status = "Name:\tDreamDaemon\nVmSize:\t123 kB\nVmRSS:\t45 kB\n";
 
 		assert_eq!(status_kib_value(status, "VmSize:"), Some(125_952));
 		assert_eq!(status_kib_value(status, "VmRSS:"), Some(46_080));

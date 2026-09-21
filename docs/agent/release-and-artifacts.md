@@ -1,44 +1,7 @@
-# Release and artifacts
+# Build artifacts
 
-A Dogmos release is a paired contract, not a standalone DLL. It contains:
+`tools/build_in_process.ps1` builds a Windows i686 DLL and symbols, runs the binding generator, captures the exact source inventory and writes `dogmos-playtest.json`. This manifest deliberately identifies an unqualified local playtest, even when separate verification gates have passed.
 
-- 32-bit Windows `dogmos.dll` and Linux `libdogmos.so` shims plus symbols;
-- 64-bit Windows `dogmosd.exe` and Linux `dogmosd` services plus symbols;
-- generated `dogmos_bindings.dm`;
-- deterministic `dogmos-release-manifest.json`.
+Synchronize the complete bundle with Meridian-Rift's `tools/dogmos/sync_in_process.py`. Verify hashes, target architecture, source inventory and generated bindings/defines before use. Never hand-edit generated artifacts. Linux builds use the same engine and i686 target; the game loads `libdogmos_in_process.so`.
 
-The manifest identifies schema, ABI and protocol versions, crate version, source repository and exact 40-character revision, Rust toolchain, byondapi revision, sorted features/fingerprint, bindings hash, platform targets, filenames, and raw-byte hashes. Shim and service must agree on revision, ABI, protocol, feature fingerprint, and executable identity during their authenticated startup handshake.
-
-Build BYOND-facing artifacts for i686 and service artifacts for x86_64 with the exact pinned toolchain, sorted supported features, and `--locked`. Development builds may identify as `development`; release generation rejects that value. Publish full symbols separately while keeping usable crash file/line diagnostics.
-
-Never fetch a mutable branch for production deployment. The paired Meridian-Rift checkout installs artifacts atomically only after manifest, architecture, filename, executable permission, bindings, and hash verification. A missing, truncated, mismatched, or cross-revision member rejects the entire set before game initialization.
-
-At runtime, the shim streams the service executable through SHA-256 before launch and places that
-digest in the authenticated startup identity. Windows uses CNG; other platforms use RustCrypto
-SHA-256 with a fixed 16 KiB read buffer. The service independently hashes its own current executable
-before it creates the local socket. This closes parent-only digest assertion; it does not
-replace signed or otherwise trusted release-manifest provenance.
-
-Follow [AGENTS.md](../../AGENTS.md) for authorization and change ownership. When changing release
-workflows, artifact tooling, dependency manifests, lock/toolchain files or deployment scripts, review
-their effects on the complete artifact pair and run the relevant contract and build gates.
-
-Rebuilds, generated bindings/contract defines/manifests/artifact lock updates, and verified local
-artifact synchronization are included in authorized implementation and verification work. Do not
-ask for another exact-file approval merely because these outputs are protected. Necessary in-scope
-protocol or generator changes use the same task authorization. Keep full-pair validation and atomic
-installation; live deployment, production restarts, release publication and unrelated infrastructure
-changes are separate operations.
-
-For uncommitted local qualification, use `tools/build_local_qualification.ps1`. It builds both
-platform pairs with the pinned toolchain, captures and rechecks a canonical raw-byte source
-inventory, and binds that snapshot into the shim/service handshake fingerprint. The base Git
-revision remains explicit; `qualification.kind = local-source-snapshot-v1` distinguishes these
-bundles from production releases. Outputs and logs stay under a new `target/` directory.
-
-Release generation still rejects dirty source by default, and release verification rejects local
-qualification unless explicitly selected. The game synchronizer requires `-AllowLocalQualification`
-and independently compares the complete source inventory before staging and installation. Its
-installed-contract check supports local test runners and verifies the matching binaries, lock,
-bindings and generated defines. A changed source inventory requires another build; do not relabel
-or hand-edit the old snapshot. Keep the snapshot/archive and the complete previous artifact set.
+Builds and local synchronization are within authorized implementation work. Publication, live deployment and production restarts require their own authorization. Do not publish local playtest manifests as qualified releases. Generated evidence belongs in the central archive; maintained build tools and required runtime artifacts stay with source.
