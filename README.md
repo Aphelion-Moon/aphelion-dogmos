@@ -242,7 +242,7 @@ Do not mix the root engine, shim, service, generated bindings, or manifests from
 different builds. A successful Rust build alone does not verify native loading,
 DM compatibility, game initialization, or gameplay.
 
-### Split-process service and shared core - Processing atmos outside of DD entirely
+## Split-process service and shared core - Processing atmos outside of DD entirely
 
 I've abandonded efforts on the external 64-bit worker. The current implementation
 does technically work, however, gains are only seen in extreme atmospheric conditions.
@@ -256,7 +256,7 @@ entry points for statistics and calculation tracking.
 If you have anything under 20k active turfs normally, you do not need this.
 If your CPU does not support AVX-512 or AVX-10, I do not recommend trying to use
 this variant at all. There are next to zero functional gains for a typical SS13 environment
-unless you want to do stuff like... Simulating real planetary atmos. Whic I do not.
+unless you want to do stuff like... Simulating real planetary atmos. Which I do not.
 
 In addition to the in-process implementation, the
 [shared core](crates/dogmos-core/src/) and [service](crates/dogmos-server/src/)
@@ -309,7 +309,7 @@ events; there is no service visual-update event. Transport qualification operati
 and optional benchmark bindings are diagnostics, not additional gameplay APIs.
 There is no transparent mid-round restart with empty atmosphere state.
 
-#### Numerical safeguards and performance mechanisms
+### Numerical safeguards and performance mechanisms
 
 - Finite-value and physical-bound validation at numerical boundaries, nonnegative
   gas/volume rules, immutable-mixture protection, and corruption-repair paths.
