@@ -18,6 +18,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # The documentation gate verifies its reviewed revision is an ancestor.
       - uses: dtolnay/rust-toolchain@1.98.0
         with:
           components: clippy, rustfmt
@@ -32,7 +34,6 @@ jobs:
       - run: cargo +1.98.0 clippy --workspace --locked --target ${{ matrix.target }} --all-targets -- -D warnings
       - run: cargo +1.98.0 test --workspace --locked --target ${{ matrix.target }}
       - name: Check supported features
-        shell: pwsh
-        run: tools/check_feature_matrix.ps1 -Target '${{ matrix.target }}'
+        run: python -B tools/check_feature_matrix.py --target ${{ matrix.target }}
   artifacts:
     uses: ./.github/workflows/build.yml

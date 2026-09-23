@@ -1,15 +1,16 @@
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "tools" / "check_feature_matrix.ps1"
-TARGET = "i686-pc-windows-msvc"
-POWERSHELL = shutil.which("pwsh") or shutil.which("powershell.exe")
+SCRIPT = ROOT / "tools" / "check_feature_matrix.py"
+TARGET = "i686-pc-windows-msvc" if os.name == "nt" else "i686-unknown-linux-gnu"
+POWERSHELL = shutil.which("pwsh") or (shutil.which("powershell.exe") if os.name == "nt" else None)
 
 
 class FeatureMatrixTests(unittest.TestCase):
@@ -38,24 +39,19 @@ class FeatureMatrixTests(unittest.TestCase):
 			fake_cargo.chmod(0o755)
 		return fake_cargo
 
-	def run_matrix(self, fail_on: str = "never-match") -> tuple[subprocess.CompletedProcess[str], list[str]]:
+	def run_matrix(self, fail_on: str = "never-match", target: str = TARGET, wrapper: bool = False) -> tuple[subprocess.CompletedProcess[str], list[str]]:
 		with tempfile.TemporaryDirectory() as temporary:
 			root = Path(temporary)
 			log = root / "cargo.log"
 			environment = os.environ.copy()
 			environment["DOGMOS_FAKE_CARGO_LOG"] = str(log)
 			environment["DOGMOS_FAKE_CARGO_FAIL_ON"] = fail_on
+			cargo = str(self.write_fake_cargo(root))
+			command = ([POWERSHELL, "-NoProfile", "-File", str(SCRIPT.with_suffix(".ps1")),
+				"-CargoPath", cargo, "-Target", target, "-Python", sys.executable] if wrapper else
+				[sys.executable, "-B", str(SCRIPT), "--cargo", cargo, "--target", target])
 			result = subprocess.run(
-				[
-					POWERSHELL,
-					"-NoProfile",
-					"-File",
-					str(SCRIPT),
-					"-CargoPath",
-					str(self.write_fake_cargo(root)),
-					"-Target",
-					TARGET,
-				],
+				command,
 				cwd=ROOT,
 				env=environment,
 				capture_output=True,
@@ -65,10 +61,9 @@ class FeatureMatrixTests(unittest.TestCase):
 			return result, lines
 
 	def test_runs_the_authoritative_supported_matrix(self) -> None:
-		self.assertIsNotNone(POWERSHELL)
 		result, lines = self.run_matrix()
 		self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-		base = f"check --workspace --locked --target {TARGET} --all-targets"
+		base = f"+1.98.0 check --workspace --locked --target {TARGET} --all-targets"
 		self.assertEqual(
 			lines,
 			[
@@ -93,10 +88,23 @@ class FeatureMatrixTests(unittest.TestCase):
 		self.assertEqual(len(lines), 3)
 		self.assertTrue(lines[-1].endswith("--features fastmos"))
 
+	def test_linux_target_is_forwarded_to_every_configuration(self) -> None:
+		result, lines = self.run_matrix(target="i686-unknown-linux-gnu")
+		self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+		self.assertEqual(len(lines), 12)
+		self.assertTrue(all("--target i686-unknown-linux-gnu" in line for line in lines))
+
+	@unittest.skipUnless(POWERSHELL, "PowerShell compatibility wrapper is optional on Linux")
+	def test_powershell_wrapper_preserves_failures(self) -> None:
+		result, lines = self.run_matrix("--features fastmos", wrapper=True)
+		self.assertEqual(result.returncode, 17, result.stdout + result.stderr)
+		self.assertEqual(len(lines), 3)
+
 	def test_reaction_backends_are_mutually_exclusive(self) -> None:
 		result = subprocess.run(
 			[
-				"cargo",
+					"cargo",
+					"+1.98.0",
 				"check",
 				"--workspace",
 				"--locked",

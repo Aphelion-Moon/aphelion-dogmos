@@ -1,6 +1,6 @@
 # Verification matrix
 
-Use Rust 1.98.0 and `--locked`. Run `cargo +1.98.0 fmt --all -- --check`, strict workspace Clippy, workspace tests and `tools/check_feature_matrix.ps1` for the supported i686 target. Run `python -B -m unittest discover -s tools/tests -v`, documentation and dependency checks. Windows uses `i686-pc-windows-msvc`; Linux uses `i686-unknown-linux-gnu`.
+Use Rust 1.98.0 and `--locked`. Run `cargo +1.98.0 fmt --all -- --check`, strict workspace Clippy, workspace tests and `python -B tools/check_feature_matrix.py --target <target>` for the supported i686 target. The PowerShell wrapper remains available on Windows. Run `python -B -m unittest discover -s tools/tests -v`, documentation and dependency checks. Windows uses `i686-pc-windows-msvc`; Linux uses `i686-unknown-linux-gnu` and may spell the Python executable `python3`. The Python matrix runner pins the toolchain and stops on the first failing configuration.
 
 Regenerate bindings and compare exact output. In Meridian-Rift, run its maintained DreamMaker compile, focused integration fixtures, native-load boot and full unit-test suite. Use Meridian-MCP for source analysis and reparse after changes. Parser diagnostics are separate from compiler/runtime evidence.
 

@@ -24,10 +24,16 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install --yes g++-multilib libclang-dev binutils
       - name: Build source-bound native bundle
-        shell: pwsh
-        run: tools/build_in_process.ps1 -TargetTriple '${{ matrix.target }}' -OutputDirectory (Join-Path $env:GITHUB_WORKSPACE 'target/native-bundle')
+        run: python -B tools/build_in_process.py --target ${{ matrix.target }} --output target/native-bundle
       - uses: actions/upload-artifact@v7
         with:
           name: dogmos-${{ matrix.target }}
           path: target/native-bundle
           if-no-files-found: error
+      - name: Preserve failed compiler output
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dogmos-build-failure-${{ matrix.target }}
+          path: target/native-bundle/build.log
+          if-no-files-found: warn

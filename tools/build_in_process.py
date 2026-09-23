@@ -7,9 +7,18 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 from dogmos_source_snapshot import capture_snapshot, canonical_bytes, verify_snapshot
 
 FEATURES = ['aphelion_reactions', 'katmos', 'katmos_slow_decompression', 'superconductivity', 'turf_processing']
+
+def run_build(command, root, environment, log_path):
+    """Retain compiler output and expose it when a CI build fails."""
+    with log_path.open('wb') as log:
+        result = subprocess.run(command, cwd=root, env=environment, stdout=log, stderr=subprocess.STDOUT, check=False)
+    if result.returncode:
+        print(log_path.read_text(encoding='utf-8', errors='replace'), file=sys.stderr)
+        result.check_returncode()
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -27,8 +36,7 @@ def main():
     (output / 'dogmos-source-snapshot.json').write_bytes(encoded)
     environment = dict(os.environ, DOGMOS_SOURCE_SHA256=digest, CARGO_TARGET_DIR=str(root / 'target'))
     arguments = ['+1.98.0', 'build', '-p', 'dogmos', '--lib', '--example', 'generate_bindings', '--release', '--locked', '--target', args.target, '--no-default-features', '--features', ','.join(FEATURES)]
-    with (output / 'build.log').open('wb') as log:
-        subprocess.run(['cargo', *arguments], cwd=root, env=environment, stdout=log, stderr=subprocess.STDOUT, check=True)
+    run_build(['cargo', *arguments], root, environment, output / 'build.log')
     release = root / 'target' / args.target / 'release'
     windows = args.target == 'i686-pc-windows-msvc'
     generator = release / 'examples' / ('generate_bindings.exe' if windows else 'generate_bindings')
