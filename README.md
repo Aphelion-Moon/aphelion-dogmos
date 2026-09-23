@@ -74,8 +74,8 @@ The [turf engine](src/turfs.rs) and its [processing modules](src/turfs/) provide
 - Excited-group processing that averages the atmosphere of connected groups.
 - Planetary reference atmospheres and relaxation toward those reference mixtures.
 - Immutable space boundaries used to detect openings into vacuum.
-- Connected-room decompression, with optional breach-frontage-scaled gradual gas
-  loss rather than immediate clearing.
+- Connected-room slow decompression, limited to one quarter of the room's average
+  moles per visited turf regardless of breach frontage.
 - Firelock-consideration callbacks and pressure/direction information for
   game-owned movement and decompression effects.
 - Floor-rip notifications for the gas layer bordering space, based on actual gas loss.
@@ -184,7 +184,7 @@ These flags apply to the **root in-process `dogmos` package**:
 | `turf_processing`           | Yes                  | Registered-turf atmosphere processing.                                                                       |
 | `katmos`                    | Yes                  | Zoned equalization and space decompression; enables `fastmos`.                                               |
 | `fastmos`                   | Via `katmos`         | Enables the fastmos-related processing configuration and `turf_processing`; alone it does not enable Katmos. |
-| `katmos_slow_decompression` | Yes                  | Breach-frontage-scaled gas loss; enables `fastmos`.                                                          |
+| `katmos_slow_decompression` | Yes                  | One-quarter room-average gas loss per visited turf; enables `fastmos`.                                       |
 | `superconductivity`         | Yes                  | Thermal graph and turf heat processing; enables `turf_processing`.                                           |
 | `aphelion_reactions`        | Yes                  | Meridian's four native reactions; enables `reaction_hooks`.                                                  |
 | `reaction_hooks`            | Via reaction backend | Native reaction-hook support.                                                                                |
@@ -332,3 +332,12 @@ contract; current code, manifests, and generated bindings take precedence.
 Dogmos development for Meridian Rift.
 
 Contributor rules start at [AGENTS.md](AGENTS.md) and [the agent guide index](docs/agent/README.md).
+## Read-only installation diagnosis
+
+Run `python -B tools/diagnose_deployment.py --game-root <paired-checkout> --target
+i686-pc-windows-msvc --bundle <matching-build-directory> --json` to compare source,
+installed artifacts, symbols and manifest qualification. Use
+`i686-unknown-linux-gnu` for the Linux library. An optional `--runtime-report`
+accepts saved `dogmos_in_process_capabilities()` JSON and labels its freshness as
+unchecked. This command does not load the library or start a world. Matching
+disk bytes do not establish runtime or performance qualification.

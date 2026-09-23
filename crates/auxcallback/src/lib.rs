@@ -1,11 +1,11 @@
 use byondapi::prelude::*;
-use coarsetime::{Duration, Instant};
 use eyre::Result;
 use std::convert::TryInto;
 use std::sync::{
 	atomic::{AtomicBool, AtomicUsize, Ordering},
 	RwLock,
 };
+use std::time::{Duration, Instant};
 
 type DeferredFunc = Box<dyn FnOnce() -> Result<()> + Send + Sync>;
 
@@ -32,6 +32,7 @@ pub const MAX_CALLBACK_ITEMS: usize = 65_536;
 /// Maximum producer-accounted callback storage; excludes allocator overhead.
 pub const MAX_CALLBACK_ACCOUNTED_BYTES: usize = 32 * 1024 * 1024;
 static CALLBACK_FAILED: AtomicBool = AtomicBool::new(false);
+static SIMULATION_FAULTED: AtomicBool = AtomicBool::new(false);
 static CALLBACK_STATE: RwLock<bool> = RwLock::new(false);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -75,6 +76,7 @@ pub fn begin_callbacks() {
 		receiver.drain().for_each(std::mem::drop);
 	}
 	CALLBACK_FAILED.store(false, Ordering::Release);
+	SIMULATION_FAULTED.store(false, Ordering::Release);
 	CALLBACK_ENQUEUE_FAILURES.store(0, Ordering::Relaxed);
 	CALLBACK_ITEMS_ENQUEUED.store(0, Ordering::Relaxed);
 	CALLBACK_ITEMS_DRAINED.store(0, Ordering::Relaxed);
@@ -137,7 +139,8 @@ pub fn queue_callback(
 		return Err(QueueCallbackError::ShuttingDown);
 	}
 	let owned_bytes_lower_bound = owned_bytes.saturating_add(std::mem::size_of::<DeferredFunc>());
-	if CALLBACK_FAILED.load(Ordering::Acquire)
+	if SIMULATION_FAULTED.load(Ordering::Acquire)
+		|| CALLBACK_FAILED.load(Ordering::Acquire)
 		|| CALLBACK_CHANNEL
 			.get()
 			.is_some_and(|channel| channel.0.len() >= MAX_CALLBACK_ITEMS)
@@ -177,10 +180,18 @@ pub fn queue_callback(
 
 /// Rejects simulation after callback capacity or transport failure until world reinitialization.
 pub fn ensure_callbacks_healthy() -> Result<()> {
+	if SIMULATION_FAULTED.load(Ordering::Acquire) {
+		return Err(eyre::eyre!("Dogmos native state faulted after an unexpected panic or failed initialization; simulation is stopped until clean world shutdown and initialization"));
+	}
 	if CALLBACK_FAILED.load(Ordering::Acquire) {
 		return Err(eyre::eyre!("Dogmos legacy callback queue failed: capacity exceeded or disconnected; atmosphere processing is stopped until world restart"));
 	}
 	Ok(())
+}
+
+/// Latch uncertain native state. Only the clean new-world lifecycle may clear this fault.
+pub fn fault_simulation() {
+	SIMULATION_FAULTED.store(true, Ordering::Release);
 }
 
 /// Returns the number of callbacks rejected because the main-thread queue was already closed.
@@ -221,7 +232,7 @@ fn process_callbacks() {
 	with_callback_receiver(|receiver| {
 		for callback in receiver.try_iter() {
 			release_owned_bytes(callback.owned_bytes_lower_bound);
-			if CALLBACK_FAILED.load(Ordering::Acquire) {
+			if ensure_callbacks_healthy().is_err() {
 				break;
 			}
 			saturating_add(&CALLBACK_ITEMS_DRAINED, 1);
@@ -232,28 +243,25 @@ fn process_callbacks() {
 	})
 }
 
-/// Runs callbacks until the time limit is reached.
+/// Strict admission deadline: zero admits no work. An already started DM callback cannot be
+/// preempted. Returns whether queued work remains, including after an expired deadline.
 fn process_callbacks_for(duration: Duration) -> bool {
 	if ensure_callbacks_healthy().is_err() {
 		return false;
 	}
 	let timer = Instant::now();
 	with_callback_receiver(|receiver| {
-		for callback in receiver.try_iter() {
-			if CALLBACK_FAILED.load(Ordering::Acquire) {
-				release_owned_bytes(callback.owned_bytes_lower_bound);
-				return false;
-			}
+		while timer.elapsed() < duration && ensure_callbacks_healthy().is_ok() {
+			let Ok(callback) = receiver.try_recv() else {
+				break;
+			};
 			release_owned_bytes(callback.owned_bytes_lower_bound);
 			saturating_add(&CALLBACK_ITEMS_DRAINED, 1);
 			if let Err(e) = (callback.callback)() {
 				report_callback_error(e);
 			}
-			if timer.elapsed() >= duration {
-				return true;
-			}
 		}
-		false
+		!receiver.is_empty()
 	})
 }
 
@@ -276,8 +284,17 @@ pub fn process_callbacks_for_millis(millis: u64) -> bool {
 pub fn callback_processing_hook(time_remaining: ByondValue) -> Result<ByondValue> {
 	ensure_callbacks_healthy()?;
 	if time_remaining.is_num() {
-		let limit = time_remaining.get_number()?.max(0.0) as u64;
-		Ok(process_callbacks_for_millis(limit).into())
+		let limit = time_remaining.get_number()?;
+		if !limit.is_finite() || limit < 0.0 {
+			return Err(eyre::eyre!(
+				"Callback budget must be finite, non-negative milliseconds"
+			));
+		}
+		let duration = Duration::try_from_secs_f64(f64::from(limit) / 1000.0)
+			.map_err(|_| eyre::eyre!("Callback budget exceeds supported duration"))?;
+		let unfinished = process_callbacks_for(duration);
+		ensure_callbacks_healthy()?;
+		Ok(unfinished.into())
 	} else {
 		process_callbacks();
 		Ok(ByondValue::null())
@@ -293,6 +310,19 @@ mod tests {
 	};
 
 	static CALLBACK_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+	#[test]
+	fn zero_budget_preserves_queue_and_accounting() {
+		let _guard = CALLBACK_TEST_LOCK.lock().unwrap();
+		begin_callbacks();
+		assert!(!process_callbacks_for_millis(0));
+		queue_callback(Box::new(|| Ok(())), 16).unwrap();
+		let before = callback_metrics();
+		assert!(process_callbacks_for_millis(0));
+		assert_eq!(callback_metrics(), before);
+		assert!(!process_callbacks_for_millis(100));
+		assert_eq!(callback_metrics().queue_depth, 0);
+	}
 
 	#[test]
 	fn callback_capacity_is_exact_and_failure_prevents_queued_execution() {

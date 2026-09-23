@@ -294,7 +294,7 @@ fn generic_fire(byond_air: ByondValue, holder: ByondValue) -> Result<ByondValue>
 	use hashbrown::HashMap;
 	use rustc_hash::FxBuildHasher;
 	let mut burn_results: HashMap<GasIDX, f32, FxBuildHasher> =
-		HashMap::with_capacity_and_hasher(super::total_num_gases() as usize, FxBuildHasher);
+		HashMap::with_capacity_and_hasher(crate::gas::total_num_gases() as usize, FxBuildHasher);
 	let mut radiation_released = 0.0;
 	with_gas_info(|gas_info| {
 		if let Some(fire_amount) = with_mix(&byond_air, |air| {

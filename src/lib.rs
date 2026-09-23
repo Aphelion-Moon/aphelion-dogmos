@@ -43,6 +43,38 @@ fn dogmos_in_process_identity() -> Result<ByondValue> {
 		.map_err(Into::into)
 }
 
+/// Read-only loaded-build report. A loaded identity does not assert runtime qualification.
+#[auxmacros::bind("/proc/dogmos_in_process_capabilities")]
+fn dogmos_in_process_capabilities() -> Result<ByondValue> {
+	ByondValue::new_str(format!("{{\"identity\":\"in-process:{IN_PROCESS_SOURCE_SHA256}\",\"fusion_profile\":{},\"fusion_native_available\":{},\"runtime_qualified\":false}}",
+		dogmos_core::numerics::fusion::PROFILE_VERSION, cfg!(feature = "aphelion_reactions")).into_bytes()).map_err(Into::into)
+}
+
+/// On-demand, bounded generic eligibility only; never executes a reaction body.
+#[auxmacros::bind("/datum/gas_mixture/proc/dogmos_explain_reactions")]
+fn dogmos_explain_reactions(src: ByondValue) -> Result<ByondValue> {
+	let mixture = with_mix(&src, |mix| Ok(mix.clone()))?;
+	let result = ffi::OwnedByondValue::adopt(ByondValue::new_list()?);
+	let mut rows = Vec::new();
+	for (name, implementation, priority, eligible, detail) in reaction::explain(&mixture) {
+		let row = ffi::OwnedByondValue::adopt(ByondValue::new_list()?);
+		let name = ffi::OwnedByondValue::adopt(ByondValue::new_str(name)?);
+		let implementation = ffi::OwnedByondValue::adopt(ByondValue::new_str(implementation)?);
+		let detail = ffi::OwnedByondValue::adopt(ByondValue::new_str(detail)?);
+		row.write_list(&[
+			*name,
+			*implementation,
+			priority.into(),
+			eligible.into(),
+			*detail,
+		])?;
+		rows.push(row);
+	}
+	// List.Add(list) flattens its argument. Write the row values directly to retain nesting.
+	result.write_list(&rows.iter().map(|row| **row).collect::<Vec<_>>())?;
+	Ok(result.into_inner())
+}
+
 /// Samples the host directly without scanning the gas arena.
 #[auxmacros::bind("/proc/dogmos_in_process_metrics")]
 fn dogmos_in_process_metrics() -> Result<ByondValue> {
@@ -386,9 +418,11 @@ fn dogmos_shutdown_hook() -> Result<ByondValue> {
 		crate::turfs::shutdown_turf_heat()?;
 		crate::turfs::shutdown_turfs();
 	}
-	auxcallback::clean_callbacks();
 	crate::gas::shut_down_gases();
 	crate::gas::types::destroy_gas_info_structs();
+	// Closed admission is the new-world initialization permission. Publish it only after all
+	// workers/arenas are torn down; an error keeps init blocked and the guard permits retry.
+	auxcallback::clean_callbacks();
 	Ok(ByondValue::null())
 }
 
@@ -890,6 +924,10 @@ fn settlement_batch_hook(src: ByondValue, neighbors: ByondValue) -> Result<Byond
 /// thread, avoiding callback overhead when profiling is disabled.
 #[auxmacros::bind("/datum/gas_mixture/proc/__react")]
 fn react_hook(src: ByondValue, holder: ByondValue) -> Result<ByondValue> {
+	// Preserve start-of-chain eligibility: newly eligible reactions wait for the next call,
+	// and each reaction body retains its own current-state guards. Keep the registry fixed for
+	// the entire chain, including any nested DM calls.
+	let _dispatch = reaction::ReactionDispatch::begin();
 	let mut ret = ReactionReturn::NO_REACTION;
 	let hypernoblium_idx = hypernoblium_index()?;
 	let reactions = with_mix(&src, |mix| {
@@ -931,12 +969,16 @@ fn react_hook(src: ByondValue, holder: ByondValue) -> Result<ByondValue> {
 				}
 			}
 		}
-		ret |= ReactionReturn::from_bits_truncate(result.get_number().unwrap_or_default() as u32);
+		ret = accumulate_reaction_flags(ret, result.get_number().unwrap_or_default());
 		if ret.contains(ReactionReturn::STOP_REACTIONS) {
 			return Ok((ret.bits() as f32).into());
 		}
 	}
 	Ok((ret.bits() as f32).into())
+}
+
+fn accumulate_reaction_flags(previous: ReactionReturn, result: f32) -> ReactionReturn {
+	previous | ReactionReturn::from_bits_truncate(result as u32)
 }
 
 /// Args: (heat). Adds a given amount of heat to the mixture, i.e. in joules taking into account capacity.
@@ -1014,11 +1056,7 @@ fn oxidation_power_hook(src: ByondValue, temp: ByondValue) -> Result<ByondValue>
 			.ok()
 			.map_or_else(
 				|| air.get_oxidation_power(),
-				|new_temp| {
-					let mut test_air = air.clone();
-					test_air.set_temperature(new_temp);
-					test_air.get_oxidation_power()
-				},
+				|new_temp| air.get_oxidation_power_at_temperature(new_temp),
 			)
 			.into())
 	})
@@ -1073,30 +1111,35 @@ fn equalize_all_hook(gas_list: ByondValue) -> Result<ByondValue> {
 		.iter()?
 		.map(|(value, _)| gas::gas_slot_for_mix(&value))
 		.collect::<Result<BTreeSet<_>>>()?;
-	GasArena::with_all_mixtures(move |all_mixtures| {
-		let mut tot = gas::Mixture::new();
-		let mut tot_vol: f64 = 0.0;
+	GasArena::with_all_mixtures(move |all_mixtures| equalize_unique_slots(all_mixtures, &gas_list));
+	Ok(ByondValue::null())
+}
+
+fn equalize_unique_slots(
+	all_mixtures: &[parking_lot::RwLock<Mixture>],
+	gas_list: &std::collections::BTreeSet<usize>,
+) {
+	let mut tot = gas::Mixture::new();
+	let mut tot_vol: f64 = 0.0;
+	gas_list
+		.iter()
+		.filter_map(|&id| all_mixtures.get(id))
+		.for_each(|src_gas_lock| {
+			let src_gas = src_gas_lock.read();
+			tot.merge(&src_gas);
+			tot_vol += f64::from(src_gas.volume);
+		});
+	if tot_vol > 0.0 {
 		gas_list
 			.iter()
 			.filter_map(|&id| all_mixtures.get(id))
-			.for_each(|src_gas_lock| {
-				let src_gas = src_gas_lock.read();
-				tot.merge(&src_gas);
-				tot_vol += f64::from(src_gas.volume);
+			.for_each(|dest_gas_lock| {
+				let dest_gas = &mut dest_gas_lock.write();
+				let vol = dest_gas.volume; // don't wanna borrow it in the below
+				dest_gas.copy_from_mutable(&tot);
+				dest_gas.multiply((f64::from(vol) / tot_vol) as f32);
 			});
-		if tot_vol > 0.0 {
-			gas_list
-				.iter()
-				.filter_map(|&id| all_mixtures.get(id))
-				.for_each(|dest_gas_lock| {
-					let dest_gas = &mut dest_gas_lock.write();
-					let vol = dest_gas.volume; // don't wanna borrow it in the below
-					dest_gas.copy_from_mutable(&tot);
-					dest_gas.multiply((f64::from(vol) / tot_vol) as f32);
-				});
-		}
-	});
-	Ok(ByondValue::null())
+	}
 }
 
 /// Returns: the amount of gas mixtures that are attached to a byond gas mixture.
@@ -1110,35 +1153,12 @@ fn hook_amt_gas_mixes() -> Result<ByondValue> {
 fn hook_max_gas_mixes() -> Result<ByondValue> {
 	Ok((tot_gases() as f32).into())
 }
-/// Returns: true. Parses gas strings like "o2=2500;plasma=5000;TEMP=370" and turns src mixes into the parsed gas mixture, invalid patterns will be ignored
+/// Atomically loads a complete gas string. Invalid input leaves the mixture unchanged.
 #[auxmacros::bind("/datum/gas_mixture/proc/__auxtools_parse_gas_string")]
 fn parse_gas_string(src: ByondValue, string: ByondValue) -> Result<ByondValue> {
 	let actual_string = string.get_string()?;
 
-	let (_, vec) = parser::parse_gas_string(&actual_string)
-		.map_err(|_| eyre::eyre!(format!("Failed to parse gas string: {actual_string}")))?;
-
-	with_mix_mut(&src, move |air| {
-		air.clear();
-		for (gas, moles) in vec.iter() {
-			if let Ok(idx) = gas_idx_from_string(gas) {
-				if (*moles).is_normal() && *moles > 0.0 {
-					air.set_moles(idx, *moles).map_err(|error| {
-						eyre::eyre!("__auxtools_parse_gas_string rejected gas index {idx}: {error}")
-					})?;
-				}
-			} else if gas.contains("TEMP") {
-				let mut checked_temp = *moles;
-				if !checked_temp.is_normal() || checked_temp < constants::TCMB {
-					checked_temp = constants::TCMB
-				}
-				air.set_temperature(checked_temp)
-			} else {
-				return Err(eyre::eyre!(format!("Unknown gas id: {gas}")));
-			}
-		}
-		Ok(())
-	})?;
+	with_mix_mut(&src, |air| parser::load_gas_string(air, &actual_string))?;
 	Ok(true.into())
 }
 
@@ -1184,8 +1204,14 @@ mod lifecycle_tests {
 
 #[cfg(test)]
 mod reaction_tests {
-	use super::reactions_are_suppressed;
-	use crate::gas::constants::{REACTION_OPPRESSION_MIN_TEMP, REACTION_OPPRESSION_THRESHOLD};
+	use super::{accumulate_reaction_flags, equalize_unique_slots, reactions_are_suppressed};
+	use crate::gas::{
+		constants::{ReactionReturn, REACTION_OPPRESSION_MIN_TEMP, REACTION_OPPRESSION_THRESHOLD},
+		types::{destroy_gas_statics, register_gas_manually, set_gas_statics_manually},
+		Mixture, GAS_TEST_LOCK,
+	};
+	use parking_lot::RwLock;
+	use std::collections::BTreeSet;
 
 	#[test]
 	fn hypernoblium_oppression_matches_dm_boundaries() {
@@ -1203,6 +1229,35 @@ mod reaction_tests {
 			REACTION_OPPRESSION_THRESHOLD,
 			REACTION_OPPRESSION_MIN_TEMP,
 		));
+	}
+
+	#[test]
+	fn reaction_flags_preserve_volatile_and_stop_across_chain() {
+		let flags = accumulate_reaction_flags(ReactionReturn::NO_REACTION, 1.0);
+		let flags = accumulate_reaction_flags(flags, 4.0);
+		assert!(flags.contains(ReactionReturn::REACTING));
+		assert!(flags.contains(ReactionReturn::VOLATILE_REACTION));
+		assert!(!flags.contains(ReactionReturn::STOP_REACTIONS));
+		let flags = accumulate_reaction_flags(flags, 2.0);
+		assert_eq!(flags.bits(), 7);
+		assert!(flags.contains(ReactionReturn::STOP_REACTIONS));
+	}
+
+	#[test]
+	fn equalize_all_counts_an_aliased_slot_once() {
+		let _guard = GAS_TEST_LOCK.lock().unwrap();
+		set_gas_statics_manually();
+		register_gas_manually("o2", 20.0);
+		let mut first = Mixture::from_vol(1000.0);
+		first.set_moles(0, 2.0).unwrap();
+		let mut second = Mixture::from_vol(3000.0);
+		second.set_moles(0, 10.0).unwrap();
+		let mixtures = [RwLock::new(first), RwLock::new(second)];
+		let slots = [0, 0, 1].into_iter().collect::<BTreeSet<_>>();
+		equalize_unique_slots(&mixtures, &slots);
+		assert_eq!(mixtures[0].read().get_moles(0), 3.0);
+		assert_eq!(mixtures[1].read().get_moles(0), 9.0);
+		destroy_gas_statics();
 	}
 }
 
@@ -1255,6 +1310,11 @@ pub fn generate_bindings_file() {
 	// Linux uses an explicit in-process library name.
 	bindings = bindings.replace("\"libdogmos\"", "\"libdogmos_in_process\"");
 	bindings.push_str("\n#define DOGMOS_IN_PROCESS\n");
+	bindings.push_str(&dogmos_core::numerics::fusion::dm_defines());
+	bindings.push_str(&format!(
+		"#define DOGMOS_FUSION_NATIVE_AVAILABLE {}\n",
+		u8::from(cfg!(feature = "aphelion_reactions"))
+	));
 	bindings.push_str(&format!(
 		"\n// Local in-process build identity; generated with the matching DLL.\n#define DOGMOS_IN_PROCESS_IDENTITY \"in-process:{IN_PROCESS_SOURCE_SHA256}\"\n"
 	));

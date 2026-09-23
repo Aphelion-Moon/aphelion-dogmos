@@ -1,4 +1,5 @@
 use super::GasIDX;
+use crate::ffi::OwnedByondValue;
 use crate::reaction::{Reaction, ReactionPriority};
 use byondapi::prelude::*;
 use dashmap::DashMap;
@@ -226,8 +227,10 @@ pub fn initialize_gas_info_structs() {
 pub fn destroy_gas_info_structs() {
 	#[cfg(feature = "turf_processing")]
 	crate::turfs::wait_for_tasks();
-	crate::reaction::clear_reaction_values();
+	let old_values = crate::reaction::clear_reaction_values();
 	*REACTION_INFO.write() = None;
+	// Releasing BYOND references may run DM deletion code; both tables are empty first.
+	drop(old_values);
 	if let Some(gas_info_by_string) = GAS_INFO_BY_STRING.write().as_mut() {
 		gas_info_by_string.clear();
 	}
@@ -326,7 +329,7 @@ fn hook_init(gas_data: ByondValue) -> Result<ByondValue> {
 		.map(|(_, gas)| hook_register_gas(gas))
 		.try_for_each(|res| res.map(drop))
 		.wrap_err("auxtools_atmos_init failed to register gas")?;
-	*REACTION_INFO.write() = Some(get_reaction_info()?);
+	install_reaction_info()?;
 	Ok(true.into())
 }
 
@@ -336,45 +339,57 @@ fn dogmos_reaction_count() -> Result<ByondValue> {
 	Ok((REACTION_INFO.read().as_ref().map_or(0, |info| info.len()) as f32).into())
 }
 
-fn get_reaction_info() -> Result<BTreeMap<ReactionPriority, Reaction>> {
-	let gas_reactions = ByondValue::new_global_ref()
-		.read_var_id(byond_string!("SSair"))
-		.wrap_err("SSair is unavailable while loading reactions")?
-		.read_var_id(byond_string!("dogmos_reactions"))
-		.wrap_err("SSair.dogmos_reactions is unavailable")?;
+fn get_reaction_info() -> Result<(
+	BTreeMap<ReactionPriority, Reaction>,
+	crate::reaction::ReactionValues,
+)> {
+	crate::reaction::ensure_registry_idle()?;
+	let ssair = OwnedByondValue::adopt(
+		ByondValue::new_global_ref()
+			.read_var_id(byond_string!("SSair"))
+			.wrap_err("SSair is unavailable while loading reactions")?,
+	);
+	let gas_reactions = OwnedByondValue::adopt(
+		ssair
+			.read_var_id(byond_string!("dogmos_reactions"))
+			.wrap_err("SSair.dogmos_reactions is unavailable")?,
+	);
 	let mut reaction_cache: BTreeMap<ReactionPriority, Reaction> = Default::default();
-	for (reaction, _) in gas_reactions.iter()? {
-		match Reaction::from_byond_reaction(reaction) {
-			Ok(reaction) => {
-				if let std::collections::btree_map::Entry::Vacant(e) =
-					reaction_cache.entry(reaction.get_priority())
-				{
-					e.insert(reaction);
-				} else {
-					let owned_bytes = reaction.owned_bytes_lower_bound();
-					auxcallback::queue_callback(
-						Box::new(move || {
-							Err(eyre::eyre!(format!(
-								"Duplicate reaction priority {}, this reaction will be ignored!",
-								reaction.get_priority().0
-							)))
-						}),
-						owned_bytes,
-					)?;
-				}
-			}
-			Err(runtime) => {
-				auxcallback::queue_callback(Box::new(move || Err(runtime)), 0)?;
-			}
+	let mut values = crate::reaction::ReactionValues::default();
+	for (reaction, associated_value) in gas_reactions.iter()? {
+		let reaction = OwnedByondValue::adopt(reaction);
+		let _associated_value = OwnedByondValue::adopt(associated_value);
+		let (reaction, side, name) = Reaction::from_byond_reaction(reaction)?;
+		if let Some((_, old_name)) = values.get(&reaction.get_id()) {
+			return Err(eyre::eyre!(
+				"Conflicting Dogmos reaction identifiers: {old_name} and {name}"
+			));
 		}
+		if reaction_cache.contains_key(&reaction.get_priority()) {
+			return Err(eyre::eyre!(
+				"Duplicate Dogmos reaction priority {} for {name}",
+				reaction.get_priority().0
+			));
+		}
+		values.insert(reaction.get_id(), (side, name));
+		reaction_cache.insert(reaction.get_priority(), reaction);
 	}
-	Ok(reaction_cache)
+	Ok((reaction_cache, values))
+}
+
+fn install_reaction_info() -> Result<()> {
+	let (reactions, values) = get_reaction_info()?;
+	let old_values = crate::reaction::publish_reaction_values(values);
+	*REACTION_INFO.write() = Some(reactions);
+	// DecRef can run DM deletion code. Publish both tables and release the lock first.
+	drop(old_values);
+	Ok(())
 }
 
 /// Refreshes the reaction cache after DM changes the reaction table.
 #[auxmacros::bind("/datum/controller/subsystem/air/proc/auxtools_update_reactions")]
 fn update_reactions() -> Result<ByondValue> {
-	*REACTION_INFO.write() = Some(get_reaction_info()?);
+	install_reaction_info()?;
 	Ok(true.into())
 }
 
@@ -587,6 +602,27 @@ mod tests {
 	use super::*;
 	use crate::gas::GAS_TEST_LOCK;
 	use crate::reaction::{install_test_reaction_value, reaction_name_by_id};
+
+	#[test]
+	fn immutable_oxidizer_query_uses_requested_temperature() {
+		let _guard = GAS_TEST_LOCK.lock().unwrap();
+		set_gas_statics_manually();
+		register_gas_manually("oxidizer", 20.0);
+		GAS_INFO_BY_IDX.write().as_mut().unwrap()[0].fire_info =
+			FireInfo::Oxidation(OxidationInfo {
+				temperature: 500.0,
+				power: 2.0,
+			});
+		let mut mixture = crate::gas::Mixture::new();
+		mixture.set_moles(0, 10.0).unwrap();
+		mixture.set_temperature(300.0);
+		mixture.mark_immutable();
+		assert_eq!(mixture.get_oxidation_power_at_temperature(1000.0), 10.0);
+		assert_eq!(mixture.get_oxidation_power(), 0.0);
+		assert_eq!(mixture.get_temperature(), 300.0);
+		assert_eq!(mixture.get_moles(0), 10.0);
+		assert!(mixture.is_immutable());
+	}
 
 	#[test]
 	fn legacy_shutdown_clears_reaction_registries() {

@@ -9,6 +9,7 @@ pub(crate) use superconduct::capture_two_turf_heat_trace;
 
 use crate::{
 	constants::*,
+	ffi::OwnedByondValue,
 	gas::{gas_slot_for_mix, Mixture},
 	GasArena,
 };
@@ -676,6 +677,45 @@ fn hook_infos(src: ByondValue, _max_x: ByondValue, _max_y: ByondValue) -> Result
 	Ok(ByondValue::null())
 }
 
+/// Classifies the live adjacency without constructing three temporary DM lists per visit.
+/// Numerical locks are released before invoking DM's ordinary neighbor/machinery wake path.
+#[auxmacros::bind("/datum/controller/subsystem/air/proc/__turf_settled")]
+fn turf_settled_hook(src: ByondValue, turf: ByondValue) -> Result<ByondValue> {
+	let air = OwnedByondValue::adopt(turf.read_var_id(byond_string!("air"))?);
+	let source_slot = gas_slot_for_mix(&air)?;
+	let adjacency =
+		OwnedByondValue::adopt(turf.read_var_id(byond_string!("atmos_adjacent_turfs"))?);
+	let mut neighbors = Vec::with_capacity(6);
+	let mut slots = Vec::with_capacity(6);
+	if adjacency.is_list() {
+		for (neighbor, value) in adjacency.iter()? {
+			let neighbor = OwnedByondValue::adopt(neighbor);
+			let _value = OwnedByondValue::adopt(value);
+			// Closed turfs have no air variable, matching DM's isopenturf filter.
+			if let Ok(air) = neighbor.read_var_id(byond_string!("air")) {
+				let air = OwnedByondValue::adopt(air);
+				slots.push(gas_slot_for_mix(&air)?);
+				neighbors.push(neighbor);
+			}
+		}
+	}
+	let states = GasArena::settlement_batch(source_slot, &slots)?;
+	let immutable = states[0] != 0;
+	let mut settled = immutable
+		|| OwnedByondValue::adopt(turf.read_var_id(byond_string!("active_hotspot"))?).is_null();
+	for (neighbor, state) in neighbors.into_iter().zip(states.into_iter().skip(1)) {
+		if state != 0 {
+			settled = immutable;
+			if state == 2 {
+				let _result = OwnedByondValue::adopt(
+					src.call_id(byond_string!("add_to_active"), &[*neighbor])?,
+				);
+			}
+		}
+	}
+	Ok(settled.into())
+}
+
 /// Updates the visual overlays for the given turf.
 /// Will use a cached overlay list if one exists.
 ///
@@ -683,25 +723,39 @@ fn hook_infos(src: ByondValue, _max_x: ByondValue, _max_y: ByondValue) -> Result
 /// a distinct render plane. The overlay objects are shared with the DM gas metadata.
 /// # Errors
 /// If auxgm wasn't implemented properly or there's an invalid gas mixture.
+#[auxmacros::bind("/turf/open/proc/__update_dogmos_visuals")]
 fn update_visuals(src: ByondValue) -> Result<ByondValue> {
 	use super::gas;
-	match src.read_var_id(byond_string!("air")) {
+	match src
+		.read_var_id(byond_string!("air"))
+		.map(OwnedByondValue::adopt)
+	{
 		Ok(air) if !air.is_null() => {
 			// gas_overlays: list( GAS_ID = list( PLANE_OFFSET+1 = list( VIS_FACTORS = OVERLAYS ))) got it? I don't
-			let gas_overlays = ByondValue::new_global_ref()
-				.read_var_id(byond_string!("GLOB"))
-				.wrap_err("Unable to get GLOB from BYOND globals")?
-				.read_var_id(byond_string!("gas_data"))
-				.wrap_err("gas_data is undefined on GLOB")?
-				.read_var_id(byond_string!("overlays"))
-				.wrap_err("overlays is undefined in GLOB.gas_data")?;
+			let globals = OwnedByondValue::adopt(
+				ByondValue::new_global_ref()
+					.read_var_id(byond_string!("GLOB"))
+					.wrap_err("Unable to get GLOB from BYOND globals")?,
+			);
+			let gas_data = OwnedByondValue::adopt(
+				globals
+					.read_var_id(byond_string!("gas_data"))
+					.wrap_err("gas_data is undefined on GLOB")?,
+			);
+			let gas_overlays = OwnedByondValue::adopt(
+				gas_data
+					.read_var_id(byond_string!("overlays"))
+					.wrap_err("overlays is undefined in GLOB.gas_data")?,
+			);
 
 			// Mirrors GET_TURF_PLANE_OFFSET(src) - only look at z_level_to_plane_offset at all if
 			// multiz plane offsetting is actually in use, matching that macro's own fast path for the
 			// common single-plane case.
-			let ssmapping = ByondValue::new_global_ref()
-				.read_var_id(byond_string!("SSmapping"))
-				.wrap_err("Unable to get SSmapping from BYOND globals")?;
+			let ssmapping = OwnedByondValue::adopt(
+				ByondValue::new_global_ref()
+					.read_var_id(byond_string!("SSmapping"))
+					.wrap_err("Unable to get SSmapping from BYOND globals")?,
+			);
 			let max_plane_offset = ssmapping
 				.read_number_id(byond_string!("max_plane_offset"))
 				.unwrap_or(0.0);
@@ -710,7 +764,8 @@ fn update_visuals(src: ByondValue) -> Result<ByondValue> {
 				let offset = ssmapping
 					.read_var_id(byond_string!("z_level_to_plane_offset"))
 					.ok()
-					.and_then(|list| list.read_list_index(z).ok())
+					.map(OwnedByondValue::adopt)
+					.and_then(|list| list.read_list_index(z).ok().map(OwnedByondValue::adopt))
 					.and_then(|v| v.get_number().ok())
 					.unwrap_or(0.0);
 				offset + 1.0
@@ -727,14 +782,22 @@ fn update_visuals(src: ByondValue) -> Result<ByondValue> {
 					// getting the list(PLANE_OFFSET+1 = list(VIS_FACTORS = OVERLAYS)) with GAS_ID
 					.filter_map(|(idx, moles, _)| {
 						Some((
-							gas_overlays.read_list_index(gas::gas_idx_to_id(idx)).ok()?,
+							OwnedByondValue::adopt(
+								gas_overlays
+									.read_list_index(*OwnedByondValue::adopt(gas::gas_idx_to_id(
+										idx,
+									)))
+									.ok()?,
+							),
 							moles,
 						))
 					})
 					// getting the list(VIS_FACTORS = OVERLAYS) with PLANE_OFFSET+1
 					.filter_map(|(per_offset_list, moles)| {
 						Some((
-							per_offset_list.read_list_index(plane_offset_index).ok()?,
+							OwnedByondValue::adopt(
+								per_offset_list.read_list_index(plane_offset_index).ok()?,
+							),
 							moles,
 						))
 					})
@@ -743,15 +806,18 @@ fn update_visuals(src: ByondValue) -> Result<ByondValue> {
 						this_overlay_list
 							.read_list_index(gas::mixture::visibility_step(moles) as f32)
 							.ok()
+							.map(OwnedByondValue::adopt)
 					})
 					.collect::<Vec<_>>())
 			})?;
 
+			let overlay_values = overlay_types
+				.iter()
+				.map(|value| **value)
+				.collect::<Vec<_>>();
+			let overlays = OwnedByondValue::adopt(overlay_values.as_slice().try_into()?);
 			Ok(src
-				.call_id(
-					byond_string!("set_visuals"),
-					&[overlay_types.as_slice().try_into()?],
-				)
+				.call_id(byond_string!("set_visuals"), &[*overlays])
 				.wrap_err("Calling set_visuals")?)
 		}
 		// If air is null, clear the visuals

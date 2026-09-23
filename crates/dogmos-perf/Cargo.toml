@@ -2,3 +2,4 @@
 name = "dogmos-perf"
 version = "2.3.0"
 edition = "2021"
+license = "MIT"

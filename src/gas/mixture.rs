@@ -129,7 +129,7 @@ impl GasCache {
 pub fn visibility_step(gas_amt: f32) -> u32 {
 	(gas_amt / MOLES_GAS_VISIBLE_STEP)
 		.ceil()
-		.clamp(1.0, FACTOR_GAS_VISIBLE_MAX) as u32
+		.clamp(1.0, TOTAL_VISIBLE_STATES) as u32
 }
 
 #[inline]
@@ -749,6 +749,12 @@ impl Mixture {
 	pub fn get_oxidation_power(&self) -> f32 {
 		self.get_burnability().0
 	}
+	/// Evaluates a hypothetical temperature without modifying an immutable reservoir.
+	pub fn get_oxidation_power_at_temperature(&self, temperature: f32) -> f32 {
+		let mut proposed = self.copy_to_mutable();
+		proposed.set_temperature(temperature);
+		proposed.get_oxidation_power()
+	}
 	/// Returns only fuel amount. Since this calculates burnability anyway, prefer `get_burnability`.
 	pub fn get_fuel_amount(&self) -> f32 {
 		self.get_burnability().1
@@ -894,6 +900,12 @@ impl Mul<f32> for &Mixture {
 
 #[cfg(test)]
 mod tests {
+	#[test]
+	fn visibility_steps_match_the_paired_overlay_inventory() {
+		for (moles, expected) in [(0.25, 1), (5.0, 20), (5.25, 21), (20.0, 80), (100.0, 80)] {
+			assert_eq!(super::visibility_step(moles), expected);
+		}
+	}
 
 	use super::*;
 	use crate::gas::{
@@ -1019,6 +1031,39 @@ mod tests {
 		mixture.set_temperature(-100.0);
 
 		assert_eq!(mixture.get_temperature(), TCMB);
+	}
+
+	#[test]
+	fn sub_centimole_gas_survives_active_merge_split_and_transfer() {
+		let _guard = GAS_TEST_LOCK.lock().unwrap();
+		initialize_gases();
+
+		let mut first = Mixture::new();
+		first.set_moles(0, 0.005).unwrap();
+		let mut second = Mixture::new();
+		second.set_moles(0, 0.005).unwrap();
+		first.merge(&second);
+		assert!((first.get_moles(0) - 0.01).abs() < 1e-6);
+
+		let mut trace = Mixture::new();
+		trace.set_moles(0, 0.0099).unwrap();
+		let split = trace.remove_ratio(0.5);
+		assert!((split.get_moles(0) - 0.005).abs() < 1e-6);
+		assert!((trace.get_moles(0) + split.get_moles(0) - 0.0099).abs() < 1e-6);
+
+		let mut source = Mixture::new();
+		source.set_moles(0, 0.0075).unwrap();
+		source.set_temperature(400.0);
+		let energy_before = source.thermal_energy();
+		let mut destination = Mixture::new();
+		source
+			.transfer_gases_to(1.0, &[0], &mut destination)
+			.unwrap();
+		assert_eq!(source.get_moles(0), 0.0);
+		assert!((destination.get_moles(0) - 0.0075).abs() < 1e-6);
+		assert!((destination.thermal_energy() - energy_before).abs() < 1e-3);
+
+		destroy_gas_statics();
 	}
 
 	#[test]

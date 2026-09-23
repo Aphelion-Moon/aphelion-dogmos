@@ -3,6 +3,7 @@ name = "auxcallback"
 version = "0.2.1"
 authors = ["Putnam <putnam3145@gmail.com>"]
 edition = "2018"
+license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -12,6 +13,5 @@ crate-type = ["lib"]
 [dependencies]
 byondapi = { workspace = true }
 flume = { workspace = true }
-coarsetime = { workspace = true }
 eyre = { workspace = true }
 tracing = { workspace = true }

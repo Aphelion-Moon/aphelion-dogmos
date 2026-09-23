@@ -7,6 +7,8 @@
 | Rust-to-DM callback or gameplay event work | [Gameplay events](gameplay-events.md) |
 | CPU or DreamDaemon memory optimization | [Performance and memory](performance-and-memory.md) |
 | Gas, diffusion, reaction, or heat math | [Numerical invariants](numerical-invariants.md) |
+| Gas strings, reaction registration and fault policy | [Reaction contract](reaction-contract.md) |
+| Experimental Meridian mixture fusion | [Commissioning profile](fusion-profile.md) |
 | BYOND exports or generated DM | [FFI and generated bindings](ffi-and-generated-bindings.md) |
 | Selecting and reporting gates | [Verification](verification.md) |
 | Packaging or release assets | [Release and artifacts](release-and-artifacts.md) |

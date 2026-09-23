@@ -1,0 +1,35 @@
+name: Check Dogmos dependencies
+on:
+  pull_request:
+    paths:
+      - Cargo.lock
+      - Cargo.toml
+      - crates/**/Cargo.toml
+      - deny.toml
+      - .github/workflows/dependency.yml
+  push:
+    branches: [master]
+    paths:
+      - Cargo.lock
+      - Cargo.toml
+      - crates/**/Cargo.toml
+      - deny.toml
+      - .github/workflows/dependency.yml
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  policy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@f8be11a05b1d4f3fcebe6410cc16743212b999b0 # 1.98.0
+      - name: Install pinned cargo-deny outside the workspace
+        run: cargo +1.98.0 install cargo-deny --version 0.20.2 --locked --root "$RUNNER_TEMP/cargo-deny"
+      - name: Check advisory, ban, license and source policy
+        run: |
+          "$RUNNER_TEMP/cargo-deny/bin/cargo-deny" check advisories bans licenses sources

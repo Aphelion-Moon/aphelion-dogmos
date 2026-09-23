@@ -909,12 +909,41 @@ pub(crate) fn capture_two_turf_equalize_trace() -> LegacyStageTrace {
 	}
 }
 
-fn send_pressure_differences(pressures: Vec<PressureDifference>) {
+fn pressure_batches(
+	pressures: Vec<PressureDifference>,
+) -> impl Iterator<Item = Vec<PressureDifference>> {
 	const PRESSURE_CALLBACK_BATCH_SIZE: usize = 256;
-	let mut pressures = pressures;
-	while !pressures.is_empty() {
-		let batch_len = PRESSURE_CALLBACK_BATCH_SIZE.min(pressures.len());
-		let batch = pressures.drain(..batch_len).collect::<Vec<_>>();
+	let mut pressures = pressures.into_iter();
+	std::iter::from_fn(move || {
+		if pressures.len() == 0 {
+			None
+		} else {
+			Some(
+				pressures
+					.by_ref()
+					.take(PRESSURE_CALLBACK_BATCH_SIZE)
+					.collect(),
+			)
+		}
+	})
+}
+
+#[test]
+fn pressure_batches_preserve_boundaries_and_order() {
+	for length in [0, 1, 256, 257, 1024] {
+		let events = (0..length)
+			.map(|i| (i as f32, i as TurfID, 1, (i + 1) as TurfID, 2))
+			.collect::<Vec<_>>();
+		let batches = pressure_batches(events.clone()).collect::<Vec<_>>();
+		assert!(batches
+			.iter()
+			.all(|batch| !batch.is_empty() && batch.len() <= 256));
+		assert_eq!(batches.into_iter().flatten().collect::<Vec<_>>(), events);
+	}
+}
+
+fn send_pressure_differences(pressures: Vec<PressureDifference>) {
+	for batch in pressure_batches(pressures) {
 		let owned_bytes = batch
 			.capacity()
 			.saturating_mul(std::mem::size_of::<PressureDifference>());

@@ -20,8 +20,107 @@ pub fn func_from_id(id: &str) -> Option<super::ReactFunc> {
 		"h2fire" => Some(hydrogen_fire),
 		"tritfire" => Some(tritium_fire),
 		"freonfire" => Some(freon_fire),
+		"meridian_fusion" => Some(mixture_fusion),
 		_ => None,
 	}
+}
+
+/// Admission and effects are synchronous main-thread DM calls outside mixture locks.
+fn mixture_fusion(byond_air: ByondValue, holder: ByondValue) -> Result<ByondValue> {
+	use dogmos_core::numerics::fusion::{self, FusionInput};
+	if !byond_air
+		.call_id(byond_string!("dogmos_fusion_admit"), &[holder])?
+		.get_bool()?
+	{
+		return Ok(false.into());
+	}
+	let plasma = gas_idx_from_string(GAS_PLASMA)?;
+	let carbon = gas_idx_from_string(GAS_CO2)?;
+	let tritium = gas_idx_from_string(GAS_TRITIUM)?;
+	let oxygen = gas_idx_from_string(GAS_O2)?;
+	let water = gas_idx_from_string(GAS_H2O)?;
+	let bz = gas_idx_from_string(GAS_BZ)?;
+	let result = with_mix_mut(&byond_air, |air| {
+		if air.is_immutable() {
+			return Ok(None);
+		}
+		if air
+			.enumerate()
+			.any(|(_, n)| !n.is_finite() || n < 0.0 || f64::from(n) > fusion::MAX_MOLES)
+		{
+			return Err(eyre::eyre!(
+				"Fusion mixture contains out-of-profile gas amounts"
+			));
+		}
+		let input = FusionInput {
+			plasma: air.get_moles(plasma).into(),
+			carbon_dioxide: air.get_moles(carbon).into(),
+			tritium: air.get_moles(tritium).into(),
+			temperature: air.get_temperature().into(),
+			volume: air.get_volume().into(),
+			heat_capacity: air.heat_capacity().into(),
+			gas_power: air
+				.enumerate()
+				.map(|(i, n)| f64::from(crate::gas::gas_fusion_power(&i)) * f64::from(n))
+				.sum(),
+		};
+		let Some(result) = fusion::step(input).map_err(|error| eyre::eyre!(error))? else {
+			return Ok(None);
+		};
+		let mut proposed = air.copy_to_mutable();
+		proposed.set_moles(plasma, result.plasma as f32)?;
+		proposed.set_moles(carbon, result.carbon_dioxide as f32)?;
+		proposed.set_moles(tritium, result.tritium as f32)?;
+		proposed.adjust_moles(oxygen, result.waste as f32)?;
+		proposed.adjust_moles(
+			if result.water_product { water } else { bz },
+			result.waste as f32,
+		)?;
+		let temperature = result.energy / f64::from(proposed.heat_capacity());
+		if !temperature.is_finite()
+			|| !(f64::from(TCMB)..=fusion::MAX_TEMPERATURE).contains(&temperature)
+			|| proposed
+				.enumerate()
+				.any(|(_, n)| f64::from(n) > fusion::MAX_MOLES)
+		{
+			return Err(eyre::eyre!(
+				"Fusion result outside profile bounds; original mixture preserved"
+			));
+		}
+		proposed.set_temperature(temperature as f32);
+		air.copy_from_mutable(&proposed);
+		Ok(Some((result, temperature as f32)))
+	})?;
+	let Some((result, temperature)) = result else {
+		return Ok(false.into());
+	};
+	let acknowledged = byond_air.call_id(
+		byond_string!("dogmos_fusion_finish"),
+		&[
+			holder,
+			(result.instability as f32).into(),
+			(result.energy_delta as f32).into(),
+			temperature.into(),
+		],
+	);
+	// The mixture is already committed. An unacknowledged effect cannot be retried
+	// safely, so escalate instead of allowing simulation to continue partially.
+	match acknowledged.and_then(|value| value.get_bool()) {
+		Ok(true) => {}
+		Ok(false) => {
+			auxcallback::fault_simulation();
+			return Err(eyre::eyre!(
+				"Fusion committed but DM effects were not acknowledged"
+			));
+		}
+		Err(error) => {
+			auxcallback::fault_simulation();
+			return Err(eyre::eyre!(
+				"Fusion committed but DM effects failed: {error}"
+			));
+		}
+	}
+	Ok(true.into())
 }
 
 /// DM's QUANTIZE(variable) macro: round(variable, MOLAR_ACCURACY).

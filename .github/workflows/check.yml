@@ -5,8 +5,73 @@ on:
     branches: [master]
 permissions:
   contents: read
+concurrency:
+  # Called workflows must not share this group with their caller.
+  group: check-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    outputs:
+      native_required: ${{ steps.paths.outputs.native_required }}
+      workflows_changed: ${{ steps.paths.outputs.workflows_changed }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Classify PR changes conservatively
+        id: paths
+        shell: bash
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" != pull_request ]]; then
+            echo 'native_required=true' >> "$GITHUB_OUTPUT"
+            echo 'workflows_changed=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          mapfile -d '' paths < <(git diff --name-only -z HEAD^1 HEAD)
+          native_required=false
+          workflows_changed=false
+          if (( ${#paths[@]} == 0 )); then native_required=true; fi
+          for path in "${paths[@]}"; do
+            if [[ "$path" == .github/workflows/* ]]; then workflows_changed=true; fi
+            case "$path" in
+              README.md|docs/performance/*.md) ;;
+              *) native_required=true ;;
+            esac
+          done
+          echo "native_required=$native_required" >> "$GITHUB_OUTPUT"
+          echo "workflows_changed=$workflows_changed" >> "$GITHUB_OUTPUT"
+
+  quality:
+    needs: changes
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # The documentation gate verifies its reviewed revision is an ancestor.
+          persist-credentials: false
+      - run: python -B tools/check_agent_docs.py
+      - uses: dtolnay/rust-toolchain@f8be11a05b1d4f3fcebe6410cc16743212b999b0 # 1.98.0
+        if: needs.changes.outputs.native_required == 'true'
+        with:
+          components: rustfmt
+      - run: cargo +1.98.0 fmt --all -- --check
+        if: needs.changes.outputs.native_required == 'true'
+      - name: Check changed workflows with actionlint
+        if: needs.changes.outputs.workflows_changed == 'true'
+        shell: bash
+        run: |
+          curl --fail --location --silent --show-error \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
+            --output "$RUNNER_TEMP/actionlint.tar.gz"
+          echo '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  '"$RUNNER_TEMP/actionlint.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color
+
   check:
+    needs: changes
+    if: needs.changes.outputs.native_required == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -16,24 +81,60 @@ jobs:
           - os: windows-latest
             target: i686-pc-windows-msvc
     runs-on: ${{ matrix.os }}
+    env:
+      RUSTFLAGS: ''
+      CARGO_ENCODED_RUSTFLAGS: ''
+      CARGO_INCREMENTAL: '0'
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0 # The documentation gate verifies its reviewed revision is an ancestor.
-      - uses: dtolnay/rust-toolchain@1.98.0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@f8be11a05b1d4f3fcebe6410cc16743212b999b0 # 1.98.0
         with:
-          components: clippy, rustfmt
+          components: clippy
           targets: ${{ matrix.target }}
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/debug
+            target/${{ matrix.target }}/debug
+          key: check-${{ runner.os }}-${{ matrix.target }}-rust1.98.0-dev-supported-v1-flags-empty-${{ hashFiles('Cargo.lock', '**/Cargo.toml', 'rust-toolchain.toml', '.cargo/config.toml') }}-${{ github.sha }}
+          restore-keys: |
+            check-${{ runner.os }}-${{ matrix.target }}-rust1.98.0-dev-supported-v1-flags-empty-${{ hashFiles('Cargo.lock', '**/Cargo.toml', 'rust-toolchain.toml', '.cargo/config.toml') }}-
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install --yes g++-multilib libclang-dev
-      - run: cargo +1.98.0 fmt --all -- --check
       - run: python -B -m unittest discover -s tools/tests -v
-      - run: python -B tools/check_agent_docs.py
       - run: python -B tools/check_dependency_direction.py --target ${{ matrix.target }}
       - run: cargo +1.98.0 clippy --workspace --locked --target ${{ matrix.target }} --all-targets -- -D warnings
       - run: cargo +1.98.0 test --workspace --locked --target ${{ matrix.target }}
       - name: Check supported features
         run: python -B tools/check_feature_matrix.py --target ${{ matrix.target }}
+
   artifacts:
+    needs: changes
+    if: needs.changes.outputs.native_required == 'true'
     uses: ./.github/workflows/build.yml
+
+  required-summary:
+    if: always()
+    needs: [changes, quality, check, artifacts]
+    runs-on: ubuntu-24.04
+    env:
+      CHANGES: ${{ needs.changes.result }}
+      QUALITY: ${{ needs.quality.result }}
+      CHECK: ${{ needs.check.result }}
+      ARTIFACTS: ${{ needs.artifacts.result }}
+      NATIVE_REQUIRED: ${{ needs.changes.outputs.native_required }}
+    steps:
+      - name: Report required Dogmos checks
+        shell: bash
+        run: |
+          [[ "$CHANGES" == success && "$QUALITY" == success ]]
+          if [[ "$NATIVE_REQUIRED" == true ]]; then
+            [[ "$CHECK" == success && "$ARTIFACTS" == success ]]
+          else
+            [[ "$NATIVE_REQUIRED" == false && "$CHECK" == skipped && "$ARTIFACTS" == skipped ]]
+          fi

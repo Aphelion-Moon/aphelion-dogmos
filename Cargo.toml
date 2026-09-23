@@ -6,7 +6,7 @@ members = ["crates/auxcallback", "crates/auxmacros", "crates/dogmos-core", "crat
 # release (0.5.14, Mar 2025) predates the "Migrate to 516.1682" merge (Jun 2026). Reading a DM var by
 # string id against a 515-era ABI access-violates BYOND rather than failing cleanly, so this must
 # track git until a release ships with 516 support.
-byondapi = { git = "https://github.com/spacestation13/byondapi-rs", branch = "main" }
+byondapi = { version = "0.6.14", git = "https://github.com/spacestation13/byondapi-rs", branch = "main" }
 coarsetime = "0.1.35"
 flume = "0.11.1"
 eyre = "0.6.12"
@@ -17,6 +17,7 @@ name = "dogmos"
 version = "2.3.0"
 authors = ["Putnam <putnam3145@gmail.com>"]
 edition = "2021"
+license = "MIT"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -46,11 +47,11 @@ byondapi = { workspace = true }
 flume = { workspace = true }
 coarsetime = { workspace = true }
 eyre = { workspace = true }
-auxcallback = { path = "./crates/auxcallback" }
-auxmacros = { path = "./crates/auxmacros" }
-dogmos-core = { path = "./crates/dogmos-core" }
-dogmos-perf = { path = "./crates/dogmos-perf" }
-dogmos-process-metrics = { path = "./crates/dogmos-process-metrics" }
+auxcallback = { version = "0.2.1", path = "./crates/auxcallback" }
+auxmacros = { version = "0.1.0", path = "./crates/auxmacros" }
+dogmos-core = { version = "2.3.0", path = "./crates/dogmos-core" }
+dogmos-perf = { version = "2.3.0", path = "./crates/dogmos-perf" }
+dogmos-process-metrics = { version = "2.3.0", path = "./crates/dogmos-process-metrics" }
 itertools = "0.14.0"
 rayon = "1.10.0"
 float-ord = "0.3.2"
@@ -68,7 +69,7 @@ mimalloc = { version = "0.1.43", default-features = false }
 
 tracing = { version = "0.1.41", optional = true }
 tracing-tracy = { version = "0.11.4", optional = true }
-tracing-subscriber = { version = "0.3.19", optional = true }
+tracing-subscriber = { version = "0.3.20", optional = true }
 
 [dependencies.tinyvec]
 version = "1.8.1"

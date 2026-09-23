@@ -128,6 +128,8 @@ pub const MOLES_GAS_VISIBLE: f32 = 0.25;
 pub const FACTOR_GAS_VISIBLE_MAX: f32 = 20.0;
 /// Mole step for alpha updates. This means alpha can update at 0.25, 0.5, 0.75 and so on
 pub const MOLES_GAS_VISIBLE_STEP: f32 = 0.25;
+/// Meridian's overlay inventory contains 80 quarter-mole states up to 20 moles.
+pub const TOTAL_VISIBLE_STATES: f32 = FACTOR_GAS_VISIBLE_MAX / MOLES_GAS_VISIBLE_STEP;
 
 #[cfg(test)]
 mod tests {
@@ -155,6 +157,7 @@ bitflags! {
 		const NO_REACTION = 0b0;
 		const REACTING = 0b1;
 		const STOP_REACTIONS = 0b10;
+		const VOLATILE_REACTION = 0b100;
 	}
 }
 

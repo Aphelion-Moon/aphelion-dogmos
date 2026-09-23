@@ -15,24 +15,40 @@ jobs:
           - os: windows-latest
             target: i686-pc-windows-msvc
     runs-on: ${{ matrix.os }}
+    env:
+      RUSTFLAGS: ''
+      CARGO_ENCODED_RUSTFLAGS: ''
+      CARGO_INCREMENTAL: '0'
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@f8be11a05b1d4f3fcebe6410cc16743212b999b0 # 1.98.0
         with:
           targets: ${{ matrix.target }}
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/release
+            target/${{ matrix.target }}/release
+          key: build-${{ runner.os }}-${{ matrix.target }}-rust1.98.0-release-in-process-v1-flags-empty-${{ hashFiles('Cargo.lock', '**/Cargo.toml', 'rust-toolchain.toml', '.cargo/config.toml') }}-${{ github.sha }}
+          restore-keys: |
+            build-${{ runner.os }}-${{ matrix.target }}-rust1.98.0-release-in-process-v1-flags-empty-${{ hashFiles('Cargo.lock', '**/Cargo.toml', 'rust-toolchain.toml', '.cargo/config.toml') }}-
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install --yes g++-multilib libclang-dev binutils
       - name: Build source-bound native bundle
         run: python -B tools/build_in_process.py --target ${{ matrix.target }} --output target/native-bundle
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: dogmos-${{ matrix.target }}
           path: target/native-bundle
           if-no-files-found: error
       - name: Preserve failed compiler output
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: dogmos-build-failure-${{ matrix.target }}
           path: target/native-bundle/build.log
