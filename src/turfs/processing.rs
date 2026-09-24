@@ -623,7 +623,10 @@ fn post_process() {
 						continue;
 					}
 					let turf = ByondValue::new_ref(ValueType::Turf, id);
-					match turf.read_var_id(byond_string!("air")) {
+					match turf
+						.read_var_id(byond_string!("air"))
+						.map(OwnedByondValue::adopt)
+					{
 						Ok(air) if !air.is_null() => {
 							// Use the public mixture wrapper so reaction signals and the current
 							// cycle's settlement bookkeeping survive the backend switch.

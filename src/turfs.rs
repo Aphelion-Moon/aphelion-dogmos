@@ -579,7 +579,7 @@ fn hook_register_turf(src: ByondValue, flag: ByondValue) -> Result<ByondValue> {
 	}
 	if flag >= 0 {
 		let mut to_insert: TurfMixture = TurfMixture::default();
-		let air = src.read_var_id(byond_string!("air"))?;
+		let air = OwnedByondValue::adopt(src.read_var_id(byond_string!("air"))?);
 		to_insert.mix = gas_slot_for_mix(&air)?;
 		to_insert.flags = SimulationFlags::from_bits_truncate(flag as u8);
 		to_insert.id = id;

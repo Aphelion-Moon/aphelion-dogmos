@@ -904,7 +904,11 @@ fn settlement_batch_hook(src: ByondValue, neighbors: ByondValue) -> Result<Byond
 	let source = gas::gas_slot_for_mix(&src)?;
 	let slots = neighbors
 		.iter()?
-		.map(|(value, _)| gas::gas_slot_for_mix(&value))
+		.map(|(value, associated)| {
+			let value = ffi::OwnedByondValue::adopt(value);
+			let _associated = ffi::OwnedByondValue::adopt(associated);
+			gas::gas_slot_for_mix(&value)
+		})
 		.collect::<Result<Vec<_>>>()?;
 	let states = GasArena::settlement_batch(source, &slots)?;
 	// Release every native lock before allocating or returning BYOND values.
@@ -940,13 +944,16 @@ fn react_hook(src: ByondValue, holder: ByondValue) -> Result<ByondValue> {
 		return Ok((ReactionReturn::STOP_REACTIONS.bits() as f32).into());
 	};
 
-	let ssair = ByondValue::new_global_ref().read_var_id(byond_string!("SSair"))?;
-	let profile_reactions = ssair
+	let ssair = ffi::OwnedByondValue::adopt(
+		ByondValue::new_global_ref().read_var_id(byond_string!("SSair"))?,
+	);
+	let diagnostics = ffi::OwnedByondValue::adopt(ssair.read_var_id(byond_string!("diagnostics"))?);
+	let profile_reactions = diagnostics
 		.read_number_id(byond_string!("kennel_profile_reactions"))
 		.is_ok_and(|v| v != 0.0);
 	let cost_threshold_ms = if profile_reactions {
 		{
-			ssair
+			diagnostics
 				.read_number_id(byond_string!("kennel_high_cost_ms_threshold"))
 				.unwrap_or(4.0)
 		}
@@ -962,7 +969,7 @@ fn react_hook(src: ByondValue, holder: ByondValue) -> Result<ByondValue> {
 			if elapsed_ms >= cost_threshold_ms {
 				let name = reaction_name_by_id(reaction).unwrap_or_else(|| "unknown".to_string());
 				if let Ok(name_val) = ByondValue::try_from(name) {
-					let _ = ssair.call_id(
+					let _ = diagnostics.call_id(
 						byond_string!("kennel_record_reaction_cost"),
 						&[name_val, holder, elapsed_ms.into()],
 					);
@@ -1109,7 +1116,11 @@ fn equalize_all_hook(gas_list: ByondValue) -> Result<ByondValue> {
 	use std::collections::BTreeSet;
 	let gas_list = gas_list
 		.iter()?
-		.map(|(value, _)| gas::gas_slot_for_mix(&value))
+		.map(|(value, associated)| {
+			let value = ffi::OwnedByondValue::adopt(value);
+			let _associated = ffi::OwnedByondValue::adopt(associated);
+			gas::gas_slot_for_mix(&value)
+		})
 		.collect::<Result<BTreeSet<_>>>()?;
 	GasArena::with_all_mixtures(move |all_mixtures| equalize_unique_slots(all_mixtures, &gas_list));
 	Ok(ByondValue::null())
