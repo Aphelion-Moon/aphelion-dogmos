@@ -17,6 +17,16 @@ fn mixture_handle(slot: u32, generation: u32) -> MixtureHandle {
 	MixtureHandle { slot, generation }
 }
 
+#[test]
+fn weighted_temperature_survives_overflowed_combined_capacity() {
+	let temperature = dogmos_core::numerics::weighted_temperature(2.0e38, 300.0, 2.0e38, 600.0);
+	assert!((temperature - 450.0).abs() < 0.0001);
+	assert_eq!(
+		dogmos_core::numerics::weighted_temperature(2.0e38, 0.5, 2.0e38, 0.5),
+		0.5,
+	);
+}
+
 fn node(handle: u32) -> GraphNode {
 	GraphNode {
 		handle: NodeHandle(handle),

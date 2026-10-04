@@ -1,4 +1,5 @@
 use bitflags::bitflags;
+pub use dogmos_core::numerics::MOLAR_ACCURACY;
 
 /// kPa*L/(K*mol)
 pub const R_IDEAL_GAS_EQUATION: f32 = 8.31;
@@ -14,8 +15,6 @@ pub const T0C: f32 = 273.15;
 pub const T20C: f32 = 293.15;
 /// Amount of gas below which any amounts will be truncated to 0.
 pub const GAS_MIN_MOLES: f32 = 0.0001;
-/// Molar precision used when transferring gas through the DM API.
-pub const MOLAR_ACCURACY: f32 = 0.0001;
 /// Heat capacities below which heat will be considered 0.
 pub const MINIMUM_HEAT_CAPACITY: f32 = 0.0003;
 

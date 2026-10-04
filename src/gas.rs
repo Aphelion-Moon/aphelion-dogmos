@@ -102,7 +102,7 @@ pub fn shut_down_gases() {
 	MIXTURE_SLOT_HIGH_WATER.store(0, Ordering::Relaxed);
 }
 
-#[cfg(all(test, feature = "katmos", feature = "superconductivity"))]
+#[cfg(all(test, feature = "katmos"))]
 pub(crate) fn install_mixtures_for_test(mixtures: Vec<Mixture>) {
 	let active = mixtures.len();
 	*GAS_MIXTURES.write() = Some(mixtures.into_iter().map(RwLock::new).collect());
@@ -124,24 +124,40 @@ impl GasArena {
 		let mixtures = arena
 			.as_ref()
 			.ok_or_else(|| eyre::eyre!("Gas arena is not initialized"))?;
-		let source = mixtures
-			.get(src)
-			.ok_or_else(|| eyre::eyre!("No gas mixture with ID {src} exists!"))?
-			.read();
+		// Hold each distinct slot once, in the same order as numerical writers.
+		// The cardinal bound keeps lock bookkeeping on the stack, even for spilled mixtures.
+		let mut slots = [src; 7];
+		let slots = &mut slots[..neighbors.len() + 1];
+		slots[1..].copy_from_slice(neighbors);
+		slots.sort_unstable();
+		let mut guards: [Option<parking_lot::RwLockReadGuard<'_, Mixture>>; 7] =
+			[const { None }; 7];
+		for (index, &slot) in slots.iter().enumerate() {
+			if index == 0 || slot != slots[index - 1] {
+				guards[index] = Some(
+					mixtures
+						.get(slot)
+						.ok_or_else(|| eyre::eyre!("No gas mixture with ID {slot} exists!"))?
+						.read(),
+				);
+			}
+		}
+		let mixture_at = |slot| {
+			guards[slots.partition_point(|&locked_slot| locked_slot < slot)]
+				.as_deref()
+				.unwrap()
+		};
+		let source = mixture_at(src);
 		let mut result = Vec::with_capacity(neighbors.len() + 1);
 		result.push(u8::from(source.is_immutable()));
 		for &slot in neighbors {
-			// Do not recursively acquire the same lock behind a waiting writer.
 			if slot == src {
 				result.push(0);
 				continue;
 			}
-			let neighbor = mixtures
-				.get(slot)
-				.ok_or_else(|| eyre::eyre!("No gas mixture with ID {slot} exists!"))?
-				.read();
-			let differs = source.temperature_compare(&neighbor)
-				|| source.compare_with(&neighbor, constants::MINIMUM_MOLES_DELTA_TO_MOVE);
+			let neighbor = mixture_at(slot);
+			let differs = source.temperature_compare(neighbor)
+				|| source.compare_with(neighbor, constants::MINIMUM_MOLES_DELTA_TO_MOVE);
 			result.push(if !differs {
 				0
 			} else if neighbor.is_immutable() {
@@ -214,15 +230,25 @@ impl GasArena {
 		let gas_mixtures = lock
 			.as_ref()
 			.ok_or_else(|| eyre::eyre!("Gas arena is not initialized"))?;
-		let src_gas = gas_mixtures
+		let src_lock = gas_mixtures
 			.get(src)
-			.ok_or_else(|| eyre::eyre!("No gas mixture with ID {src} exists!"))?
-			.read();
-		let arg_gas = gas_mixtures
+			.ok_or_else(|| eyre::eyre!("No gas mixture with ID {src} exists!"))?;
+		let arg_lock = gas_mixtures
 			.get(arg)
-			.ok_or_else(|| eyre::eyre!("No gas mixture with ID {arg} exists!"))?
-			.read();
-		f(&src_gas, &arg_gas)
+			.ok_or_else(|| eyre::eyre!("No gas mixture with ID {arg} exists!"))?;
+		if src == arg {
+			// A second read can block behind a writer waiting for our first read.
+			let mix = src_lock.read();
+			f(&mix, &mix)
+		} else if src < arg {
+			let src_mix = src_lock.read();
+			let arg_mix = arg_lock.read();
+			f(&src_mix, &arg_mix)
+		} else {
+			let arg_mix = arg_lock.read();
+			let src_mix = src_lock.read();
+			f(&src_mix, &arg_mix)
+		}
 	}
 	/// Locks the given gas mixtures and runs the given closure on them.
 	/// # Errors
@@ -237,22 +263,7 @@ impl GasArena {
 		let gas_mixtures = lock
 			.as_ref()
 			.ok_or_else(|| eyre::eyre!("Gas arena is not initialized"))?;
-		let src_lock = gas_mixtures
-			.get(src)
-			.ok_or_else(|| eyre::eyre!("No gas mixture with ID {src} exists!"))?;
-		let arg_lock = gas_mixtures
-			.get(arg)
-			.ok_or_else(|| eyre::eyre!("No gas mixture with ID {arg} exists!"))?;
-		ensure_distinct_mixture_slots(src, arg)?;
-		if src < arg {
-			let mut src_mix = src_lock.write();
-			let mut arg_mix = arg_lock.write();
-			f(&mut src_mix, &mut arg_mix)
-		} else {
-			let mut arg_mix = arg_lock.write();
-			let mut src_mix = src_lock.write();
-			f(&mut src_mix, &mut arg_mix)
-		}
+		Self::with_gas_mixtures_mut_in(gas_mixtures, src, arg, f)
 	}
 	/// As `with_gas_mixtures_mut`, but against an arena slice the caller already holds.
 	///
@@ -287,14 +298,14 @@ impl GasArena {
 			f(&mut src_mix, &mut arg_mix)
 		}
 	}
-	/// Runs the given closure on the gas mixture *locks* rather than an already-locked version.
+	/// Write locks `src` and read locks `arg` in slot order, preserving argument order.
 	/// # Errors
 	/// If no such gas mixture exists or the closure itself errors.
 	/// # Panics
 	/// if `GAS_MIXTURES` hasn't been initialized, somehow.
-	fn with_gas_mixtures_custom<T, F>(src: usize, arg: usize, f: F) -> Result<T>
+	fn with_gas_mixtures_mut_and_read<T, F>(src: usize, arg: usize, f: F) -> Result<T>
 	where
-		F: FnOnce(&RwLock<Mixture>, &RwLock<Mixture>) -> Result<T>,
+		F: FnOnce(&mut Mixture, &Mixture) -> Result<T>,
 	{
 		let lock = GAS_MIXTURES.read();
 		let gas_mixtures = lock
@@ -307,7 +318,15 @@ impl GasArena {
 			.get(arg)
 			.ok_or_else(|| eyre::eyre!("No gas mixture with ID {arg} exists!"))?;
 		ensure_distinct_mixture_slots(src, arg)?;
-		f(src_lock, arg_lock)
+		if src < arg {
+			let mut src_mix = src_lock.write();
+			let arg_mix = arg_lock.read();
+			f(&mut src_mix, &arg_mix)
+		} else {
+			let arg_mix = arg_lock.read();
+			let mut src_mix = src_lock.write();
+			f(&mut src_mix, &arg_mix)
+		}
 	}
 	/// Fills in the first unused slot in the gas mixtures vector, or adds another one, then sets the argument ByondValue to point to it.
 	/// # Errors
@@ -459,14 +478,18 @@ where
 	GasArena::with_gas_mixtures_mut(gas_slot_for_mix(src_mix)?, gas_slot_for_mix(arg_mix)?, f)
 }
 
-/// Allows different lock levels for each gas. Instead of relevant refs to the gases, returns the `RWLock` object.
+/// Runs a closure with a mutable source and read-only argument, locked in slot order.
 /// # Errors
 /// If a gasmixture ID is not a number or the callback returns an error.
-pub fn with_mixes_custom<T, F>(src_mix: &ByondValue, arg_mix: &ByondValue, f: F) -> Result<T>
+pub fn with_mixes_mut_and_read<T, F>(src_mix: &ByondValue, arg_mix: &ByondValue, f: F) -> Result<T>
 where
-	F: FnMut(&RwLock<Mixture>, &RwLock<Mixture>) -> Result<T>,
+	F: FnOnce(&mut Mixture, &Mixture) -> Result<T>,
 {
-	GasArena::with_gas_mixtures_custom(gas_slot_for_mix(src_mix)?, gas_slot_for_mix(arg_mix)?, f)
+	GasArena::with_gas_mixtures_mut_and_read(
+		gas_slot_for_mix(src_mix)?,
+		gas_slot_for_mix(arg_mix)?,
+		f,
+	)
 }
 
 /// Gets the amount of gases that are active in byond.
@@ -527,6 +550,118 @@ mod tests {
 		prepare_gases_for_world, shut_down_gases, GasArena, GAS_MIXTURES, GAS_TEST_LOCK,
 		NEXT_GAS_IDS,
 	};
+
+	#[test]
+	fn mixture_access_preserves_worker_lock_order() {
+		use std::{
+			sync::mpsc,
+			thread,
+			time::{Duration, Instant},
+		};
+		let _guard = GAS_TEST_LOCK.lock().unwrap();
+		*GAS_MIXTURES.write() = Some(
+			(0..3)
+				.map(|_| parking_lot::RwLock::new(super::Mixture::new()))
+				.collect(),
+		);
+		type Operation = fn() -> eyre::Result<()>;
+		let operations: [(&str, Operation); 3] = [
+			("compare", || {
+				GasArena::with_gas_mixtures(2, 0, |_, _| Ok(()))
+			}),
+			("merge/copy", || {
+				GasArena::with_gas_mixtures_mut_and_read(2, 0, |_, _| Ok(()))
+			}),
+			("settlement", || {
+				GasArena::settlement_batch(2, &[1, 0, 1, 2]).map(|_| ())
+			}),
+		];
+		let mut inverted = Vec::new();
+		for (name, operation) in operations {
+			let arena = GAS_MIXTURES.read();
+			let mixtures = arena.as_ref().unwrap();
+			let low = mixtures[0].write();
+			let (started, ready) = mpsc::channel();
+			let worker = thread::spawn(move || {
+				started.send(()).unwrap();
+				operation()
+			});
+			ready.recv_timeout(Duration::from_secs(2)).unwrap();
+			// Keep the lower slot blocked while giving the operation a chance to run.
+			// Holding an upper slot here would deadlock a worker that next needed it.
+			let deadline = Instant::now() + Duration::from_millis(100);
+			while Instant::now() < deadline {
+				if mixtures[1].try_write().is_none() || mixtures[2].try_write().is_none() {
+					inverted.push(name);
+					break;
+				}
+				thread::yield_now();
+			}
+			// Release the obstruction before joining, including on the regression path.
+			drop(low);
+			worker.join().unwrap().unwrap();
+		}
+		assert!(
+			inverted.is_empty(),
+			"mixture lock order inverted by {inverted:?}"
+		);
+	}
+
+	#[test]
+	fn mixture_pair_access_preserves_arguments_and_alias_policy() {
+		let _guard = GAS_TEST_LOCK.lock().unwrap();
+		*GAS_MIXTURES.write() = Some(
+			[10.0, 20.0]
+				.map(|volume| parking_lot::RwLock::new(super::Mixture::from_vol(volume)))
+				.into(),
+		);
+		for (src, arg, expected) in [
+			(0, 1, (10.0, 20.0)),
+			(1, 0, (20.0, 10.0)),
+			(0, 0, (10.0, 10.0)),
+		] {
+			assert_eq!(
+				GasArena::with_gas_mixtures(src, arg, |source, other| {
+					assert_eq!(std::ptr::eq(source, other), src == arg);
+					Ok((source.get_volume(), other.get_volume()))
+				})
+				.unwrap(),
+				expected,
+			);
+		}
+		for (src, arg) in [(0, 1), (1, 0)] {
+			let giver_volume = GasArena::with_gas_mixture(arg, |mix| Ok(mix.get_volume())).unwrap();
+			GasArena::with_gas_mixtures_mut_and_read(src, arg, |source, other| {
+				assert_eq!(other.get_volume(), giver_volume);
+				source.set_volume(100.0 + src as f32)?;
+				Ok(())
+			})
+			.unwrap();
+			assert_eq!(
+				GasArena::with_gas_mixture(src, |mix| Ok(mix.get_volume())).unwrap(),
+				100.0 + src as f32
+			);
+			assert_eq!(
+				GasArena::with_gas_mixture(arg, |mix| Ok(mix.get_volume())).unwrap(),
+				giver_volume
+			);
+		}
+		assert!(
+			GasArena::with_gas_mixtures_mut_and_read::<(), _>(0, 0, |_, _| panic!(
+				"aliased mutation"
+			))
+			.is_err()
+		);
+		assert!(
+			GasArena::with_gas_mixtures_mut::<(), _>(0, 0, |_, _| panic!("aliased mutation"))
+				.is_err()
+		);
+		assert!(GasArena::with_gas_mixtures::<(), _>(0, 2, |_, _| panic!("invalid slot")).is_err());
+		assert!(
+			GasArena::with_gas_mixtures_mut_and_read::<(), _>(2, 0, |_, _| panic!("invalid slot"))
+				.is_err()
+		);
+	}
 
 	#[test]
 	fn settlement_batch_preserves_direction_immutability_and_aliases() {
@@ -632,6 +767,45 @@ mod tests {
 		assert_eq!(metrics.mixture_lock_bytes, 64);
 		assert_eq!(metrics.arena_capacity, 0);
 		assert_eq!(metrics.active_slots, 0);
+	}
+
+	#[test]
+	fn gas_runtime_metrics_count_retained_mole_allocations() {
+		use super::{types::*, Mixture};
+		let _guard = GAS_TEST_LOCK.lock().unwrap();
+		destroy_gas_statics();
+		set_gas_statics_manually();
+		for id in ["a", "b", "c", "d", "e", "f", "g", "h", "i"] {
+			register_gas_manually(id, 20.0);
+		}
+		let mut mixture = Mixture::new();
+		mixture.set_moles(0, 2.0).unwrap();
+		mixture.set_moles(8, 1.0).unwrap();
+		*GAS_MIXTURES.write() = Some(vec![parking_lot::RwLock::new(mixture)]);
+		assert_eq!(gas_runtime_metrics().mole_spills, 1);
+		GasArena::with_gas_mixture_mut(0, |mix| {
+			mix.set_moles(8, 0.0)?;
+			Ok(())
+		})
+		.unwrap();
+		let metrics = gas_runtime_metrics();
+		assert_eq!(metrics.mole_length_one_to_four, 1);
+		assert_eq!(
+			metrics.mole_spills, 1,
+			"truncating moles retains the heap allocation"
+		);
+		GasArena::with_gas_mixture_mut(0, |mix| {
+			mix.set_moles(0, 0.0)?;
+			Ok(())
+		})
+		.unwrap();
+		let metrics = gas_runtime_metrics();
+		assert_eq!(metrics.mole_length_zero, 1);
+		assert_eq!(
+			metrics.mole_spills, 1,
+			"an empty mixture can still own heap storage"
+		);
+		destroy_gas_statics();
 	}
 
 	#[test]

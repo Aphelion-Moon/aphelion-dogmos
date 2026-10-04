@@ -146,14 +146,13 @@ pub struct GasType {
 /// which for an optional property is the normal case - a codebase that never writes
 /// "oxidation_temperature" anywhere has no such string.
 fn read_optional_number(gas: &ByondValue, name: &str) -> Option<f32> {
-	let string_id = byondapi::byond_string::str_id_of(name).ok()?;
-	gas.read_number_id(string_id).ok()
+	read_optional_var(gas, name)?.get_number().ok()
 }
 
 /// As `read_optional_number`, for properties that are not numbers.
-fn read_optional_var(gas: &ByondValue, name: &str) -> Option<ByondValue> {
+fn read_optional_var(gas: &ByondValue, name: &str) -> Option<OwnedByondValue> {
 	let string_id = byondapi::byond_string::str_id_of(name).ok()?;
-	gas.read_var_id(string_id).ok()
+	gas.read_var_id(string_id).ok().map(OwnedByondValue::adopt)
 }
 
 impl GasType {
@@ -161,10 +160,15 @@ impl GasType {
 	fn new(gas: &ByondValue, idx: GasIDX) -> Result<Self> {
 		Ok(Self {
 			idx,
-			id: gas.read_string_id(byond_string!("id"))?.into_boxed_str(),
-			name: gas.read_string_id(byond_string!("name"))?.into_boxed_str(),
+			id: OwnedByondValue::adopt(gas.read_var_id(byond_string!("id"))?)
+				.get_string()?
+				.into_boxed_str(),
+			name: OwnedByondValue::adopt(gas.read_var_id(byond_string!("name"))?)
+				.get_string()?
+				.into_boxed_str(),
 			flags: read_optional_number(gas, "flags").unwrap_or_default() as u32,
-			specific_heat: gas.read_number_id(byond_string!("specific_heat"))?,
+			specific_heat: OwnedByondValue::adopt(gas.read_var_id(byond_string!("specific_heat"))?)
+				.get_number()?,
 			fusion_power: read_optional_number(gas, "fusion_power").unwrap_or_default(),
 			moles_visible: read_optional_number(gas, "moles_visible"),
 			fire_info: {
@@ -189,6 +193,8 @@ impl GasType {
 							.iter()
 							.unwrap()
 							.filter_map(|(k, v)| {
+								let k = OwnedByondValue::adopt(k);
+								let v = OwnedByondValue::adopt(v);
 								k.get_string().ok().and_then(|s_str| {
 									v.get_number()
 										.ok()
@@ -251,7 +257,7 @@ pub fn destroy_gas_info_structs() {
 /// For registering gases, do not touch this.
 #[auxmacros::bind("/proc/_auxtools_register_gas")]
 fn hook_register_gas(gas: ByondValue) -> Result<ByondValue> {
-	let gas_id = gas.read_string_id(byond_string!("id"))?;
+	let gas_id = OwnedByondValue::adopt(gas.read_var_id(byond_string!("id"))?).get_string()?;
 	let existing_idx = GAS_INFO_BY_STRING
 		.read()
 		.as_ref()
@@ -324,9 +330,13 @@ fn hook_init(gas_data: ByondValue) -> Result<ByondValue> {
 	crate::turfs::prepare_turfs_for_world();
 	#[cfg(feature = "superconductivity")]
 	crate::turfs::prepare_turf_heat_for_world()?;
-	let data = gas_data.read_var_id(byond_string!("datums"))?;
+	let data = OwnedByondValue::adopt(gas_data.read_var_id(byond_string!("datums"))?);
 	data.iter()?
-		.map(|(_, gas)| hook_register_gas(gas))
+		.map(|(key, gas)| {
+			let _key = OwnedByondValue::adopt(key);
+			let gas = OwnedByondValue::adopt(gas);
+			hook_register_gas(*gas)
+		})
 		.try_for_each(|res| res.map(drop))
 		.wrap_err("auxtools_atmos_init failed to register gas")?;
 	install_reaction_info()?;

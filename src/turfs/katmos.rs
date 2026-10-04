@@ -53,19 +53,11 @@ impl Default for MonstermosInfo {
 	}
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 struct ReducedInfo {
 	curr_transfer_amount: f32,
 	curr_transfer_dir: Option<NodeIndex>,
-}
-
-impl Default for ReducedInfo {
-	fn default() -> ReducedInfo {
-		ReducedInfo {
-			curr_transfer_amount: 0_f32,
-			curr_transfer_dir: None,
-		}
-	}
+	pressure_target: TurfID,
 }
 
 fn adjust_eq_movement(
@@ -343,24 +335,22 @@ fn explosively_depressurize(initial_index: TurfID, equalize_hard_turf_limit: usi
 			let cur_index = turfs[cur_queue_idx];
 			cur_queue_idx += 1;
 			let mut firelock_considerations = vec![];
-			with_turf_gases_read(|arena| -> Result<()> {
+			let mut space_target = None;
+			with_turf_gases_read(|arena| {
 				let Some(cur_mixture) = arena.get(cur_index) else {
-					return Ok(());
+					return;
 				};
 				if cur_mixture.planetary_atmos.is_some() {
 					warned_about_planet_atmos = true;
-					return Ok(());
+					return;
 				}
 				if cur_mixture.is_immutable() {
 					if space_turfs.insert(cur_index) {
-						ByondValue::new_ref(ValueType::Turf, cur_mixture.id).write_var_id(
-							byond_string!("pressure_specific_target"),
-							&ByondValue::new_ref(ValueType::Turf, cur_mixture.id),
-						)?;
+						space_target = Some(cur_mixture.id);
 					}
 				} else if cur_mixture.enabled() {
 					if cur_queue_idx > equalize_hard_turf_limit {
-						return Ok(());
+						return;
 					}
 					for (flags, adj_index, adj_mixture) in
 						arena.graph.edges(cur_index).filter_map(|edge| {
@@ -373,13 +363,19 @@ fn explosively_depressurize(initial_index: TurfID, equalize_hard_turf_limit: usi
 						}
 					}
 				}
-				Ok(())
-			})?;
-			for (cur, adj) in firelock_considerations {
-				ByondValue::new_ref(ValueType::Turf, cur).call_id(
-					byond_string!("consider_firelocks"),
-					&[ByondValue::new_ref(ValueType::Turf, adj)],
+			});
+			if let Some(id) = space_target {
+				ByondValue::new_ref(ValueType::Turf, id).write_var_id(
+					byond_string!("pressure_specific_target"),
+					&ByondValue::new_ref(ValueType::Turf, id),
 				)?;
+			}
+			for (cur, adj) in firelock_considerations {
+				let _result =
+					OwnedByondValue::adopt(ByondValue::new_ref(ValueType::Turf, cur).call_id(
+						byond_string!("consider_firelocks"),
+						&[ByondValue::new_ref(ValueType::Turf, adj)],
+					)?);
 			}
 
 			if warned_about_planet_atmos {
@@ -393,175 +389,287 @@ fn explosively_depressurize(initial_index: TurfID, equalize_hard_turf_limit: usi
 		return Ok(()); // planet atmos > space
 	}
 
-	let floor_rip_turfs =
-		with_turf_gases_read(move |arena| -> Result<Vec<(ByondValue, ByondValue)>> {
-			let mut info: HashMap<NodeIndex, Cell<ReducedInfo>, FxBuildHasher> = Default::default();
-			let mut floor_rip_turfs = vec![];
+	let ssair =
+		OwnedByondValue::adopt(ByondValue::new_global_ref().read_var_id(byond_string!("SSair"))?);
+	let high_pressure_delta =
+		OwnedByondValue::adopt(ssair.read_var_id(byond_string!("high_pressure_delta"))?);
+	let plan = with_turf_gases_read(|arena| {
+		plan_decompression(arena, &space_turfs, equalize_hard_turf_limit)
+	});
+	apply_decompression(plan, *high_pressure_delta)
+}
 
-			let mut progression_order = space_turfs
-				.iter()
-				.filter_map(|item| arena.get(*item).map_or_else(|| None, |_| Some(*item)))
-				.collect::<IndexSet<_, FxBuildHasher>>();
+#[derive(Debug, PartialEq)]
+struct DecompressionPressure {
+	turf: TurfID,
+	adjacent: TurfID,
+	difference: f32,
+	adjacent_difference: Option<f32>,
+	floor_loss: f32,
+}
 
-			#[cfg(feature = "katmos_slow_decompression")]
-			let mut space_turf_len = 0;
-			#[cfg(feature = "katmos_slow_decompression")]
-			let mut total_moles = 0.0;
-			let mut cur_queue_idx = 0;
-			//2nd floodfill
-			while cur_queue_idx < progression_order.len() {
-				let cur_index = progression_order[cur_queue_idx];
-				let cur_mixture = arena.get(cur_index).unwrap();
-				cur_queue_idx += 1;
+#[derive(Default)]
+struct DecompressionPlan {
+	targets: Vec<(TurfID, TurfID)>,
+	pressures: Vec<DecompressionPressure>,
+}
 
-				#[cfg(feature = "katmos_slow_decompression")]
-				{
-					total_moles += cur_mixture.total_moles();
-					cur_mixture.is_immutable().then(|| space_turf_len += 1);
-				}
+// Only native IDs and numerical results leave the graph lock. DM calls and reference
+// cleanup can reenter atmosphere hooks and therefore run after this snapshot is released.
+fn plan_decompression(
+	arena: &TurfGases,
+	space_turfs: &IndexSet<NodeIndex, FxBuildHasher>,
+	equalize_hard_turf_limit: usize,
+) -> DecompressionPlan {
+	let mut info: HashMap<NodeIndex, Cell<ReducedInfo>, FxBuildHasher> = Default::default();
+	let mut plan = DecompressionPlan::default();
 
-				if cur_queue_idx > equalize_hard_turf_limit {
-					continue;
-				}
+	let mut progression_order = space_turfs
+		.iter()
+		.filter_map(|item| arena.get(*item).map_or_else(|| None, |_| Some(*item)))
+		.collect::<IndexSet<_, FxBuildHasher>>();
 
-				for adj_index in arena.adjacent_node_ids(cur_index) {
-					if let Some(adj_mixture) = arena.get(adj_index) {
-						if !adj_mixture.is_immutable() && progression_order.insert(adj_index) {
-							let adj_orig = info.entry(adj_index).or_default();
-							let mut adj_info = adj_orig.get();
+	#[cfg(feature = "katmos_slow_decompression")]
+	let mut space_turf_len = 0;
+	#[cfg(feature = "katmos_slow_decompression")]
+	let mut total_moles = 0.0;
+	let mut cur_queue_idx = 0;
+	//2nd floodfill
+	while cur_queue_idx < progression_order.len() {
+		let cur_index = progression_order[cur_queue_idx];
+		let cur_mixture = arena.get(cur_index).unwrap();
+		let pressure_target = info
+			.get(&cur_index)
+			.map_or(cur_mixture.id, |entry| entry.get().pressure_target);
+		cur_queue_idx += 1;
 
-							adj_info.curr_transfer_dir = Some(cur_index);
+		#[cfg(feature = "katmos_slow_decompression")]
+		{
+			total_moles += cur_mixture.total_moles();
+			cur_mixture.is_immutable().then(|| space_turf_len += 1);
+		}
 
-							let cur_target_turf =
-								ByondValue::new_ref(ValueType::Turf, cur_mixture.id)
-									.read_var_id(byond_string!("pressure_specific_target"))?;
-							ByondValue::new_ref(ValueType::Turf, adj_mixture.id).write_var_id(
-								byond_string!("pressure_specific_target"),
-								&cur_target_turf,
-							)?;
-							adj_orig.set(adj_info);
-						}
-					}
-				}
-			}
+		if cur_queue_idx > equalize_hard_turf_limit {
+			continue;
+		}
 
-			#[cfg(feature = "katmos_slow_decompression")]
-			let non_space_turf_len = progression_order.len().saturating_sub(space_turf_len);
-			#[cfg(feature = "katmos_slow_decompression")]
-			let average_moles = if non_space_turf_len == 0 {
-				0.0
-			} else {
-				total_moles / non_space_turf_len as f32
-			};
+		for adj_index in arena.adjacent_node_ids(cur_index) {
+			if let Some(adj_mixture) = arena.get(adj_index) {
+				if !adj_mixture.is_immutable() && progression_order.insert(adj_index) {
+					let adj_orig = info.entry(adj_index).or_default();
+					let mut adj_info = adj_orig.get();
 
-			let mut hpd = ByondValue::new_global_ref()
-				.read_var_id(byond_string!("SSair"))
-				.unwrap()
-				.read_var_id(byond_string!("high_pressure_delta"))
-				.unwrap();
-
-			/*
-				`byond_locatein` is a linear search of the DM list, and the loop below pushes into
-				that same list, so checking membership per drained turf made a large breach cost
-				O(turfs * list length). Read the existing membership once and track our own pushes
-				in Rust instead. If the var somehow isn't an enumerable list we fall back to the
-				per-turf search rather than risking duplicate entries.
-			*/
-			let mut high_pressure_members: HashSet<TurfID, FxBuildHasher> = Default::default();
-			let mut membership_is_tracked = hpd.is_list();
-			if membership_is_tracked {
-				match hpd.iter() {
-					Ok(entries) => high_pressure_members
-						.extend(entries.filter_map(|(entry, _)| entry.get_ref().ok())),
-					Err(_) => membership_is_tracked = false,
+					adj_info.curr_transfer_dir = Some(cur_index);
+					adj_info.pressure_target = pressure_target;
+					plan.targets.push((adj_mixture.id, pressure_target));
+					adj_orig.set(adj_info);
 				}
 			}
+		}
+	}
 
-			for &cur_index in progression_order.iter().rev() {
-				let cur_orig = info.entry(cur_index).or_default();
-				let cur_mixture = arena.get(cur_index).unwrap();
-				let mut cur_info = cur_orig.get();
-				if cur_info.curr_transfer_dir.is_none() {
-					continue;
-				}
-				// Measure loss after clearing because slow decompression may remove less than requested.
-				let pre_clear_moles = cur_mixture.total_moles();
-				#[cfg(not(feature = "katmos_slow_decompression"))]
-				{
-					cur_mixture.clear_air();
-				}
-				#[cfg(feature = "katmos_slow_decompression")]
-				{
-					cur_mixture.clear_moles(
-						decompression_moles_per_turf(average_moles, space_turf_len).abs(),
-					);
-				}
-				let moles_lost = pre_clear_moles - cur_mixture.total_moles();
-				let mut byond_turf = ByondValue::new_ref(ValueType::Turf, cur_mixture.id);
-				let already_listed = if membership_is_tracked {
-					!high_pressure_members.insert(cur_mixture.id)
-				} else {
-					!byondapi::map::byond_locatein(&byond_turf, &hpd)?.is_null()
-				};
-				if !already_listed {
-					hpd.push_list(byond_turf)?;
-				}
-				let adj_index = cur_info.curr_transfer_dir.unwrap();
+	#[cfg(feature = "katmos_slow_decompression")]
+	let non_space_turf_len = progression_order.len().saturating_sub(space_turf_len);
+	#[cfg(feature = "katmos_slow_decompression")]
+	let average_moles = if non_space_turf_len == 0 {
+		0.0
+	} else {
+		total_moles / non_space_turf_len as f32
+	};
 
-				let adj_mixture = arena.get(adj_index).unwrap();
-				let sum = adj_mixture.total_moles();
+	for &cur_index in progression_order.iter().rev() {
+		let cur_orig = info.entry(cur_index).or_default();
+		let cur_mixture = arena.get(cur_index).unwrap();
+		let mut cur_info = cur_orig.get();
+		if cur_info.curr_transfer_dir.is_none() {
+			continue;
+		}
+		// Measure loss after clearing because slow decompression may remove less than requested.
+		let pre_clear_moles = cur_mixture.total_moles();
+		#[cfg(not(feature = "katmos_slow_decompression"))]
+		{
+			cur_mixture.clear_air();
+		}
+		#[cfg(feature = "katmos_slow_decompression")]
+		{
+			cur_mixture
+				.clear_moles(decompression_moles_per_turf(average_moles, space_turf_len).abs());
+		}
+		let moles_lost = pre_clear_moles - cur_mixture.total_moles();
+		let adj_index = cur_info.curr_transfer_dir.unwrap();
 
-				cur_info.curr_transfer_amount += sum;
-				cur_orig.set(cur_info);
+		let adj_mixture = arena.get(adj_index).unwrap();
+		let sum = adj_mixture.total_moles();
 
-				let adj_orig = info.entry(adj_index).or_default();
-				let mut adj_info = adj_orig.get();
+		cur_info.curr_transfer_amount += sum;
+		cur_orig.set(cur_info);
 
-				adj_info.curr_transfer_amount += cur_info.curr_transfer_amount;
-				adj_orig.set(adj_info);
+		let adj_orig = info.entry(adj_index).or_default();
+		let mut adj_info = adj_orig.get();
 
-				let mut byond_turf_adj = ByondValue::new_ref(ValueType::Turf, adj_mixture.id);
+		adj_info.curr_transfer_amount += cur_info.curr_transfer_amount;
+		adj_orig.set(adj_info);
 
-				byond_turf.write_var_id(
-					byond_string!("pressure_difference"),
-					&cur_info.curr_transfer_amount.into(),
-				)?;
-				byond_turf.write_var_id(
-					byond_string!("pressure_direction"),
-					&byondapi::global_call::call_global_id(
-						byond_string!("get_dir_multiz"),
-						&[byond_turf, byond_turf_adj],
-					)?,
-				)?;
+		// Pressure redistribution applies to every drained turf. Floor damage is limited to the
+		// first gas layer next to immutable space, or a connected tunnel would lose every floor
+		// tile merely because its air was included in the same decompression flood-fill.
+		let floor_loss = if should_notify_floor_rip(adj_mixture.is_immutable(), moles_lost) {
+			moles_lost
+		} else {
+			0.0
+		};
+		plan.pressures.push(DecompressionPressure {
+			turf: cur_mixture.id,
+			adjacent: adj_mixture.id,
+			difference: cur_info.curr_transfer_amount,
+			adjacent_difference: adj_info
+				.curr_transfer_dir
+				.is_none()
+				.then_some(adj_info.curr_transfer_amount),
+			floor_loss,
+		});
+	}
+	plan
+}
 
-				if adj_info.curr_transfer_dir.is_none() {
-					byond_turf_adj.write_var_id(
-						byond_string!("pressure_difference"),
-						&adj_info.curr_transfer_amount.into(),
-					)?;
-					byond_turf_adj.write_var_id(
-						byond_string!("pressure_direction"),
-						&byondapi::global_call::call_global_id(
-							byond_string!("get_dir_multiz"),
-							&[byond_turf, byond_turf_adj],
-						)?,
-					)?;
-				}
-
-				// Pressure redistribution applies to every drained turf. Floor damage is limited to the
-				// first gas layer next to immutable space, or a connected tunnel would lose every floor
-				// tile merely because its air was included in the same decompression flood-fill.
-				if should_notify_floor_rip(adj_mixture.is_immutable(), moles_lost) {
-					floor_rip_turfs.push((byond_turf, moles_lost.into()));
-				}
+fn apply_decompression(plan: DecompressionPlan, mut high_pressure_delta: ByondValue) -> Result<()> {
+	for (turf, target) in plan.targets {
+		ByondValue::new_ref(ValueType::Turf, turf).write_var_id(
+			byond_string!("pressure_specific_target"),
+			&ByondValue::new_ref(ValueType::Turf, target),
+		)?;
+	}
+	// Track membership once to avoid a linear DM list search for every drained turf.
+	let mut high_pressure_members: HashSet<TurfID, FxBuildHasher> = Default::default();
+	let mut membership_is_tracked = high_pressure_delta.is_list();
+	if membership_is_tracked {
+		match high_pressure_delta.iter() {
+			Ok(entries) => {
+				high_pressure_members.extend(entries.filter_map(|(entry, associated)| {
+					let entry = OwnedByondValue::adopt(entry);
+					let _associated = OwnedByondValue::adopt(associated);
+					entry.get_ref().ok()
+				}))
 			}
-			Ok(floor_rip_turfs)
-		})?;
-	for (turf, sum) in floor_rip_turfs {
-		turf.call_id(byond_string!("handle_decompression_floor_rip"), &[sum])?;
+			Err(_) => membership_is_tracked = false,
+		}
+	}
+	for pressure in &plan.pressures {
+		let mut turf = ByondValue::new_ref(ValueType::Turf, pressure.turf);
+		let mut adjacent = ByondValue::new_ref(ValueType::Turf, pressure.adjacent);
+		let already_listed = if membership_is_tracked {
+			!high_pressure_members.insert(pressure.turf)
+		} else {
+			!OwnedByondValue::adopt(byondapi::map::byond_locatein(&turf, &high_pressure_delta)?)
+				.is_null()
+		};
+		if !already_listed {
+			high_pressure_delta.push_list(turf)?;
+		}
+		turf.write_var_id(
+			byond_string!("pressure_difference"),
+			&pressure.difference.into(),
+		)?;
+		let direction = OwnedByondValue::adopt(byondapi::global_call::call_global_id(
+			byond_string!("get_dir_multiz"),
+			&[turf, adjacent],
+		)?);
+		turf.write_var_id(byond_string!("pressure_direction"), &direction)?;
+		if let Some(difference) = pressure.adjacent_difference {
+			adjacent.write_var_id(byond_string!("pressure_difference"), &difference.into())?;
+			adjacent.write_var_id(byond_string!("pressure_direction"), &direction)?;
+		}
+	}
+	for pressure in plan.pressures {
+		if pressure.floor_loss > 0.0 {
+			let _result = OwnedByondValue::adopt(
+				ByondValue::new_ref(ValueType::Turf, pressure.turf).call_id(
+					byond_string!("handle_decompression_floor_rip"),
+					&[pressure.floor_loss.into()],
+				)?,
+			);
+		}
 	}
 
 	Ok(())
+}
+
+#[test]
+fn decompression_plan_preserves_targets_pressure_order_and_border_floor_loss() {
+	use crate::gas::{
+		install_mixtures_for_test, shut_down_gases,
+		types::{destroy_gas_statics, register_gas_manually, set_gas_statics_manually},
+		GAS_TEST_LOCK,
+	};
+	struct GasState;
+	impl Drop for GasState {
+		fn drop(&mut self) {
+			shut_down_gases();
+			destroy_gas_statics();
+		}
+	}
+	let _lock = GAS_TEST_LOCK.lock().unwrap();
+	destroy_gas_statics();
+	set_gas_statics_manually();
+	register_gas_manually("o2", 20.0);
+	let _state = GasState;
+	let mut space = Mixture::new();
+	space.mark_immutable();
+	let mut air = Mixture::new();
+	air.set_moles(0, 100.0).unwrap();
+	install_mixtures_for_test(vec![space, air.clone(), air]);
+	let mut arena = TurfGases::with_capacity(0, 0);
+	for index in 0..3 {
+		arena.insert_turf(TurfMixture {
+			id: 10 + index as TurfID,
+			mix: index,
+			flags: SimulationFlags::SIMULATION_ALL,
+			..Default::default()
+		});
+	}
+	let space = arena.get_id(10).unwrap();
+	let border = arena.get_id(11).unwrap();
+	let interior = arena.get_id(12).unwrap();
+	for (first, second) in [(space, border), (border, interior)] {
+		arena.graph.add_edge(first, second, AdjacentFlags::empty());
+		arena.graph.add_edge(second, first, AdjacentFlags::empty());
+	}
+	let mut roots = IndexSet::default();
+	roots.insert(space);
+	let plan = plan_decompression(&arena, &roots, 100);
+	let expected_loss = if cfg!(feature = "katmos_slow_decompression") {
+		25.0
+	} else {
+		100.0
+	};
+	assert_eq!(plan.targets, [(11, 10), (12, 10)]);
+	assert_eq!(
+		plan.pressures,
+		[
+			DecompressionPressure {
+				turf: 12,
+				adjacent: 11,
+				difference: 100.0,
+				adjacent_difference: None,
+				floor_loss: 0.0
+			},
+			DecompressionPressure {
+				turf: 11,
+				adjacent: 10,
+				difference: 100.0,
+				adjacent_difference: Some(100.0),
+				floor_loss: expected_loss
+			},
+		]
+	);
+	assert_eq!(
+		arena.get(border).unwrap().total_moles(),
+		100.0 - expected_loss
+	);
+	assert_eq!(
+		arena.get(interior).unwrap().total_moles(),
+		100.0 - expected_loss
+	);
 }
 
 #[cfg(feature = "katmos_slow_decompression")]

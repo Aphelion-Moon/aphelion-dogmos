@@ -8,6 +8,7 @@
 
 use crate::gas::{constants::*, gas_idx_from_string, with_mix, with_mix_mut};
 use byondapi::prelude::*;
+use dogmos_core::numerics::quantize_moles as quantize;
 use eyre::Result;
 
 const GAS_FREON: &str = "freon";
@@ -121,11 +122,6 @@ fn mixture_fusion(byond_air: ByondValue, holder: ByondValue) -> Result<ByondValu
 		}
 	}
 	Ok(true.into())
-}
-
-/// DM's QUANTIZE(variable) macro: round(variable, MOLAR_ACCURACY).
-fn quantize(amount: f32) -> f32 {
-	(amount / MOLAR_ACCURACY).round() * MOLAR_ACCURACY
 }
 
 /// code/modules/atmospherics/gasmixtures/reactions.dm, /datum/gas_reaction/plasmafire/react().

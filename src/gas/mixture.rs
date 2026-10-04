@@ -3,6 +3,10 @@ use super::{
 };
 use crate::reaction::{Reaction, ReactionPriority};
 use atomic_float::AtomicF32;
+use dogmos_core::numerics::{
+	exchange_temperatures_wide, quantize_moles as quantize, weighted_temperature,
+	weighted_temperature_wide,
+};
 use eyre::Result;
 use itertools::{
 	Either,
@@ -83,9 +87,13 @@ pub fn validate_volume(value: f32) -> Result<f32, MixtureValueError> {
 }
 
 fn validate_mole_delta(value: f32) -> Result<f32, MixtureValueError> {
+	validate_finite(value, "mole delta")
+}
+
+fn validate_finite(value: f32, quantity: &'static str) -> Result<f32, MixtureValueError> {
 	if !value.is_finite() {
 		return Err(MixtureValueError::InvalidValue {
-			quantity: "mole delta",
+			quantity,
 			class: invalid_numeric_class(value),
 		});
 	}
@@ -132,11 +140,6 @@ pub fn visibility_step(gas_amt: f32) -> u32 {
 		.clamp(1.0, TOTAL_VISIBLE_STATES) as u32
 }
 
-#[inline]
-fn quantize(amount: f32) -> f32 {
-	(amount / MOLAR_ACCURACY).round() * MOLAR_ACCURACY
-}
-
 /// The data structure representing a Space Station 13 gas mixture.
 /// The archive is maintained by the turf grid during processing, rather than by each mixture.
 #[derive(Clone, Debug)]
@@ -161,7 +164,7 @@ impl Mixture {
 	}
 
 	pub(crate) fn moles_spilled(&self) -> bool {
-		self.moles.len() > 8
+		self.moles.is_heap()
 	}
 
 	/// Makes an empty gas mixture.
@@ -376,6 +379,22 @@ impl Mixture {
 		self.cached_heat_capacity
 			.get_or_else(|| self.slow_heat_capacity())
 	}
+	fn heat_capacity_wide(&self) -> f64 {
+		let capacity = self.heat_capacity();
+		if capacity.is_finite() {
+			return f64::from(capacity);
+		}
+		// Finite gas amounts can overflow the cache without representing an infinite reservoir.
+		with_specific_heats(|heats| {
+			self.moles
+				.iter()
+				.zip(heats)
+				.fold(0.0, |acc, (&amount, &heat)| {
+					f64::from(heat).mul_add(f64::from(amount), acc)
+				})
+		})
+		.max(f64::from(self.min_heat_capacity))
+	}
 	/// Heat capacity of exactly one gas in this mix.
 	pub fn partial_heat_capacity(&self, idx: GasIDX) -> f32 {
 		self.moles
@@ -387,24 +406,72 @@ impl Mixture {
 	pub fn total_moles(&self) -> f32 {
 		self.moles.iter().sum()
 	}
+	fn total_moles_wide(&self) -> f64 {
+		self.moles.iter().copied().map(f64::from).sum()
+	}
+	pub(crate) fn ratio_for_amount(&self, amount: f32) -> f32 {
+		let total = self.total_moles();
+		if total.is_finite() {
+			amount / total
+		} else {
+			(f64::from(amount) / self.total_moles_wide()) as f32
+		}
+	}
 	/// Pressure. Kilopascals.
 	pub fn return_pressure(&self) -> f32 {
 		if self.volume <= 0.0 {
 			return 0.0;
 		}
-		self.total_moles() * R_IDEAL_GAS_EQUATION * self.temperature / self.volume
+		let pressure = self.total_moles() * R_IDEAL_GAS_EQUATION * self.temperature / self.volume;
+		if pressure.is_finite() {
+			pressure
+		} else {
+			(self.total_moles_wide()
+				* f64::from(R_IDEAL_GAS_EQUATION)
+				* f64::from(self.temperature)
+				/ f64::from(self.volume)) as f32
+		}
 	}
 	/// Thermal energy. Joules?
 	pub fn thermal_energy(&self) -> f32 {
 		self.heat_capacity() * self.temperature
+	}
+	fn blend_temperature_and_capacity(&self, giver: &Self, ratio: f32) -> (f32, f32) {
+		let our_capacity = self.heat_capacity();
+		let other_capacity = giver.heat_capacity() * ratio;
+		let mut combined = our_capacity + other_capacity;
+		let mut temperature = if combined > MINIMUM_HEAT_CAPACITY {
+			weighted_temperature(
+				our_capacity,
+				self.temperature,
+				other_capacity,
+				giver.temperature,
+			)
+		} else {
+			self.temperature
+		};
+		if !combined.is_finite() || !temperature.is_finite() {
+			let our_capacity = self.heat_capacity_wide();
+			let other_capacity = giver.heat_capacity_wide() * f64::from(ratio);
+			let capacity = our_capacity + other_capacity;
+			combined = capacity as f32;
+			if capacity > f64::from(MINIMUM_HEAT_CAPACITY) {
+				temperature = weighted_temperature_wide(
+					our_capacity,
+					self.temperature,
+					other_capacity,
+					giver.temperature,
+				);
+			}
+		}
+		(temperature, combined)
 	}
 	/// Merges one gas mixture into another.
 	pub fn merge(&mut self, giver: &Self) {
 		if self.immutable {
 			return;
 		}
-		let our_heat_capacity = self.heat_capacity();
-		let other_heat_capacity = giver.heat_capacity();
+		let (temperature, combined_heat_capacity) = self.blend_temperature_and_capacity(giver, 1.0);
 		self.maybe_expand(giver.moles.len());
 		self.moles
 			.iter_mut()
@@ -412,24 +479,23 @@ impl Mixture {
 			.for_each(|(amount, added)| {
 				*amount = (f64::from(*amount) + f64::from(*added)).min(f64::from(f32::MAX)) as f32;
 			});
-		let combined_heat_capacity = our_heat_capacity + other_heat_capacity;
-		if combined_heat_capacity > MINIMUM_HEAT_CAPACITY {
-			self.set_temperature(
-				(our_heat_capacity * self.temperature + other_heat_capacity * giver.temperature)
-					/ (combined_heat_capacity),
-			);
+		self.set_temperature(temperature);
+		// Minimum capacities belong to their mixtures and do not add with the gas.
+		if self.min_heat_capacity == 0.0 && giver.min_heat_capacity == 0.0 {
+			self.cached_heat_capacity.set(combined_heat_capacity);
+		} else {
+			self.cached_heat_capacity.invalidate();
 		}
-		self.cached_heat_capacity.set(combined_heat_capacity);
 	}
 	/// Turns a gas mixture into the weighted average of us and the giver, with the weights being (1-ratio, ratio), for self and the giver respectively.
 	pub fn share_ratio(&mut self, giver: &Self, r: f32) {
-		if self.immutable {
+		if self.immutable || !r.is_finite() {
 			return;
 		}
 		let ratio = r.clamp(0.0, 1.0);
 		self.multiply(1.0 - ratio);
-		let our_heat_capacity = self.heat_capacity();
-		let other_heat_capacity = giver.heat_capacity() * ratio;
+		let (temperature, combined_heat_capacity) =
+			self.blend_temperature_and_capacity(giver, ratio);
 		self.maybe_expand(giver.moles.len());
 		self.moles
 			.iter_mut()
@@ -438,14 +504,12 @@ impl Mixture {
 				*amount = (f64::from(*amount) + f64::from(*added) * f64::from(ratio))
 					.min(f64::from(f32::MAX)) as f32;
 			});
-		let combined_heat_capacity = our_heat_capacity + other_heat_capacity;
-		if combined_heat_capacity > MINIMUM_HEAT_CAPACITY {
-			self.set_temperature(
-				(our_heat_capacity * self.temperature + other_heat_capacity * giver.temperature)
-					/ (combined_heat_capacity),
-			);
+		self.set_temperature(temperature);
+		if self.min_heat_capacity == 0.0 && giver.min_heat_capacity == 0.0 {
+			self.cached_heat_capacity.set(combined_heat_capacity);
+		} else {
+			self.cached_heat_capacity.invalidate();
 		}
-		self.cached_heat_capacity.set(combined_heat_capacity);
 	}
 	/// Transfers only the given gases from us to another mix.
 	pub fn transfer_gases_to(
@@ -464,11 +528,19 @@ impl Mixture {
 			});
 		}
 		let ratio = r.clamp(0.0, 1.0);
-		let initial_energy = into.thermal_energy();
+		let initial_heat_capacity = into.heat_capacity();
+		let initial_energy = initial_heat_capacity * into.temperature;
+		let initial_energy_wide = (!initial_energy.is_finite())
+			.then(|| into.heat_capacity_wide() * f64::from(into.temperature));
 		let mut heat_transfer = 0.0;
-		let mut transfers = Vec::with_capacity(gases.len());
+		let mut transfers = TinyVec::<[(GasIDX, f32); 8]>::new();
 		with_specific_heats(|heats| {
 			for i in gases.iter().copied() {
+				// A filter selects species, even if its caller lists one more than once.
+				// Keep first-occurrence order and bound scratch to distinct source species.
+				if transfers.iter().any(|&(index, _)| index == i) {
+					continue;
+				}
 				if let (Some(orig), Some(specific_heat)) = (self.moles.get(i), heats.get(i)) {
 					let delta = *orig * ratio;
 					heat_transfer += delta * self.temperature * specific_heat;
@@ -482,7 +554,7 @@ impl Mixture {
 				return Err(MixtureValueError::MoleOverflow { index: idx });
 			}
 		}
-		for (idx, delta) in transfers {
+		for &(idx, delta) in &transfers {
 			self.moles[idx] -= delta;
 			into.adjust_moles(idx, delta)?;
 		}
@@ -490,7 +562,21 @@ impl Mixture {
 		into.cached_heat_capacity.invalidate();
 		let new_heat_capacity = into.heat_capacity();
 		if new_heat_capacity > MINIMUM_HEAT_CAPACITY {
-			into.set_temperature((initial_energy + heat_transfer) / new_heat_capacity);
+			let mut temperature = (initial_energy + heat_transfer) / new_heat_capacity;
+			if !temperature.is_finite() || !new_heat_capacity.is_finite() {
+				let transferred_energy = with_specific_heats(|heats| {
+					transfers
+						.iter()
+						.map(|&(idx, delta)| {
+							f64::from(delta) * f64::from(self.temperature) * f64::from(heats[idx])
+						})
+						.sum::<f64>()
+				});
+				temperature = ((initial_energy_wide.unwrap_or(f64::from(initial_energy))
+					+ transferred_energy)
+					/ into.heat_capacity_wide()) as f32;
+			}
+			into.set_temperature(temperature);
 		}
 		Ok(())
 	}
@@ -523,7 +609,7 @@ impl Mixture {
 	}
 	/// As `remove_ratio_into`, but a raw number of moles instead of a ratio.
 	pub fn remove_into(&mut self, amount: f32, into: &mut Self) {
-		self.remove_ratio_into(amount / self.total_moles(), into);
+		self.remove_ratio_into(self.ratio_for_amount(amount), into);
 	}
 	/// A convenience function that makes the mixture for `remove_ratio_into` on the spot and returns it.
 	#[must_use]
@@ -535,7 +621,7 @@ impl Mixture {
 	/// Like `remove_ratio`, but with moles.
 	#[must_use]
 	pub fn remove(&mut self, amount: f32) -> Self {
-		self.remove_ratio(amount / self.total_moles())
+		self.remove_ratio(self.ratio_for_amount(amount))
 	}
 	/// Copies from a given gas mixture, if we're mutable.
 	pub fn copy_from_mutable(&mut self, sample: &Self) {
@@ -544,7 +630,11 @@ impl Mixture {
 		}
 		self.moles = sample.moles.clone();
 		self.temperature = sample.temperature;
-		self.cached_heat_capacity = sample.cached_heat_capacity.clone();
+		if self.min_heat_capacity == sample.min_heat_capacity {
+			self.cached_heat_capacity = sample.cached_heat_capacity.clone();
+		} else {
+			self.cached_heat_capacity.invalidate();
+		}
 	}
 	/// Makes a copy of this gas mixture that is guaranteed mutable, regardless of whether this one is immutable
 	pub fn copy_to_mutable(&self) -> Self {
@@ -556,29 +646,20 @@ impl Mixture {
 	/// Works well enough for our purposes, though perhaps called less often
 	/// than it ought to be while we're working in Rust.
 	/// Differs from the original by not using archive, since we don't put the archive into the gas mix itself anymore.
-	pub fn temperature_share(&mut self, sharer: &mut Self, conduction_coefficient: f32) -> f32 {
-		let temperature_delta = self.temperature - sharer.temperature;
-		if temperature_delta.abs() > MINIMUM_TEMPERATURE_DELTA_TO_CONSIDER {
-			let self_heat_capacity = self.heat_capacity();
-			let sharer_heat_capacity = sharer.heat_capacity();
-
-			if sharer_heat_capacity > MINIMUM_HEAT_CAPACITY
-				&& self_heat_capacity > MINIMUM_HEAT_CAPACITY
-			{
-				let heat = conduction_coefficient
-					* temperature_delta
-					* harmonic_heat_capacity(self_heat_capacity, sharer_heat_capacity);
-				if !self.immutable {
-					self.set_temperature((self.temperature - heat / self_heat_capacity).max(TCMB));
-				}
-				if !sharer.immutable {
-					sharer.set_temperature(
-						(sharer.temperature + heat / sharer_heat_capacity).max(TCMB),
-					);
-				}
-			}
-		}
-		sharer.temperature
+	pub fn temperature_share(
+		&mut self,
+		sharer: &mut Self,
+		conduction_coefficient: f32,
+	) -> Result<f32, MixtureValueError> {
+		let (ours, theirs) = self.shared_temperatures(
+			conduction_coefficient,
+			sharer.temperature,
+			sharer.heat_capacity(),
+			|| sharer.heat_capacity_wide(),
+		)?;
+		self.set_temperature(ours);
+		sharer.set_temperature(theirs);
+		Ok(sharer.temperature)
 	}
 	/// As above, but you may put in any arbitrary coefficient, temp, heat capacity.
 	/// Only used for superconductivity as of right now.
@@ -587,7 +668,31 @@ impl Mixture {
 		conduction_coefficient: f32,
 		sharer_temperature: f32,
 		sharer_heat_capacity: f32,
-	) -> f32 {
+	) -> Result<f32, MixtureValueError> {
+		let (ours, theirs) = self.shared_temperatures(
+			conduction_coefficient,
+			sharer_temperature,
+			sharer_heat_capacity,
+			|| f64::from(sharer_heat_capacity),
+		)?;
+		self.set_temperature(ours);
+		Ok(theirs)
+	}
+	fn shared_temperatures(
+		&self,
+		conduction_coefficient: f32,
+		sharer_temperature: f32,
+		sharer_heat_capacity: f32,
+		sharer_capacity_wide: impl FnOnce() -> f64,
+	) -> Result<(f32, f32), MixtureValueError> {
+		validate_finite(conduction_coefficient, "heat conductivity")?;
+		validate_finite(sharer_temperature, "sharer temperature")?;
+		if sharer_heat_capacity.is_nan() || sharer_heat_capacity < 0.0 {
+			return Err(MixtureValueError::InvalidValue {
+				quantity: "sharer heat capacity",
+				class: invalid_numeric_class(sharer_heat_capacity),
+			});
+		}
 		let temperature_delta = self.temperature - sharer_temperature;
 		if temperature_delta.abs() > MINIMUM_TEMPERATURE_DELTA_TO_CONSIDER {
 			let self_heat_capacity = self.heat_capacity();
@@ -598,13 +703,31 @@ impl Mixture {
 				let heat = conduction_coefficient
 					* temperature_delta
 					* harmonic_heat_capacity(self_heat_capacity, sharer_heat_capacity);
-				if !self.immutable {
-					self.set_temperature((self.temperature - heat / self_heat_capacity).max(TCMB));
+				let mut ours = self.temperature - heat / self_heat_capacity;
+				let mut theirs = sharer_temperature + heat / sharer_heat_capacity;
+				if !self_heat_capacity.is_finite()
+					|| !sharer_heat_capacity.is_finite()
+					|| !heat.is_finite()
+					|| !ours.is_finite()
+					|| !theirs.is_finite()
+				{
+					let (wide_ours, wide_theirs) = exchange_temperatures_wide(
+						self.heat_capacity_wide(),
+						self.temperature,
+						sharer_capacity_wide(),
+						sharer_temperature,
+						conduction_coefficient,
+					);
+					ours = wide_ours.max(f64::from(TCMB)) as f32;
+					theirs = wide_theirs.max(f64::from(TCMB)) as f32;
 				}
-				return (sharer_temperature + heat / sharer_heat_capacity).max(TCMB);
+				return Ok((
+					validate_finite(ours, "mixture heat-exchange temperature")?.max(TCMB),
+					validate_finite(theirs, "sharer heat-exchange temperature")?.max(TCMB),
+				));
 			}
 		}
-		sharer_temperature
+		Ok((self.temperature, sharer_temperature))
 	}
 	/// The second part of old compare(). Compares temperature, but only if this gas has sufficiently high moles.
 	pub fn temperature_compare(&self, sample: &Self) -> bool {
@@ -800,9 +923,23 @@ impl Mixture {
 		super::with_gas_info(|gas_info| self.get_fire_info_with_lock(gas_info))
 	}
 	/// Adds heat directly to the gas mixture, in joules (probably).
-	pub fn adjust_heat(&mut self, heat: f32) {
+	pub fn adjust_heat(&mut self, heat: f32) -> Result<(), MixtureValueError> {
+		validate_finite(heat, "heat adjustment")?;
+		if self.immutable {
+			return Ok(());
+		}
 		let cap = self.heat_capacity();
-		self.set_temperature(((cap * self.temperature) + heat) / cap);
+		if cap <= 0.0 {
+			return Ok(());
+		}
+		let mut temperature = ((cap * self.temperature) + heat) / cap;
+		if !temperature.is_finite() {
+			let capacity = self.heat_capacity_wide();
+			temperature = ((capacity * f64::from(self.temperature) + f64::from(heat)) / capacity)
+				.max(f64::from(TCMB)) as f32;
+		}
+		self.set_temperature(validate_finite(temperature, "heat-adjusted temperature")?);
+		Ok(())
 	}
 	/// Returns true if there's a visible gas in this mix.
 	pub fn is_visible(&self) -> bool {
@@ -922,6 +1059,388 @@ mod tests {
 	}
 
 	#[test]
+	fn large_removal_keeps_quantized_moles_finite() {
+		let _guard = GAS_TEST_LOCK.lock().unwrap();
+		destroy_gas_statics();
+		initialize_gases();
+		let mut results = Vec::new();
+		for immutable in [false, true] {
+			let mut source = Mixture::new();
+			source.set_moles(0, 1.0e35).unwrap();
+			if immutable {
+				source.mark_immutable();
+			}
+			let removed = source.remove_ratio(0.5);
+			results.push((immutable, source.get_moles(0), removed.get_moles(0)));
+		}
+		destroy_gas_statics();
+		drop(_guard);
+		assert_eq!(results, [(false, 5.0e34, 5.0e34), (true, 1.0e35, 5.0e34)],);
+	}
+
+	#[test]
+	fn pressure_survives_overflowed_intermediates() {
+		let _guard = GAS_TEST_LOCK.lock().unwrap();
+		destroy_gas_statics();
+		initialize_gases();
+		let mut single = Mixture::from_vol(1.0e6);
+		single.set_moles(0, 1.0e36).unwrap();
+		single.set_temperature(300.0);
+		let mut combined = Mixture::from_vol(1.0e8);
+		combined.set_moles(0, 2.0e38).unwrap();
+		combined.set_moles(1, 2.0e38).unwrap();
+		combined.set_temperature(300.0);
+		let pressures = [single.return_pressure(), combined.return_pressure()];
+		destroy_gas_statics();
+		drop(_guard);
+		// Ideal-gas golden values; two parts per million covers f32 operand rounding.
+		for (pressure, expected) in pressures.into_iter().zip([2.493e33, 9.972e33]) {
+			assert!((pressure / expected - 1.0).abs() < 2.0e-6, "{pressure}");
+		}
+	}
+
+	#[test]
+	fn mixture_temperatures_survive_overflowed_intermediate_energy() {
+		let _guard = GAS_TEST_LOCK.lock().unwrap();
+		destroy_gas_statics();
+		initialize_gases();
+		let mut cold = Mixture::new();
+		cold.set_moles(0, 1.0e35).unwrap();
+		cold.set_temperature(300.0);
+		let mut hot = cold.clone();
+		hot.set_temperature(600.0);
+		let mut merged = cold.clone();
+		merged.merge(&hot);
+		let mut shared = cold.clone();
+		shared.share_ratio(&hot, 0.5);
+		let mut transferred = cold.clone();
+		hot.transfer_gases_to(1.0, &[0], &mut transferred).unwrap();
+		let mut empty = Mixture::new();
+		cold.transfer_gases_to(1.0, &[0], &mut empty).unwrap();
+		let temperatures = [
+			merged.get_temperature(),
+			shared.get_temperature(),
+			transferred.get_temperature(),
+			empty.get_temperature(),
+		];
+		let moles = [
+			merged.get_moles(0),
+			shared.get_moles(0),
+			transferred.get_moles(0),
+			empty.get_moles(0),
+			hot.get_moles(0),
+			cold.get_moles(0),
+		];
+		destroy_gas_statics();
+		drop(_guard);
+		assert_eq!(moles, [2.0e35, 1.0e35, 2.0e35, 1.0e35, 0.0, 0.0]);
+		for (actual, expected) in temperatures.into_iter().zip([450.0, 450.0, 450.0, 300.0]) {
+			assert!((actual - expected).abs() < 0.0001, "{temperatures:?}");
+		}
+	}
+
+	#[test]
+	fn selective_transfer_capacity_overflow_preserves_weighted_temperature() {
+		let _guard = GAS_TEST_LOCK.lock().unwrap();
+		destroy_gas_statics();
+		initialize_gases();
+		let mut source = Mixture::new();
+		source.set_moles(0, 1.0e37).unwrap();
+		source.set_temperature(600.0);
+		let mut destination = source.clone();
+		destination.set_temperature(300.0);
+		source
+			.transfer_gases_to(1.0, &[0], &mut destination)
+			.unwrap();
+		let temperature = destination.get_temperature();
+		destroy_gas_statics();
+		drop(_guard);
+		// Each source capacity fits f32; the combined capacity does not.
+		assert!((temperature - 450.0).abs() < 0.0001, "{temperature}");
+	}
+
+	fn mixture_at(amount: f32, temperature: f32) -> Mixture {
+		let mut mixture = Mixture::new();
+		mixture.set_moles(0, amount).unwrap();
+		mixture.set_temperature(temperature);
+		mixture
+	}
+
+	#[test]
+	fn aggregate_capacity_preserves_blend_and_transfer_temperatures() {
+		let _guard = GAS_TEST_LOCK.lock().unwrap();
+		destroy_gas_statics();
+		initialize_gases();
+		let cold = mixture_at(1.0e38, 300.0);
+		let hot = mixture_at(1.0e38, 600.0);
+		let mut merged = cold.clone();
+		merged.merge(&hot);
+		let mut shared = cold.clone();
+		shared.share_ratio(&hot, 0.5);
+		let mut source = hot.clone();
+		let mut destination = cold.clone();
+		source
+			.transfer_gases_to(1.0, &[0], &mut destination)
+			.unwrap();
+		let mut zero_share = mixture_at(10.0, 300.0);
+		zero_share.share_ratio(&hot, 0.0);
+		let results = [
+			merged.temperature,
+			shared.temperature,
+			destination.temperature,
+		];
+		let zero_result = (zero_share.temperature, zero_share.heat_capacity());
+		let transferred_moles = (source.get_moles(0), destination.get_moles(0));
+		destroy_gas_statics();
+		drop(_guard);
+		assert_eq!(transferred_moles, (0.0, 2.0e38));
+		assert_eq!(zero_result, (300.0, 200.0));
+		for temperature in results {
+			assert!((temperature - 450.0).abs() < 0.0001, "{results:?}");
+		}
+	}
+
+	#[test]
+	fn aggregate_moles_allow_amount_based_removal() {
+		let _guard = GAS_TEST_LOCK.lock().unwrap();
+		destroy_gas_statics();
+		initialize_gases();
+		let mut source = mixture_at(2.0e38, 300.0);
+		source.set_moles(1, 2.0e38).unwrap();
+		let removed = source.remove(1.0e38);
+		let result = [
+			source.get_moles(0),
+			source.get_moles(1),
+			removed.get_moles(0),
+			removed.get_moles(1),
+		];
+		destroy_gas_statics();
+		drop(_guard);
+		for (actual, expected) in result.into_iter().zip([1.5e38, 1.5e38, 5.0e37, 5.0e37]) {
+			assert!((actual / expected - 1.0).abs() < 2.0e-6, "{result:?}");
+		}
+	}
+
+	#[test]
+	fn aggregate_capacity_and_energy_allow_heat_exchange() {
+		let _guard = GAS_TEST_LOCK.lock().unwrap();
+		destroy_gas_statics();
+		initialize_gases();
+		let mut results = Vec::new();
+		for amount in [1.0e35, 1.0e38] {
+			let mut hot = mixture_at(amount, 900.0);
+			let mut cold = mixture_at(amount, 300.0);
+			hot.temperature_share(&mut cold, 1.0).unwrap();
+			results.push((hot.temperature, cold.temperature));
+		}
+		let mut hot = mixture_at(1.0e35, 900.0);
+		let external = hot.temperature_share_non_gas(1.0, 300.0, 2.0e36).unwrap();
+		results.push((hot.temperature, external));
+		let mut reservoir_gas = mixture_at(1.0e38, 900.0);
+		let reservoir = reservoir_gas
+			.temperature_share_non_gas(0.4, 300.0, f32::INFINITY)
+			.unwrap();
+		destroy_gas_statics();
+		drop(_guard);
+		for &(hot, cold) in &results {
+			assert!(
+				(hot - 600.0).abs() < 0.0001 && (cold - 600.0).abs() < 0.0001,
+				"{results:?}"
+			);
+		}
+		assert!((reservoir_gas.temperature - 660.0).abs() < 0.0001);
+		assert_eq!(reservoir, 300.0);
+	}
+
+	#[test]
+	fn aggregate_capacity_and_energy_allow_heat_adjustment() {
+		let _guard = GAS_TEST_LOCK.lock().unwrap();
+		destroy_gas_statics();
+		initialize_gases();
+		let mut results = Vec::new();
+		for (amount, heat, expected) in [
+			(1.0e35, 2.0e38, 400.0),
+			(1.0e35, -2.0e38, 200.0),
+			(2.0e37, 2.0e38, 300.5),
+			(2.0e37, -2.0e38, 299.5),
+		] {
+			let mut mixture = mixture_at(amount, 300.0);
+			mixture.adjust_heat(heat).unwrap();
+			results.push((mixture.temperature, expected));
+		}
+		destroy_gas_statics();
+		drop(_guard);
+		for &(actual, expected) in &results {
+			assert!((actual - expected).abs() < 0.0001, "{results:?}");
+		}
+	}
+
+	#[test]
+	fn heat_updates_reject_invalid_or_unrepresentable_results_before_mutation() {
+		let _guard = GAS_TEST_LOCK.lock().unwrap();
+		destroy_gas_statics();
+		initialize_gases();
+		let mut hot = mixture_at(1.0, f32::MAX);
+		let mut cold = mixture_at(1.0, 300.0);
+		let mut rejected = vec![hot.temperature_share(&mut cold, f32::MAX).is_err()];
+		for invalid in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+			rejected.push(hot.temperature_share(&mut cold, invalid).is_err());
+		}
+		for (temperature, capacity) in [(f32::NAN, 20.0), (300.0, f32::NAN), (300.0, -1.0)] {
+			rejected.push(
+				cold.temperature_share_non_gas(1.0, temperature, capacity)
+					.is_err(),
+			);
+		}
+		let mut small = mixture_at(0.001, 300.0);
+		rejected.push(small.adjust_heat(f32::MAX).is_err());
+		rejected.push(small.adjust_heat(f32::NAN).is_err());
+		let unchanged = (hot.temperature, cold.temperature, small.temperature);
+		small.adjust_heat(-f32::MAX).unwrap();
+		destroy_gas_statics();
+		drop(_guard);
+		assert!(rejected.into_iter().all(|rejected| rejected));
+		assert_eq!(unchanged, (f32::MAX, 300.0, 300.0));
+		assert_eq!(small.temperature, TCMB);
+	}
+
+	#[test]
+	fn heat_exchange_preserves_immutable_and_zero_capacity_cases() {
+		let _guard = GAS_TEST_LOCK.lock().unwrap();
+		destroy_gas_statics();
+		initialize_gases();
+		let mut results = Vec::new();
+		for (immutable_hot, immutable_cold) in [(true, false), (false, true), (true, true)] {
+			let mut hot = mixture_at(1.0e38, 900.0);
+			let mut cold = mixture_at(1.0e38, 300.0);
+			if immutable_hot {
+				hot.mark_immutable();
+			}
+			if immutable_cold {
+				cold.mark_immutable();
+			}
+			let returned = hot.temperature_share(&mut cold, 1.0).unwrap();
+			results.push((hot.temperature, if immutable_hot { 900.0 } else { 600.0 }));
+			results.push((cold.temperature, if immutable_cold { 300.0 } else { 600.0 }));
+			results.push((returned, cold.temperature));
+		}
+		let mut empty = Mixture::new();
+		empty.adjust_heat(2.0e38).unwrap();
+		let mut hot = mixture_at(1.0e38, 900.0);
+		empty.temperature_share(&mut hot, 1.0).unwrap();
+		results.extend([(empty.temperature, TCMB), (hot.temperature, 900.0)]);
+		destroy_gas_statics();
+		drop(_guard);
+		for &(actual, expected) in &results {
+			assert!((actual - expected).abs() < 0.0001, "{results:?}");
+		}
+	}
+
+	#[test]
+	fn cached_heat_capacity_respects_destination_floor_after_mixture_operations() {
+		let _guard = GAS_TEST_LOCK.lock().unwrap();
+		destroy_gas_statics();
+		initialize_gases();
+		type Operation = fn(&mut Mixture, &Mixture);
+		let operations: [(&str, Operation, f32, f32); 3] = [
+			("copy", Mixture::copy_from_mutable, 1.0, 20.0),
+			("merge", Mixture::merge, 2.0, 40.0),
+			("share", |src, giver| src.share_ratio(giver, 0.5), 1.0, 20.0),
+		];
+		let mut mismatches = Vec::new();
+		for (name, operation, expected_moles, gas_capacity) in operations {
+			for (source_floor, giver_floor, expected_capacity) in [
+				(100.0, 0.0, 100.0),
+				(0.0, 100.0, gas_capacity),
+				(100.0, 300.0, 100.0),
+				(10.0, 10.0, gas_capacity),
+			] {
+				let mut source = Mixture::new();
+				source.set_moles(0, 1.0).unwrap();
+				source.set_temperature(300.0);
+				source.set_min_heat_capacity(source_floor);
+				let mut giver = source.clone();
+				giver.set_min_heat_capacity(giver_floor);
+				// Warm both caches before mutation; uncomputed caches hide the copy defect.
+				source.heat_capacity();
+				giver.heat_capacity();
+				operation(&mut source, &giver);
+				assert_eq!(source.get_moles(0), expected_moles);
+				let cached = source.heat_capacity();
+				source.set_moles(0, expected_moles).unwrap();
+				let recalculated = source.heat_capacity();
+				if cached != expected_capacity || recalculated != expected_capacity {
+					mismatches.push((
+						name,
+						source_floor,
+						giver_floor,
+						cached,
+						recalculated,
+						expected_capacity,
+					));
+				}
+			}
+		}
+		destroy_gas_statics();
+		assert!(
+			mismatches.is_empty(),
+			"stale mixture heat capacities: {mismatches:?}"
+		);
+	}
+
+	#[test]
+	fn selective_transfer_treats_repeated_gas_ids_as_one_selection() {
+		let _guard = GAS_TEST_LOCK.lock().unwrap();
+		destroy_gas_statics();
+		initialize_gases();
+		let mut source = Mixture::new();
+		source.set_moles(0, 10.0).unwrap();
+		source.set_moles(1, 5.0).unwrap();
+		source.set_temperature(400.0);
+		let mut destination = Mixture::new();
+		destination.set_moles(0, 2.0).unwrap();
+		destination.set_moles(1, 1.0).unwrap();
+		destination.set_temperature(200.0);
+		source
+			.transfer_gases_to(0.75, &[1, 0, 1, 0], &mut destination)
+			.unwrap();
+		assert_eq!((source.get_moles(0), source.get_moles(1)), (2.5, 1.25));
+		assert_eq!(
+			(destination.get_moles(0), destination.get_moles(1)),
+			(9.5, 4.75)
+		);
+		// 3 mol at 200 K plus 11.25 mol at 400 K, with specific heat 20 J/(mol K).
+		assert!((destination.get_temperature() - 357.89474).abs() < 0.0001);
+		assert_eq!(source.get_temperature(), 400.0);
+		assert!(!source.is_corrupt());
+		assert!(!destination.is_corrupt());
+		destroy_gas_statics();
+	}
+
+	#[test]
+	fn selective_transfer_preflights_all_unique_gases_before_mutation() {
+		let _guard = GAS_TEST_LOCK.lock().unwrap();
+		destroy_gas_statics();
+		initialize_gases();
+		let mut source = Mixture::new();
+		source.set_moles(0, 10.0).unwrap();
+		source.set_moles(1, 1.0e38).unwrap();
+		let mut destination = Mixture::new();
+		destination.set_moles(0, 5.0).unwrap();
+		destination.set_moles(1, 3.0e38).unwrap();
+		assert_eq!(
+			source.transfer_gases_to(0.5, &[0, 1, 0], &mut destination),
+			Err(MixtureValueError::MoleOverflow { index: 1 }),
+		);
+		assert_eq!((source.get_moles(0), source.get_moles(1)), (10.0, 1.0e38));
+		assert_eq!(
+			(destination.get_moles(0), destination.get_moles(1)),
+			(5.0, 3.0e38)
+		);
+		destroy_gas_statics();
+	}
+
+	#[test]
 	fn test_gases() {
 		let _guard = GAS_TEST_LOCK.lock().unwrap();
 		initialize_gases();
@@ -940,7 +1459,9 @@ mod tests {
 		let mut cold_capacity = Mixture::new();
 		cold_capacity.set_min_heat_capacity(1e20);
 		cold_capacity.set_temperature(300.0);
-		hot_capacity.temperature_share(&mut cold_capacity, 1.0);
+		hot_capacity
+			.temperature_share(&mut cold_capacity, 1.0)
+			.unwrap();
 		assert!((hot_capacity.get_temperature() - 650.0).abs() < 0.01);
 		assert!((cold_capacity.get_temperature() - 650.0).abs() < 0.01);
 
@@ -991,7 +1512,7 @@ mod tests {
 		let mut quantized = Mixture::new();
 		quantized.set_moles(0, 1.23456).unwrap();
 		let quantized_removed = quantized.remove_ratio(0.5);
-		let expected_removed = (1.23456 * 0.5 / MOLAR_ACCURACY).round() * MOLAR_ACCURACY;
+		let expected_removed = 0.6173;
 		assert!((quantized_removed.get_moles(0) - expected_removed).abs() < 1e-6);
 		assert!((quantized.get_moles(0) - (1.23456 - expected_removed)).abs() < 1e-6);
 

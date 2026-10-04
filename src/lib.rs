@@ -17,8 +17,8 @@ use eyre::Result;
 use gas::constants::{ReactionReturn, GAS_MIN_MOLES, MINIMUM_MOLES_DELTA_TO_MOVE};
 use gas::{
 	amt_gases, constants, gas_idx_from_string, gas_idx_from_value, gas_idx_to_id, tot_gases, types,
-	with_gas_info, with_mix, with_mix_mut, with_mixes, with_mixes_custom, with_mixes_mut, GasArena,
-	GasIDX, Mixture,
+	with_gas_info, with_mix, with_mix_mut, with_mixes, with_mixes_mut, with_mixes_mut_and_read,
+	GasArena, GasIDX, Mixture,
 };
 use reaction::{react_by_id, reaction_name_by_id};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -440,10 +440,21 @@ fn unregister_gasmixture_hook(src: ByondValue) -> Result<ByondValue> {
 	Ok(ByondValue::null())
 }
 
+fn finite_mixture_scalar(quantity: &str, value: f32) -> Result<ByondValue> {
+	if !value.is_finite() {
+		return Err(eyre::eyre!(
+			"Gas mixture {quantity} produced a non-finite result: {value}"
+		));
+	}
+	Ok(value.into())
+}
+
 /// Returns: Heat capacity, in J/K (probably).
 #[auxmacros::bind("/datum/gas_mixture/proc/heat_capacity")]
 fn heat_cap_hook(src: ByondValue) -> Result<ByondValue> {
-	with_mix(&src, |mix| Ok(mix.heat_capacity().into()))
+	with_mix(&src, |mix| {
+		finite_mixture_scalar("heat_capacity", mix.heat_capacity())
+	})
 }
 
 /// Args: (min_heat_cap). Sets the mix's minimum heat capacity.
@@ -459,13 +470,17 @@ fn min_heat_cap_hook(src: ByondValue, arg_min: ByondValue) -> Result<ByondValue>
 /// Returns: Amount of substance, in moles.
 #[auxmacros::bind("/datum/gas_mixture/proc/total_moles")]
 fn total_moles_hook(src: ByondValue) -> Result<ByondValue> {
-	with_mix(&src, |mix| Ok(mix.total_moles().into()))
+	with_mix(&src, |mix| {
+		finite_mixture_scalar("total_moles", mix.total_moles())
+	})
 }
 
 /// Returns: the mix's pressure, in kilopascals.
 #[auxmacros::bind("/datum/gas_mixture/proc/return_pressure")]
 fn return_pressure_hook(src: ByondValue) -> Result<ByondValue> {
-	with_mix(&src, |mix| Ok(mix.return_pressure().into()))
+	with_mix(&src, |mix| {
+		finite_mixture_scalar("return_pressure", mix.return_pressure())
+	})
 }
 
 /// Returns: the mix's temperature, in kelvins.
@@ -483,7 +498,9 @@ fn return_volume_hook(src: ByondValue) -> Result<ByondValue> {
 /// Returns: the mix's thermal energy, the product of the mixture's heat capacity and its temperature.
 #[auxmacros::bind("/datum/gas_mixture/proc/thermal_energy")]
 fn thermal_energy_hook(src: ByondValue) -> Result<ByondValue> {
-	with_mix(&src, |mix| Ok(mix.thermal_energy().into()))
+	with_mix(&src, |mix| {
+		finite_mixture_scalar("thermal_energy", mix.thermal_energy())
+	})
 }
 
 /// Args: (mixture). Merges the gas from the giver into src, without modifying the giver mix.
@@ -491,8 +508,8 @@ fn thermal_energy_hook(src: ByondValue) -> Result<ByondValue> {
 /// which gas tanks and the atmos reaction recorder listen for, and returns a success boolean.
 #[auxmacros::bind("/datum/gas_mixture/proc/__merge")]
 fn merge_hook(src: ByondValue, giver: ByondValue) -> Result<ByondValue> {
-	with_mixes_custom(&src, &giver, |src_mix, giver_mix| {
-		src_mix.write().merge(&giver_mix.read());
+	with_mixes_mut_and_read(&src, &giver, |src_mix, giver_mix| {
+		src_mix.merge(giver_mix);
 		Ok(ByondValue::null())
 	})
 }
@@ -524,8 +541,8 @@ fn remove_hook(src: ByondValue, into: ByondValue, amount_arg: ByondValue) -> Res
 /// Arg: (mixture). Makes src into a copy of the argument mixture.
 #[auxmacros::bind("/datum/gas_mixture/proc/copy_from")]
 fn copy_from_hook(src: ByondValue, giver: ByondValue) -> Result<ByondValue> {
-	with_mixes_custom(&src, &giver, |src_mix, giver_mix| {
-		src_mix.write().copy_from_mutable(&giver_mix.read());
+	with_mixes_mut_and_read(&src, &giver, |src_mix, giver_mix| {
+		src_mix.copy_from_mutable(giver_mix);
 		Ok(ByondValue::null())
 	})
 }
@@ -537,7 +554,7 @@ fn temperature_share_hook() -> Result<ByondValue> {
 	match arg_num {
 		3 => with_mixes_mut(&args[0], &args[1], |src_mix, share_mix| {
 			Ok(src_mix
-				.temperature_share(share_mix, args[2].get_number().unwrap_or_default())
+				.temperature_share(share_mix, args[2].get_number().unwrap_or_default())?
 				.into())
 		}),
 		4 => with_mix_mut(&args[0], |mix| {
@@ -546,7 +563,7 @@ fn temperature_share_hook() -> Result<ByondValue> {
 					args[1].get_number().unwrap_or_default(),
 					args[2].get_number().unwrap_or_default(),
 					args[3].get_number().unwrap_or_default(),
-				)
+				)?
 				.into())
 		}),
 		_ => Err(eyre::eyre!("Invalid args for temperature_share")),
@@ -796,12 +813,12 @@ fn remove_by_flag_hook(
 		return Ok(false.into());
 	}
 	with_mixes_mut(&src, &into, |src_gas, dest_gas| {
-		let tot = src_gas.total_moles();
-		if !tot.is_finite() || tot <= 0.0 {
+		let ratio = src_gas.ratio_for_amount(amount);
+		if !ratio.is_finite() || ratio <= 0.0 {
 			return Ok(false.into());
 		}
 		src_gas
-			.transfer_gases_to(amount / tot, &pertinent_gases, dest_gas)
+			.transfer_gases_to(ratio, &pertinent_gases, dest_gas)
 			.map_err(|error| eyre::eyre!("__remove_by_flag rejected transfer: {error}"))?;
 		Ok(true.into())
 	})
@@ -821,10 +838,12 @@ fn get_by_flag_hook(src: ByondValue, flag_val: ByondValue) -> Result<ByondValue>
 		return Ok(0.0.into());
 	}
 	with_mix(&src, |mix| {
-		Ok(pertinent_gases
-			.iter()
-			.fold(0.0, |acc, idx| acc + mix.get_moles(*idx))
-			.into())
+		finite_mixture_scalar(
+			"get_by_flag",
+			pertinent_gases
+				.iter()
+				.fold(0.0, |acc, idx| acc + mix.get_moles(*idx)),
+		)
 	})
 }
 
@@ -848,7 +867,11 @@ fn scrub_into_hook(
 	}
 	let gas_scrub_vec = gas_list
 		.iter()?
-		.filter_map(|(k, _)| gas_idx_from_value(&k).ok())
+		.filter_map(|(key, associated)| {
+			let key = ffi::OwnedByondValue::adopt(key);
+			let _associated = ffi::OwnedByondValue::adopt(associated);
+			gas_idx_from_value(&key).ok()
+		})
 		.collect::<Vec<_>>();
 	with_mixes_mut(&src, &into, |src_gas, dest_gas| {
 		src_gas
@@ -992,7 +1015,7 @@ fn accumulate_reaction_flags(previous: ReactionReturn, result: f32) -> ReactionR
 #[auxmacros::bind("/datum/gas_mixture/proc/adjust_heat")]
 fn adjust_heat_hook(src: ByondValue, temp: ByondValue) -> Result<ByondValue> {
 	with_mix_mut(&src, |mix| {
-		mix.adjust_heat(temp.get_number()?);
+		mix.adjust_heat(temp.get_number()?)?;
 		Ok(ByondValue::null())
 	})
 }
@@ -1022,14 +1045,12 @@ fn transfer_ratio_hook(
 /// Args: (mixture). Makes `src` a copy of `mixture`, with volumes taken into account.
 #[auxmacros::bind("/datum/gas_mixture/proc/equalize_with")]
 fn equalize_with_hook(src: ByondValue, total: ByondValue) -> Result<ByondValue> {
-	with_mixes_custom(&src, &total, |src_lock, total_lock| {
-		let src_gas = &mut src_lock.write();
+	with_mixes_mut_and_read(&src, &total, |src_gas, total_gas| {
 		let vol = src_gas.volume;
-		let total_gas = total_lock.read();
 		if !total_gas.volume.is_finite() || total_gas.volume <= 0.0 {
 			return Ok(ByondValue::null());
 		}
-		src_gas.copy_from_mutable(&total_gas);
+		src_gas.copy_from_mutable(total_gas);
 		src_gas.multiply(vol / total_gas.volume);
 		Ok(ByondValue::null())
 	})
@@ -1082,17 +1103,15 @@ fn share_ratio_hook(
 	let ratio = ratio_val.get_number().unwrap_or(0.6);
 	let mut inbetween = Mixture::new();
 	if one_way {
-		with_mixes_custom(&src, &other_gas, |src_lock, other_lock| {
-			let mut src_mix = src_lock.write();
-			let other_mix = other_lock.read();
-			inbetween.copy_from_mutable(&other_mix);
+		with_mixes_mut_and_read(&src, &other_gas, |src_mix, other_mix| {
+			inbetween.copy_from_mutable(other_mix);
 			inbetween.multiply(ratio);
 			inbetween.merge(&src_mix.remove_ratio(ratio));
 			inbetween.multiply(0.5);
 			src_mix.merge(&inbetween);
 			Ok(ByondValue::from(
-				src_mix.temperature_compare(&other_mix)
-					|| src_mix.compare_with(&other_mix, MINIMUM_MOLES_DELTA_TO_MOVE),
+				src_mix.temperature_compare(other_mix)
+					|| src_mix.compare_with(other_mix, MINIMUM_MOLES_DELTA_TO_MOVE),
 			))
 		})
 	} else {
@@ -1171,6 +1190,27 @@ fn parse_gas_string(src: ByondValue, string: ByondValue) -> Result<ByondValue> {
 
 	with_mix_mut(&src, |air| parser::load_gas_string(air, &actual_string))?;
 	Ok(true.into())
+}
+
+#[test]
+fn mixture_scalar_boundary_preserves_finite_values_and_rejects_nonfinite_results() {
+	for value in [0.0_f32, 123.5, f32::MAX] {
+		let result = finite_mixture_scalar("return_pressure", value).unwrap();
+		assert_eq!(
+			result.0.type_,
+			byondapi::value::types::ValueType::Number as u8,
+		);
+		// Numeric construction is local; get_number would require a live BYOND runtime.
+		// Safety: the tag above identifies the initialized numeric union member.
+		assert_eq!(unsafe { result.0.data.num }.to_bits(), value.to_bits());
+	}
+	for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+		let error = finite_mixture_scalar("return_pressure", value)
+			.unwrap_err()
+			.to_string();
+		assert!(error.contains("return_pressure"), "{error}");
+		assert!(error.contains("non-finite"), "{error}");
+	}
 }
 
 #[cfg(test)]

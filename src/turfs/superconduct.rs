@@ -18,6 +18,8 @@ type HeatNodeIndex = petgraph::graph::NodeIndex<usize>;
 
 static TURF_HEAT: RwLock<Option<TurfHeat>> = const_rwlock(None);
 static HEAT_WORKER: Mutex<Option<std::thread::JoinHandle<()>>> = const_mutex(None);
+// The main-thread caller resumes this same interval if the worker queue is full.
+static PENDING_HEAT: Mutex<Option<SSheatInfo>> = const_mutex(None);
 
 static HEAT_CHANNEL: LazyLock<(
 	flume::Sender<HeatWorkerMessage>,
@@ -57,6 +59,7 @@ fn initialize_heat_statics() {
 #[allow(dead_code)]
 pub fn shutdown_turf_heat() -> Result<()> {
 	HEAT_SHUTDOWN.store(true, Ordering::Release);
+	*PENDING_HEAT.lock() = None;
 	let _ = HEAT_CHANNEL.0.try_send(HeatWorkerMessage::Shutdown);
 	let Some(worker) = HEAT_WORKER.lock().take() else {
 		if HEAT_WORKER_RUNNING.load(Ordering::Acquire) {
@@ -86,6 +89,7 @@ pub fn shutdown_turf_heat() -> Result<()> {
 
 /// Recreates heat state and rearms the worker after a BYOND world reuses this loaded DLL.
 pub fn prepare_turf_heat_for_world() -> Result<()> {
+	*PENDING_HEAT.lock() = None;
 	if TURF_HEAT.read().is_none() {
 		HEAT_CHANNEL.1.try_iter().for_each(std::mem::drop);
 		*TURF_HEAT.write() = Some(new_turf_heat());
@@ -109,7 +113,7 @@ where
 	f(TURF_HEAT.write().as_mut().unwrap())
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 struct SSheatInfo {
 	time_delta: f64,
 	/// Selects Stefan-Boltzmann radiation instead of the faster linear vacuum sink.
@@ -140,8 +144,30 @@ fn with_heat_processing_callback_receiver<T>(
 	f(&HEAT_CHANNEL.1)
 }
 
-fn heat_processing_callbacks_sender() -> flume::Sender<HeatWorkerMessage> {
-	HEAT_CHANNEL.0.clone()
+// Only the main thread submits heat work. Capture DM values outside the pending lock,
+// and retry a rejected interval unchanged even if SSair's settings changed meanwhile.
+fn submit_heat_interval(
+	sender: &flume::Sender<HeatWorkerMessage>,
+	pending: &Mutex<Option<SSheatInfo>>,
+	capture: impl FnOnce() -> Result<SSheatInfo>,
+) -> Result<bool> {
+	let previous = pending.lock().take();
+	let info = match previous {
+		Some(info) => info,
+		None => capture()?,
+	};
+	match sender.try_send(HeatWorkerMessage::Process(info)) {
+		Ok(()) => Ok(false),
+		Err(error) => {
+			*pending.lock() = Some(info);
+			match error {
+				flume::TrySendError::Full(_) => Ok(true),
+				flume::TrySendError::Disconnected(_) => {
+					Err(eyre::eyre!("Heat worker request channel disconnected"))
+				}
+			}
+		}
+	}
 }
 type HeatGraphMap = IndexMap<TurfID, NodeIndex<usize>, FxBuildHasher>;
 
@@ -376,19 +402,23 @@ fn hook_turf_temperature_set(src: ByondValue, arg_temp: ByondValue) -> Result<By
 			"Attempted to set a turf's temperature to a number that is NaN or infinite."
 		));
 	}
-	with_turf_heat_read(|arena| -> Result<ByondValue> {
+	set_turf_temperature(id, v);
+	Ok(ByondValue::null())
+}
+
+fn set_turf_temperature(id: TurfID, temperature: f32) {
+	// A heat pass holds the graph read lock from snapshot through commit.
+	// Serialize absolute writes with that whole pass so its snapshot cannot erase them.
+	with_turf_heat_write(|arena| {
 		if let Some(&node_index) = arena.get_id(&id) {
 			let info = arena.get(node_index).unwrap();
-			*info.temperature.write() = v;
-			Ok(ByondValue::null())
-		} else {
-			Ok(ByondValue::null())
+			*info.temperature.write() = temperature;
 		}
-	})
+	});
 }
 
 // Expected function call: process_turf_heat()
-// Returns: TRUE if thread not done, FALSE otherwise
+// Returns TRUE if SSair must pause and retry this interval, FALSE once admitted.
 #[auxmacros::bind("/datum/controller/subsystem/air/proc/process_turf_heat")]
 fn process_heat_notify(src: ByondValue) -> Result<ByondValue> {
 	if HEAT_SHUTDOWN.load(Ordering::Acquire) {
@@ -410,30 +440,31 @@ fn process_heat_notify(src: ByondValue) -> Result<ByondValue> {
 		turf tiles are 1 meter^2 anyway--the atmos subsystem
 		does this in general, thus turf gas mixtures being 2.5 m^3.
 	*/
-	let sender = heat_processing_callbacks_sender();
-	let wait = src.read_number_id(byond_string!("wait")).map_err(|_| {
-		eyre::eyre!(
-			"Attempt to interpret non-number value as number {} {}:{}",
-			std::file!(),
-			std::line!(),
-			std::column!()
-		)
-	})?;
-	if !wait.is_finite() || wait < 0.0 {
-		return Err(eyre::eyre!(
-			"Atmos heat budget must be finite and non-negative"
-		));
-	}
-	let time_delta = f64::from(wait) / 10.0;
-	// Preserve the physical model if the mode toggle cannot be read.
-	let blackbody_enabled = src
-		.read_number_id(byond_string!("realistic_space_radiation"))
-		.map_or(true, |v| v != 0.0);
-	_ = sender.try_send(HeatWorkerMessage::Process(SSheatInfo {
-		time_delta,
-		blackbody_enabled,
-	}));
-	Ok(ByondValue::null())
+	Ok(submit_heat_interval(&HEAT_CHANNEL.0, &PENDING_HEAT, || {
+		let wait = src.read_number_id(byond_string!("wait")).map_err(|_| {
+			eyre::eyre!(
+				"Attempt to interpret non-number value as number {} {}:{}",
+				std::file!(),
+				std::line!(),
+				std::column!()
+			)
+		})?;
+		if !wait.is_finite() || wait < 0.0 {
+			return Err(eyre::eyre!(
+				"Atmos heat budget must be finite and non-negative"
+			));
+		}
+		let time_delta = f64::from(wait) / 10.0;
+		// Preserve the physical model if the mode toggle cannot be read.
+		let blackbody_enabled = src
+			.read_number_id(byond_string!("realistic_space_radiation"))
+			.map_or(true, |v| v != 0.0);
+		Ok(SSheatInfo {
+			time_delta,
+			blackbody_enabled,
+		})
+	})?
+	.into())
 }
 
 /// Threshold for BYOND's finite representation of infinite heat capacity.
@@ -601,6 +632,120 @@ mod tests {
 	static HEAT_LIFECYCLE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 	#[test]
+	fn turf_temperature_setter_survives_an_in_progress_heat_snapshot() {
+		let _guard = HEAT_LIFECYCLE_TEST_LOCK.lock().unwrap();
+		let mut arena = new_turf_heat();
+		arena.insert_turf(ThermalInfo {
+			id: 1,
+			temperature: RwLock::new(300.0),
+			..Default::default()
+		});
+		let previous = TURF_HEAT.write().replace(arena);
+		let heat_pass = TURF_HEAT.read();
+		let arena = heat_pass.as_ref().unwrap();
+		let node = arena.get(*arena.get_id(&1).unwrap()).unwrap();
+		let snapshot = *node.temperature.read();
+		let (started, ready) = std::sync::mpsc::channel();
+		let (finished, completion) = std::sync::mpsc::channel();
+		let setter = std::thread::spawn(move || {
+			started.send(()).unwrap();
+			set_turf_temperature(1, 500.0);
+			finished.send(()).unwrap();
+		});
+		ready
+			.recv_timeout(std::time::Duration::from_secs(1))
+			.unwrap();
+		let finished_before_commit = completion
+			.recv_timeout(std::time::Duration::from_millis(100))
+			.is_ok();
+		*node.temperature.write() = snapshot + 1.0;
+		drop(heat_pass);
+		if !finished_before_commit {
+			completion
+				.recv_timeout(std::time::Duration::from_secs(1))
+				.unwrap();
+		}
+		setter.join().unwrap();
+		let final_temperature = with_turf_heat_read(|arena| {
+			*arena
+				.get(*arena.get_id(&1).unwrap())
+				.unwrap()
+				.temperature
+				.read()
+		});
+		*TURF_HEAT.write() = previous;
+		assert_eq!(final_temperature, 500.0, "heat commit erased the setter");
+		assert!(
+			!finished_before_commit,
+			"setter must serialize after the heat pass"
+		);
+	}
+
+	#[test]
+	fn heat_admission_retries_each_interval_once_with_its_original_settings() {
+		let (sender, receiver) = flume::bounded(1);
+		let pending = Mutex::new(None);
+		let first = SSheatInfo {
+			time_delta: 0.5,
+			blackbody_enabled: true,
+		};
+		let second = SSheatInfo {
+			time_delta: 0.25,
+			blackbody_enabled: false,
+		};
+		let third = SSheatInfo {
+			time_delta: 1.0,
+			blackbody_enabled: true,
+		};
+		let receive = || match receiver.try_recv().unwrap() {
+			HeatWorkerMessage::Process(info) => info,
+			HeatWorkerMessage::Shutdown => panic!("unexpected shutdown"),
+		};
+		assert!(!submit_heat_interval(&sender, &pending, || Ok(first)).unwrap());
+		assert!(submit_heat_interval(&sender, &pending, || {
+			assert!(
+				pending.try_lock().is_some(),
+				"capture must not hold the pending lock"
+			);
+			Ok(second)
+		})
+		.unwrap());
+		for _ in 0..3 {
+			assert!(submit_heat_interval(&sender, &pending, || {
+				panic!("a pending interval must not read newer settings")
+			})
+			.unwrap());
+		}
+		assert_eq!(receive(), first);
+		assert!(!submit_heat_interval(&sender, &pending, || {
+			panic!("admission must keep the pending interval's settings")
+		})
+		.unwrap());
+		assert_eq!(receive(), second);
+		assert!(pending.lock().is_none());
+		assert!(!submit_heat_interval(&sender, &pending, || Ok(third)).unwrap());
+		assert_eq!(receive(), third);
+		assert!(matches!(
+			receiver.try_recv(),
+			Err(flume::TryRecvError::Empty)
+		));
+	}
+
+	#[test]
+	fn heat_admission_reports_disconnection_without_forgetting_the_interval() {
+		let (sender, receiver) = flume::bounded(1);
+		drop(receiver);
+		let pending = Mutex::new(None);
+		let info = SSheatInfo {
+			time_delta: 0.5,
+			blackbody_enabled: true,
+		};
+		let error = submit_heat_interval(&sender, &pending, || Ok(info)).unwrap_err();
+		assert!(error.to_string().contains("disconnected"));
+		assert_eq!(*pending.lock(), Some(info));
+	}
+
+	#[test]
 	fn heat_edge_accumulation_visits_each_undirected_edge_once() {
 		let edges = vec![
 			(HeatNodeIndex::new(0), HeatNodeIndex::new(1)),
@@ -728,12 +873,20 @@ mod tests {
 	#[test]
 	fn heat_worker_and_arena_are_released_before_rearm() {
 		let _guard = HEAT_LIFECYCLE_TEST_LOCK.lock().unwrap();
+		let old_interval = SSheatInfo {
+			time_delta: 0.5,
+			blackbody_enabled: true,
+		};
+		*PENDING_HEAT.lock() = Some(old_interval);
 		shutdown_turf_heat().unwrap();
+		assert!(PENDING_HEAT.lock().is_none());
 		assert!(!HEAT_WORKER_RUNNING.load(Ordering::Acquire));
 		assert!(HEAT_WORKER.lock().is_none());
 		assert!(TURF_HEAT.read().is_none());
 
+		*PENDING_HEAT.lock() = Some(old_interval);
 		prepare_turf_heat_for_world().unwrap();
+		assert!(PENDING_HEAT.lock().is_none());
 		assert!(HEAT_WORKER_RUNNING.load(Ordering::Acquire));
 		assert!(HEAT_WORKER.lock().is_some());
 		assert!(TURF_HEAT.read().is_some());
@@ -861,6 +1014,7 @@ fn start_heat_worker() -> Result<()> {
 						// Keep one read view of the global mixture slice for both snapshot filtering and gas exchange.
 						// Per-mixture locks still protect concurrent gas mutation; only the slice lookup lock is shared.
 						GasArena::with_all_mixtures(|all_mixtures| {
+							let gas_exchange_error = std::sync::OnceLock::new();
 							let adjacencies_to_consider = arena
 								.map
 								.par_iter()
@@ -947,7 +1101,7 @@ fn start_heat_worker() -> Result<()> {
 										if tmix.enabled() {
 											if let Some(entry) = all_mixtures.get(tmix.mix) {
 												if let Some(mut gas) = entry.try_write() {
-													*temp_write = gas.temperature_share_non_gas(
+													let exchange = gas.temperature_share_non_gas(
 														/*
 															This value should be lower than the
 															turf-to-turf conductivity for balance reasons
@@ -959,6 +1113,16 @@ fn start_heat_worker() -> Result<()> {
 														*temp_write,
 														info.heat_capacity,
 													);
+													match exchange {
+														Ok(temperature) => {
+															*temp_write = temperature
+														}
+														Err(error) => {
+															gas_exchange_error.get_or_init(|| {
+																format!("gas/turf heat exchange at turf {id}: {error}")
+															});
+														}
+													}
 												}
 											}
 										}
@@ -994,6 +1158,9 @@ fn start_heat_worker() -> Result<()> {
 									has_adjacents.then_some(node_index)
 								})
 								.collect::<Vec<_>>();
+							if let Some(error) = gas_exchange_error.into_inner() {
+								heat_processing_error = Some(error);
+							}
 
 							// Read every undirected edge from a stable snapshot. The core applies deterministic,
 							// conservative substeps using SSair's elapsed time before each node is written once.
@@ -1107,8 +1274,10 @@ fn start_heat_worker() -> Result<()> {
 				let owned_bytes = heat_processing_error.as_ref().map_or(0, String::capacity);
 				let _ = auxcallback::queue_callback(
 					Box::new(move || {
-						let mut ssair =
-							ByondValue::new_global_ref().read_var_id(byond_string!("SSair"))?;
+						let ssair_owner = crate::ffi::OwnedByondValue::adopt(
+							ByondValue::new_global_ref().read_var_id(byond_string!("SSair"))?,
+						);
+						let mut ssair = *ssair_owner;
 						let prev_cost = ssair
 							.read_number_id(byond_string!("cost_superconductivity"))
 							.map_err(|_| {
