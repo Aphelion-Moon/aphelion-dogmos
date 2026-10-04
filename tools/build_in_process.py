@@ -12,6 +12,7 @@ import subprocess
 import sys
 from dogmos_source_snapshot import capture_snapshot, canonical_bytes, verify_snapshot
 
+TOOLCHAIN = '1.98.0'
 FEATURES = ['aphelion_reactions', 'katmos', 'katmos_slow_decompression', 'superconductivity', 'turf_processing']
 
 def package_linux_artifacts(release_library, output):
@@ -45,7 +46,7 @@ def pe_linker_version(library):
         return None
 
 def build_provenance(environment, target, native_library):
-    rustc = subprocess.run(['rustc', '+1.98.0', '--version', '--verbose'],
+    rustc = subprocess.run(['rustc', f'+{TOOLCHAIN}', '--version', '--verbose'],
                            capture_output=True, text=True, check=True).stdout.strip()
     linker_key = f"CARGO_TARGET_{target.upper().replace('-', '_')}_LINKER"
     linker = environment.get(linker_key)
@@ -82,7 +83,7 @@ def build_provenance(environment, target, native_library):
     }
     result = {
         'rustc_verbose': rustc,
-        'cargo_version': command_version(['cargo', '+1.98.0', '--version']),
+        'cargo_version': command_version(['cargo', f'+{TOOLCHAIN}', '--version']),
         # Cargo/rustc can locate MSVC outside PATH. The PE header identifies the actual
         # output's linker version; absent an override, its executable path is unverified.
         'linker': linker_info,
@@ -117,7 +118,7 @@ def main():
     digest = hashlib.sha256(encoded).hexdigest()
     (output / 'dogmos-source-snapshot.json').write_bytes(encoded)
     environment = dict(os.environ, DOGMOS_SOURCE_SHA256=digest, CARGO_TARGET_DIR=str(root / 'target'))
-    arguments = ['+1.98.0', 'build', '-p', 'dogmos', '--lib', '--example', 'generate_bindings', '--release', '--locked', '--target', args.target, '--no-default-features', '--features', ','.join(FEATURES)]
+    arguments = [f'+{TOOLCHAIN}', 'build', '-p', 'dogmos', '--lib', '--example', 'generate_bindings', '--release', '--locked', '--target', args.target, '--no-default-features', '--features', ','.join(FEATURES)]
     run_build(['cargo', *arguments], root, environment, output / 'build.log')
     release = root / 'target' / args.target / 'release'
     windows = args.target == 'i686-pc-windows-msvc'
@@ -131,7 +132,7 @@ def main():
         native, symbols = package_linux_artifacts(release / 'libdogmos.so', output)
     verify_snapshot(root, encoded)
     artifacts = {name: hashlib.sha256((output / name).read_bytes()).hexdigest() for name in (native, symbols, 'dogmos_bindings.dm', 'dogmos-source-snapshot.json')}
-    manifest = dict(schema_version=1, kind='unqualified-in-process-playtest', backend='in-process', target=args.target, toolchain='1.98.0', source_revision=snapshot['source_revision'], source_sha256=digest, features=FEATURES, cargo_arguments=arguments, build_provenance=build_provenance(environment, args.target, output / native), artifacts=artifacts, tests_run=False, runtime_qualified=False)
+    manifest = dict(schema_version=1, kind='unqualified-in-process-playtest', backend='in-process', target=args.target, toolchain=TOOLCHAIN, source_revision=snapshot['source_revision'], source_sha256=digest, features=FEATURES, cargo_arguments=arguments, build_provenance=build_provenance(environment, args.target, output / native), artifacts=artifacts, tests_run=False, runtime_qualified=False)
     (output / 'dogmos-playtest.json').write_text(json.dumps(manifest,indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
     print(f'Built source-bound {args.target} bundle: {output}')
 
