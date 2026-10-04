@@ -1,7 +1,7 @@
 use dogmos_core::numerics::{
 	conduction::{
-		conduction_step, conduction_step_cancellable, heat_row_weight, ConductionError,
-		BASE_HEAT_STEP_SECONDS, BYOND_INFINITY_THRESHOLD,
+		conduction_step, conduction_step_cancellable, conduction_step_cancellable_with_scratch,
+		heat_row_weight, ConductionError, BASE_HEAT_STEP_SECONDS, BYOND_INFINITY_THRESHOLD,
 	},
 	diffusion::{
 		diffusion_self_weight, diffusion_step, diffusion_step_into,
@@ -517,4 +517,171 @@ fn conduction_cancellation_interrupts_substeps() {
 		Err(ConductionError::Cancelled)
 	);
 	assert_eq!(checks, 2);
+}
+
+#[test]
+fn conduction_scratch_recomputes_weights_after_topology_and_size_changes() {
+	let cases = [
+		(
+			vec![1000.0, 300.0, 0.0, 500.0],
+			vec![0.4; 4],
+			vec![100.0, 200.0, 300.0, 100.0],
+			vec![(2, 0), (0, 1), (3, 0)],
+			0.5,
+		),
+		(
+			vec![1000.0, 300.0, 0.0, 500.0],
+			vec![4.0, 2.0, 0.1, 1.0],
+			vec![300.0, 100.0, BYOND_INFINITY_THRESHOLD, 200.0],
+			vec![(3, 1), (2, 1)],
+			1.5,
+		),
+		(
+			vec![1000.0, 300.0],
+			vec![0.4; 2],
+			vec![100.0; 2],
+			vec![(1, 0)],
+			0.5,
+		),
+		(vec![], vec![], vec![], vec![], 0.0),
+	];
+	let mut row_sums = vec![f32::NAN];
+	for (mut temperatures, conductivities, capacities, mut edges, elapsed) in cases {
+		let mut expected = temperatures.clone();
+		let expected_stats =
+			conduction_step(&mut expected, &conductivities, &capacities, &edges, elapsed).unwrap();
+		let stats = conduction_step_cancellable_with_scratch(
+			&mut temperatures,
+			&conductivities,
+			&capacities,
+			&mut edges,
+			elapsed,
+			&mut row_sums,
+			|| false,
+		)
+		.unwrap();
+		assert_eq!(temperatures, expected);
+		assert_eq!(stats, expected_stats);
+		if temperatures.len() == 2 {
+			assert_eq!(temperatures, [860.0, 440.0]);
+		}
+	}
+}
+
+#[test]
+fn conduction_scratch_recovers_after_validation_errors_without_temperature_changes() {
+	let cases = [
+		(
+			[f32::NAN, 300.0],
+			[0.4; 2],
+			vec![(9, 9)],
+			ConductionError::InvalidTemperature { index: 0 },
+		),
+		(
+			[1000.0, 300.0],
+			[0.4; 2],
+			vec![(1, 0), (9, 0)],
+			ConductionError::UnknownNode(9),
+		),
+		(
+			[1000.0, 300.0],
+			[0.4; 2],
+			vec![(1, 0), (1, 1)],
+			ConductionError::SelfEdge(1),
+		),
+		(
+			[1000.0, 300.0],
+			[0.4; 2],
+			vec![(1, 0), (0, 1)],
+			ConductionError::DuplicateEdge {
+				first: 0,
+				second: 1,
+			},
+		),
+		(
+			[1000.0, 300.0],
+			[f32::MAX; 2],
+			vec![(1, 0)],
+			ConductionError::TooManySubsteps,
+		),
+	];
+	let mut row_sums = vec![f32::NAN; 4];
+	for (mut temperatures, conductivities, mut edges, expected_error) in cases {
+		let before = temperatures.map(f32::to_bits);
+		let mut cancellation_checks = 0;
+		let result = conduction_step_cancellable_with_scratch(
+			&mut temperatures,
+			&conductivities,
+			&[100.0; 2],
+			&mut edges,
+			0.5,
+			&mut row_sums,
+			|| {
+				cancellation_checks += 1;
+				true
+			},
+		);
+		assert_eq!(result, Err(expected_error));
+		assert_eq!(temperatures.map(f32::to_bits), before);
+		assert_eq!(cancellation_checks, 0);
+		temperatures = [1000.0, 300.0];
+		edges.clear();
+		edges.push((1, 0));
+		let stats = conduction_step_cancellable_with_scratch(
+			&mut temperatures,
+			&[0.4; 2],
+			&[100.0; 2],
+			&mut edges,
+			0.5,
+			&mut row_sums,
+			|| false,
+		)
+		.unwrap();
+		assert_eq!(temperatures, [860.0, 440.0]);
+		assert_eq!((stats.substeps, stats.edges_applied), (1, 1));
+	}
+}
+
+#[test]
+fn conduction_scratch_recovers_after_cancellation_with_preserved_partial_progress() {
+	let mut row_sums = Vec::new();
+	for completed_substeps in [0, 1] {
+		let mut temperatures = [1000.0, 300.0];
+		let mut edges = [(1, 0)];
+		let mut checks = 0;
+		let result = conduction_step_cancellable_with_scratch(
+			&mut temperatures,
+			&[10.0; 2],
+			&[1.0; 2],
+			&mut edges,
+			0.5,
+			&mut row_sums,
+			|| {
+				checks += 1;
+				checks > completed_substeps
+			},
+		);
+		assert_eq!(result, Err(ConductionError::Cancelled));
+		assert_eq!(checks, completed_substeps + 1);
+		assert_eq!(
+			temperatures,
+			if completed_substeps == 0 {
+				[1000.0, 300.0]
+			} else {
+				[300.0, 1000.0]
+			}
+		);
+		temperatures = [1000.0, 300.0];
+		conduction_step_cancellable_with_scratch(
+			&mut temperatures,
+			&[0.4; 2],
+			&[100.0; 2],
+			&mut edges,
+			0.5,
+			&mut row_sums,
+			|| false,
+		)
+		.unwrap();
+		assert_eq!(temperatures, [860.0, 440.0]);
+	}
 }

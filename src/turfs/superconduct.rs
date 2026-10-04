@@ -3,7 +3,9 @@ use byondapi::{byond_string, prelude::*};
 //use indexmap::IndexSet;
 use crate::GasArena;
 use coarsetime::Instant;
-use dogmos_core::numerics::conduction::{conduction_step, BASE_HEAT_STEP_SECONDS};
+use dogmos_core::numerics::conduction::{
+	conduction_step_cancellable_with_scratch, BASE_HEAT_STEP_SECONDS,
+};
 use eyre::Result;
 use parking_lot::{const_mutex, Mutex};
 use std::{
@@ -241,7 +243,7 @@ impl TurfHeat {
 	pub fn remove_turf(&mut self, id: TurfID) -> bool {
 		// `swap_remove` rather than `shift_remove`, which memmoves every following entry. Nothing
 		// downstream depends on this map's order: the node set it yields is order-independent,
-		// the dense snapshot sorts `touched_nodes`, and `conduction_step` canonicalizes and sorts
+		// the dense snapshot sorts `touched_nodes`, and the conduction kernel canonicalizes and sorts
 		// its edges before applying any substep, so the temperatures come out the same either way.
 		if let Some(index) = self.map.swap_remove(&id) {
 			self.graph.remove_node(index);
@@ -571,6 +573,7 @@ struct HeatProcessingScratch {
 	conductivities: Vec<f32>,
 	heat_capacities: Vec<f32>,
 	dense_edges: Vec<(u32, u32)>,
+	row_sums: Vec<f32>,
 }
 
 fn record_heat_metrics(
@@ -593,7 +596,7 @@ pub(crate) fn capture_two_turf_heat_trace() -> super::katmos::LegacyStageTrace {
 	let mut temperatures = [1000.0, 300.0];
 	let conductivities = [0.05, 0.05];
 	let heat_capacities = [100.0, 200.0];
-	conduction_step(
+	dogmos_core::numerics::conduction::conduction_step(
 		&mut temperatures,
 		&conductivities,
 		&heat_capacities,
@@ -1268,7 +1271,7 @@ fn start_heat_worker() -> Result<()> {
 							);
 							scratch
 								.touched_nodes
-								.sort_by_key(|node_index| node_index.index());
+								.sort_unstable_by_key(|node_index| node_index.index());
 							scratch.touched_nodes.dedup();
 
 							let touched_node_count = scratch.touched_nodes.len();
@@ -1315,12 +1318,14 @@ fn start_heat_worker() -> Result<()> {
 							}
 
 							if heat_processing_error.is_none() {
-								match conduction_step(
+								match conduction_step_cancellable_with_scratch(
 									&mut scratch.temperatures,
 									&scratch.conductivities,
 									&scratch.heat_capacities,
-									&scratch.dense_edges,
+									&mut scratch.dense_edges,
 									info.time_delta as f32,
+									&mut scratch.row_sums,
+									|| false,
 								) {
 									Ok(stats) => heat_edges_applied = stats.edges_applied,
 									Err(error) => heat_processing_error = Some(error.to_string()),

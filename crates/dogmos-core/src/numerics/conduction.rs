@@ -96,8 +96,14 @@ fn canonical_edges(
 	edges: &[(u32, u32)],
 	node_count: usize,
 ) -> Result<Vec<(u32, u32)>, ConductionError> {
-	let mut canonical = Vec::with_capacity(edges.len());
-	for &(first, second) in edges {
+	let mut canonical = edges.to_vec();
+	canonicalize_edges(&mut canonical, node_count)?;
+	Ok(canonical)
+}
+
+fn canonicalize_edges(edges: &mut [(u32, u32)], node_count: usize) -> Result<(), ConductionError> {
+	for edge in edges.iter_mut() {
+		let (first, second) = *edge;
 		if first as usize >= node_count {
 			return Err(ConductionError::UnknownNode(first));
 		}
@@ -107,14 +113,14 @@ fn canonical_edges(
 		if first == second {
 			return Err(ConductionError::SelfEdge(first));
 		}
-		canonical.push(if first < second {
+		*edge = if first < second {
 			(first, second)
 		} else {
 			(second, first)
-		});
+		};
 	}
-	canonical.sort_unstable();
-	for pair in canonical.windows(2) {
+	edges.sort_unstable();
+	for pair in edges.windows(2) {
 		if pair[0] == pair[1] {
 			return Err(ConductionError::DuplicateEdge {
 				first: pair[0].0,
@@ -122,7 +128,7 @@ fn canonical_edges(
 			});
 		}
 	}
-	Ok(canonical)
+	Ok(())
 }
 
 fn harmonic_capacity(first: f32, second: f32) -> f32 {
@@ -176,8 +182,10 @@ fn row_weights(
 	conductivities: &[f32],
 	heat_capacities: &[f32],
 	edges: &[(u32, u32)],
-) -> Result<Vec<f32>, ConductionError> {
-	let mut row_sums = vec![0.0; conductivities.len()];
+	row_sums: &mut Vec<f32>,
+) -> Result<(), ConductionError> {
+	row_sums.clear();
+	row_sums.resize(conductivities.len(), 0.0);
 	for &(first, second) in edges {
 		let first_index = first as usize;
 		let second_index = second as usize;
@@ -194,7 +202,7 @@ fn row_weights(
 			heat_capacities[first_index],
 		)?;
 	}
-	Ok(row_sums)
+	Ok(())
 }
 
 fn required_substeps_from_edges(
@@ -202,12 +210,11 @@ fn required_substeps_from_edges(
 	heat_capacities: &[f32],
 	edges: &[(u32, u32)],
 	seconds_per_tick: f32,
+	row_sums: &mut Vec<f32>,
 ) -> Result<u32, ConductionError> {
 	let elapsed_scale = seconds_per_tick / BASE_HEAT_STEP_SECONDS;
-	let maximum_scaled_sum = row_weights(conductivities, heat_capacities, edges)?
-		.into_iter()
-		.fold(0.0_f32, f32::max)
-		* elapsed_scale;
+	row_weights(conductivities, heat_capacities, edges, row_sums)?;
+	let maximum_scaled_sum = row_sums.iter().copied().fold(0.0_f32, f32::max) * elapsed_scale;
 	if !maximum_scaled_sum.is_finite() || maximum_scaled_sum > MAX_CONDUCTION_SUBSTEPS as f32 {
 		return Err(ConductionError::TooManySubsteps);
 	}
@@ -233,6 +240,7 @@ pub fn required_conduction_substeps(
 		heat_capacities,
 		&canonical,
 		seconds_per_tick,
+		&mut Vec::new(),
 	)
 }
 
@@ -311,7 +319,7 @@ pub fn conduction_step_cancellable(
 	heat_capacities: &[f32],
 	edges: &[(u32, u32)],
 	seconds_per_tick: f32,
-	mut should_cancel: impl FnMut() -> bool,
+	should_cancel: impl FnMut() -> bool,
 ) -> Result<ConductionStats, ConductionError> {
 	validate_values(
 		temperatures,
@@ -319,12 +327,65 @@ pub fn conduction_step_cancellable(
 		heat_capacities,
 		seconds_per_tick,
 	)?;
-	let canonical = canonical_edges(edges, temperatures.len())?;
+	conduction_step_with_validated_values(
+		temperatures,
+		conductivities,
+		heat_capacities,
+		&mut edges.to_vec(),
+		seconds_per_tick,
+		&mut Vec::new(),
+		should_cancel,
+	)
+}
+
+/// Runs conduction using caller-owned edge storage and reusable row-sum scratch.
+///
+/// Edges may be canonicalized and reordered even if the call fails or is cancelled.
+/// Validation failures leave temperatures unchanged; cancellation preserves completed
+/// substeps. Row sums are recomputed for every valid step and retain their capacity
+/// until the caller drops or shrinks the scratch vector.
+pub fn conduction_step_cancellable_with_scratch(
+	temperatures: &mut [f32],
+	conductivities: &[f32],
+	heat_capacities: &[f32],
+	edges: &mut [(u32, u32)],
+	seconds_per_tick: f32,
+	row_sums: &mut Vec<f32>,
+	should_cancel: impl FnMut() -> bool,
+) -> Result<ConductionStats, ConductionError> {
+	validate_values(
+		temperatures,
+		conductivities,
+		heat_capacities,
+		seconds_per_tick,
+	)?;
+	conduction_step_with_validated_values(
+		temperatures,
+		conductivities,
+		heat_capacities,
+		edges,
+		seconds_per_tick,
+		row_sums,
+		should_cancel,
+	)
+}
+
+fn conduction_step_with_validated_values(
+	temperatures: &mut [f32],
+	conductivities: &[f32],
+	heat_capacities: &[f32],
+	edges: &mut [(u32, u32)],
+	seconds_per_tick: f32,
+	row_sums: &mut Vec<f32>,
+	mut should_cancel: impl FnMut() -> bool,
+) -> Result<ConductionStats, ConductionError> {
+	canonicalize_edges(edges, temperatures.len())?;
 	let substeps = required_substeps_from_edges(
 		conductivities,
 		heat_capacities,
-		&canonical,
+		edges,
 		seconds_per_tick,
+		row_sums,
 	)?;
 	let normalized_scale = (seconds_per_tick / BASE_HEAT_STEP_SECONDS) / substeps as f32;
 	for _ in 0..substeps {
@@ -335,12 +396,12 @@ pub fn conduction_step_cancellable(
 			temperatures,
 			conductivities,
 			heat_capacities,
-			&canonical,
+			edges,
 			normalized_scale,
 		)?;
 	}
 	Ok(ConductionStats {
 		substeps,
-		edges_applied: canonical.len() as u64 * u64::from(substeps),
+		edges_applied: edges.len() as u64 * u64::from(substeps),
 	})
 }
