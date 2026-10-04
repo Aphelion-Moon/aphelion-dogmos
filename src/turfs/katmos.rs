@@ -81,6 +81,7 @@ fn finalize_eq(
 	all_mixtures: &[RwLock<Mixture>],
 	eq_movement_graph: &DiGraphMap<NodeIndex, Cell<f32>>,
 	pressures: &mut Vec<PressureDifference>,
+	transfer_error: &std::sync::OnceLock<String>,
 ) {
 	// Consume the pending movement for this node.
 	let pairs = eq_movement_graph
@@ -97,21 +98,31 @@ fn finalize_eq(
 		.filter_map(|&(target, amount)| Some((target, amount, arena.get(target)?)))
 		.for_each(|(target, amount, adj_mix)| {
 			if turf.total_moles_in(all_mixtures) < amount {
-				finalize_eq_neighbors(arena, all_mixtures, &pairs, eq_movement_graph, pressures);
+				finalize_eq_neighbors(
+					arena,
+					all_mixtures,
+					&pairs,
+					eq_movement_graph,
+					pressures,
+					transfer_error,
+				);
 			}
 			if let Some(weight) = eq_movement_graph.edge_weight(target, index) {
 				weight.set(0.0);
 			}
 			if turf.mix != adj_mix.mix {
-				drop(GasArena::with_gas_mixtures_mut_in(
+				if let Err(error) = GasArena::with_gas_mixtures_mut_in(
 					all_mixtures,
 					turf.mix,
 					adj_mix.mix,
 					|air, other_air| {
-						other_air.merge(&air.remove(amount));
+						air.transfer_to(amount, other_air)?;
 						Ok(())
 					},
-				));
+				) {
+					transfer_error.get_or_init(|| error.to_string());
+					return;
+				}
 			}
 			let adj_turf_id = adj_mix.id;
 			pressures.push((
@@ -130,12 +141,20 @@ fn finalize_eq_neighbors(
 	pairs: &[(NodeIndex, f32)],
 	eq_movement_graph: &DiGraphMap<NodeIndex, Cell<f32>>,
 	pressures: &mut Vec<PressureDifference>,
+	transfer_error: &std::sync::OnceLock<String>,
 ) {
 	pairs
 		.iter()
 		.filter(|(_, amount)| *amount < 0.0)
 		.for_each(|&(adj_index, _)| {
-			finalize_eq(adj_index, arena, all_mixtures, eq_movement_graph, pressures)
+			finalize_eq(
+				adj_index,
+				arena,
+				all_mixtures,
+				eq_movement_graph,
+				pressures,
+				transfer_error,
+			)
 		})
 }
 
@@ -929,10 +948,18 @@ fn finalize_eq_zone(
 	arena: &TurfGases,
 	all_mixtures: &[RwLock<Mixture>],
 	graph: DiGraphMap<NodeIndex, Cell<f32>>,
+	transfer_error: &std::sync::OnceLock<String>,
 ) -> Option<Vec<PressureDifference>> {
 	let mut pressures: Vec<PressureDifference> = Vec::new();
 	graph.nodes().for_each(|cur_index| {
-		finalize_eq(cur_index, arena, all_mixtures, &graph, &mut pressures);
+		finalize_eq(
+			cur_index,
+			arena,
+			all_mixtures,
+			&graph,
+			&mut pressures,
+			transfer_error,
+		);
 	});
 	(!pressures.is_empty()).then_some(pressures)
 }
@@ -1001,7 +1028,10 @@ pub(crate) fn capture_two_turf_equalize_trace() -> LegacyStageTrace {
 	let work_items = zone.node_count() as u32;
 	let (pressure_events, left_value, right_value) = GasArena::with_all_mixtures(|all_mixtures| {
 		let zone = process_zone(zone, 50.0, &arena, all_mixtures, None);
-		let pressure_events = finalize_eq_zone(&arena, all_mixtures, zone).unwrap_or_default();
+		let transfer_error = std::sync::OnceLock::new();
+		let pressure_events =
+			finalize_eq_zone(&arena, all_mixtures, zone, &transfer_error).unwrap_or_default();
+		assert!(transfer_error.get().is_none());
 		(
 			pressure_events,
 			all_mixtures[0].read().total_moles(),
@@ -1145,6 +1175,7 @@ fn equalize(
 	(start_time, remaining_time): (&Instant, Duration),
 ) -> (usize, bool) {
 	let turfs_processed: AtomicUsize = AtomicUsize::new(0);
+	let transfer_error = std::sync::OnceLock::new();
 	let is_cancelled = with_turf_gases_read(|arena| {
 		/*
 			The arena slice is taken once for the whole equalize pass and threaded into the flood
@@ -1237,7 +1268,7 @@ fn equalize(
 
 			let final_pressures = turfs
 				.into_par_iter()
-				.filter_map(|graph| finalize_eq_zone(arena, all_mixtures, graph))
+				.filter_map(|graph| finalize_eq_zone(arena, all_mixtures, graph, &transfer_error))
 				.collect::<Vec<_>>();
 
 			final_pressures
@@ -1246,5 +1277,12 @@ fn equalize(
 			false
 		})
 	});
+	if let Some(error) = transfer_error.into_inner() {
+		let owned_bytes = error.capacity();
+		let _ = auxcallback::queue_callback(
+			Box::new(move || Err(eyre::eyre!("Katmos transfer rejected: {error}"))),
+			owned_bytes,
+		);
+	}
 	(turfs_processed.load(Ordering::Relaxed), is_cancelled)
 }

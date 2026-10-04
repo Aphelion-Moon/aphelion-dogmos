@@ -15,6 +15,7 @@ pub mod turfs;
 use byondapi::prelude::*;
 use eyre::Result;
 use gas::constants::{ReactionReturn, GAS_MIN_MOLES, MINIMUM_MOLES_DELTA_TO_MOVE};
+use gas::mixture::MixtureSum;
 use gas::{
 	amt_gases, constants, gas_idx_from_string, gas_idx_from_value, gas_idx_to_id, tot_gases, types,
 	with_gas_info, with_mix, with_mix_mut, with_mixes, with_mixes_mut, with_mixes_mut_and_read,
@@ -509,7 +510,7 @@ fn thermal_energy_hook(src: ByondValue) -> Result<ByondValue> {
 #[auxmacros::bind("/datum/gas_mixture/proc/__merge")]
 fn merge_hook(src: ByondValue, giver: ByondValue) -> Result<ByondValue> {
 	with_mixes_mut_and_read(&src, &giver, |src_mix, giver_mix| {
-		src_mix.merge(giver_mix);
+		src_mix.merge(giver_mix)?;
 		Ok(ByondValue::null())
 	})
 }
@@ -692,7 +693,7 @@ fn adjust_moles_temp_hook(
 	})?;
 	new_mix.set_temperature(temperature);
 	with_mix_mut(&src, |mix| {
-		mix.merge(&new_mix);
+		mix.merge(&new_mix)?;
 		Ok(ByondValue::null())
 	})
 }
@@ -745,7 +746,7 @@ fn finite_number_or_default(value: ByondValue, default: f32) -> Result<f32> {
 fn add_hook(src: ByondValue, num_val: ByondValue) -> Result<ByondValue> {
 	let vf = finite_number_or_default(num_val, 0.0)?;
 	with_mix_mut(&src, |mix| {
-		mix.add(vf);
+		mix.add(vf)?;
 		Ok(ByondValue::null())
 	})
 }
@@ -755,7 +756,7 @@ fn add_hook(src: ByondValue, num_val: ByondValue) -> Result<ByondValue> {
 fn subtract_hook(src: ByondValue, num_val: ByondValue) -> Result<ByondValue> {
 	let vf = finite_number_or_default(num_val, 0.0)?;
 	with_mix_mut(&src, |mix| {
-		mix.add(-vf);
+		mix.add(-vf)?;
 		Ok(ByondValue::null())
 	})
 }
@@ -770,7 +771,7 @@ fn multiply_hook(src: ByondValue, num_val: ByondValue) -> Result<ByondValue> {
 		));
 	}
 	with_mix_mut(&src, |mix| {
-		mix.multiply(vf);
+		mix.multiply(vf)?;
 		Ok(ByondValue::null())
 	})
 }
@@ -784,7 +785,12 @@ fn divide_hook(src: ByondValue, num_val: ByondValue) -> Result<ByondValue> {
 	}
 	let vf = divisor.recip();
 	with_mix_mut(&src, |mix| {
-		mix.multiply(vf);
+		let multiplier = if vf.is_finite() {
+			f64::from(vf)
+		} else {
+			1.0 / f64::from(divisor)
+		};
+		mix.multiply_wide(multiplier)?;
 		Ok(ByondValue::null())
 	})
 }
@@ -1024,7 +1030,7 @@ fn adjust_heat_hook(src: ByondValue, temp: ByondValue) -> Result<ByondValue> {
 #[auxmacros::bind("/datum/gas_mixture/proc/transfer_to")]
 fn transfer_hook(src: ByondValue, other: ByondValue, moles: ByondValue) -> Result<ByondValue> {
 	with_mixes_mut(&src, &other, |our_mix, other_mix| {
-		other_mix.merge(&our_mix.remove(moles.get_number()?));
+		our_mix.transfer_to(moles.get_number()?, other_mix)?;
 		Ok(ByondValue::null())
 	})
 }
@@ -1037,7 +1043,7 @@ fn transfer_ratio_hook(
 	ratio: ByondValue,
 ) -> Result<ByondValue> {
 	with_mixes_mut(&src, &other, |our_mix, other_mix| {
-		other_mix.merge(&our_mix.remove_ratio(ratio.get_number()?));
+		our_mix.transfer_ratio_to(ratio.get_number()?, other_mix)?;
 		Ok(ByondValue::null())
 	})
 }
@@ -1050,8 +1056,13 @@ fn equalize_with_hook(src: ByondValue, total: ByondValue) -> Result<ByondValue> 
 		if !total_gas.volume.is_finite() || total_gas.volume <= 0.0 {
 			return Ok(ByondValue::null());
 		}
-		src_gas.copy_from_mutable(total_gas);
-		src_gas.multiply(vol / total_gas.volume);
+		let ratio = vol / total_gas.volume;
+		let ratio = if ratio.is_finite() && ratio != 0.0 {
+			f64::from(ratio)
+		} else {
+			f64::from(vol) / f64::from(total_gas.volume)
+		};
+		src_gas.copy_scaled_from(total_gas, ratio)?;
 		Ok(ByondValue::null())
 	})
 }
@@ -1100,15 +1111,17 @@ fn share_ratio_hook(
 	one_way_val: ByondValue,
 ) -> Result<ByondValue> {
 	let one_way = one_way_val.get_bool().unwrap_or(false);
-	let ratio = ratio_val.get_number().unwrap_or(0.6);
-	let mut inbetween = Mixture::new();
+	let ratio = finite_number_or_default(ratio_val, 0.6)?;
 	if one_way {
 		with_mixes_mut_and_read(&src, &other_gas, |src_mix, other_mix| {
-			inbetween.copy_from_mutable(other_mix);
-			inbetween.multiply(ratio);
-			inbetween.merge(&src_mix.remove_ratio(ratio));
-			inbetween.multiply(0.5);
-			src_mix.merge(&inbetween);
+			let mut updated = src_mix.clone();
+			let mut other_part = Mixture::new();
+			other_part.copy_from_mutable(other_mix);
+			other_part.multiply(ratio)?;
+			let mut inbetween = MixtureSum::from(other_part);
+			inbetween.merge(&updated.remove_ratio(ratio));
+			updated.merge(&inbetween.scaled(0.5)?)?;
+			src_mix.copy_from_mutable(&updated);
 			Ok(ByondValue::from(
 				src_mix.temperature_compare(other_mix)
 					|| src_mix.compare_with(other_mix, MINIMUM_MOLES_DELTA_TO_MOVE),
@@ -1116,11 +1129,15 @@ fn share_ratio_hook(
 		})
 	} else {
 		with_mixes_mut(&src, &other_gas, |src_mix, other_mix| {
-			src_mix.remove_ratio_into(ratio, &mut inbetween);
-			inbetween.merge(&other_mix.remove_ratio(ratio));
-			inbetween.multiply(0.5);
-			src_mix.merge(&inbetween);
-			other_mix.merge(&inbetween);
+			let mut updated_src = src_mix.clone();
+			let mut updated_other = other_mix.clone();
+			let mut inbetween = MixtureSum::from(updated_src.remove_ratio(ratio));
+			inbetween.merge(&updated_other.remove_ratio(ratio));
+			let inbetween = inbetween.scaled(0.5)?;
+			updated_src.merge(&inbetween)?;
+			updated_other.merge(&inbetween)?;
+			src_mix.copy_from_mutable(&updated_src);
+			other_mix.copy_from_mutable(&updated_other);
 			Ok(ByondValue::from(
 				src_mix.temperature_compare(other_mix)
 					|| src_mix.compare_with(other_mix, MINIMUM_MOLES_DELTA_TO_MOVE),
@@ -1141,35 +1158,39 @@ fn equalize_all_hook(gas_list: ByondValue) -> Result<ByondValue> {
 			gas::gas_slot_for_mix(&value)
 		})
 		.collect::<Result<BTreeSet<_>>>()?;
-	GasArena::with_all_mixtures(move |all_mixtures| equalize_unique_slots(all_mixtures, &gas_list));
+	GasArena::with_all_mixtures(move |all_mixtures| {
+		equalize_unique_slots(all_mixtures, &gas_list)
+	})?;
 	Ok(ByondValue::null())
 }
 
 fn equalize_unique_slots(
 	all_mixtures: &[parking_lot::RwLock<Mixture>],
 	gas_list: &std::collections::BTreeSet<usize>,
-) {
-	let mut tot = gas::Mixture::new();
-	let mut tot_vol: f64 = 0.0;
-	gas_list
+) -> Result<()> {
+	// Sorted slot locks keep aggregation and validation coherent until every result is committed.
+	let mut mixtures = gas_list
 		.iter()
 		.filter_map(|&id| all_mixtures.get(id))
-		.for_each(|src_gas_lock| {
-			let src_gas = src_gas_lock.read();
-			tot.merge(&src_gas);
-			tot_vol += f64::from(src_gas.volume);
-		});
-	if tot_vol > 0.0 {
-		gas_list
-			.iter()
-			.filter_map(|&id| all_mixtures.get(id))
-			.for_each(|dest_gas_lock| {
-				let dest_gas = &mut dest_gas_lock.write();
-				let vol = dest_gas.volume; // don't wanna borrow it in the below
-				dest_gas.copy_from_mutable(&tot);
-				dest_gas.multiply((f64::from(vol) / tot_vol) as f32);
-			});
+		.map(|lock| lock.write())
+		.collect::<Vec<_>>();
+	let mut tot = MixtureSum::default();
+	let mut tot_vol: f64 = 0.0;
+	for mix in &mixtures {
+		tot.merge(mix);
+		tot_vol += f64::from(mix.volume);
 	}
+	if tot_vol > 0.0 {
+		for mix in &mixtures {
+			if !mix.is_immutable() {
+				tot.check_scaled(f64::from(mix.volume) / tot_vol)?;
+			}
+		}
+		for mix in &mut mixtures {
+			tot.copy_scaled_into(f64::from(mix.volume) / tot_vol, mix)?;
+		}
+	}
+	Ok(())
 }
 
 /// Returns: the amount of gas mixtures that are attached to a byond gas mixture.
@@ -1305,10 +1326,58 @@ mod reaction_tests {
 		second.set_moles(0, 10.0).unwrap();
 		let mixtures = [RwLock::new(first), RwLock::new(second)];
 		let slots = [0, 0, 1].into_iter().collect::<BTreeSet<_>>();
-		equalize_unique_slots(&mixtures, &slots);
+		equalize_unique_slots(&mixtures, &slots).unwrap();
 		assert_eq!(mixtures[0].read().get_moles(0), 3.0);
 		assert_eq!(mixtures[1].read().get_moles(0), 9.0);
 		destroy_gas_statics();
+	}
+
+	#[test]
+	fn equalize_all_preserves_species_when_the_sum_exceeds_f32() {
+		let guard = GAS_TEST_LOCK.lock().unwrap();
+		destroy_gas_statics();
+		set_gas_statics_manually();
+		register_gas_manually("o2", 0.25);
+		let mixtures = [300.0, 600.0].map(|temperature| {
+			let mut mix = Mixture::from_vol(1000.0);
+			mix.set_moles(0, 2.0e38).unwrap();
+			mix.set_temperature(temperature);
+			RwLock::new(mix)
+		});
+		equalize_unique_slots(&mixtures, &[0, 1].into_iter().collect()).unwrap();
+		let results = mixtures.map(|mix| {
+			let mix = mix.into_inner();
+			(mix.get_moles(0), mix.get_temperature())
+		});
+		destroy_gas_statics();
+		drop(guard);
+		for (moles, temperature) in results {
+			assert_eq!(moles, 2.0e38);
+			assert!((temperature - 450.0).abs() < 0.0001);
+		}
+	}
+
+	#[test]
+	fn equalize_all_rejects_unrepresentable_distribution_before_any_write() {
+		let guard = GAS_TEST_LOCK.lock().unwrap();
+		destroy_gas_statics();
+		set_gas_statics_manually();
+		register_gas_manually("o2", 0.25);
+		let mixtures = [(1000.0, 300.0), (9000.0, 600.0)].map(|(volume, temperature)| {
+			let mut mix = Mixture::from_vol(volume);
+			mix.set_moles(0, 2.0e38).unwrap();
+			mix.set_temperature(temperature);
+			RwLock::new(mix)
+		});
+		let error = equalize_unique_slots(&mixtures, &[0, 1].into_iter().collect()).unwrap_err();
+		let results = mixtures.map(|mix| {
+			let mix = mix.into_inner();
+			(mix.get_moles(0), mix.get_temperature())
+		});
+		destroy_gas_statics();
+		drop(guard);
+		assert!(error.to_string().contains("gas index 0 overflowed"));
+		assert_eq!(results, [(2.0e38, 300.0), (2.0e38, 600.0)]);
 	}
 }
 

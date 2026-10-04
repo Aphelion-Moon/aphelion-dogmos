@@ -1,4 +1,5 @@
 use super::*;
+use crate::gas::mixture::MixtureSum;
 use coarsetime::{Duration, Instant};
 use parking_lot::{const_mutex, Mutex};
 use std::collections::{BTreeSet, HashSet, VecDeque};
@@ -32,9 +33,9 @@ fn groups_hook(mut src: ByondValue, remaining: ByondValue) -> Result<ByondValue>
 				(&start_time, remaining_time),
 			)
 		} else {
-			(0, false)
+			Ok((0, false))
 		}
-	});
+	})?;
 
 	let bench = start_time.elapsed().as_millis();
 	let prev_cost = src
@@ -58,7 +59,7 @@ fn excited_group_processing(
 	pressure_goal: f32,
 	low_pressure_turfs: BTreeSet<TurfID>,
 	(start_time, remaining_time): (&Instant, Duration),
-) -> (usize, bool) {
+) -> Result<(usize, bool)> {
 	let mut found_turfs: HashSet<TurfID, FxBuildHasher> = Default::default();
 	let mut is_cancelled = false;
 	/*
@@ -67,8 +68,8 @@ fn excited_group_processing(
 		re-enter, and the pass is bounded by the caller's time budget. `fdm` and `post_process`
 		already hoist the same pair of locks this way.
 	*/
-	with_turf_gases_read(|arena| {
-		GasArena::with_all_mixtures(|all_mixtures| {
+	with_turf_gases_read(|arena| -> Result<()> {
+		GasArena::with_all_mixtures(|all_mixtures| -> Result<()> {
 			for initial_turf in low_pressure_turfs {
 				if found_turfs.contains(&initial_turf) {
 					continue;
@@ -100,7 +101,7 @@ fn excited_group_processing(
 				let mut max_pressure = min_pressure;
 				let mut min_temperature = initial_lock.read().get_temperature();
 				let mut max_temperature = min_temperature;
-				let mut fully_mixed = Mixture::new();
+				let mut fully_mixed = MixtureSum::default();
 
 				border_turfs.push_back((initial_turf, initial_index));
 				found_turfs.insert(initial_turf);
@@ -136,7 +137,6 @@ fn excited_group_processing(
 						max_pressure = this_max;
 						turfs.push(tmix);
 						fully_mixed.merge(&mix);
-						fully_mixed.volume += mix.volume;
 						for adjacent_index in arena.adjacent_node_ids(index) {
 							let Some(adjacent) = arena.get(adjacent_index) else {
 								continue;
@@ -156,7 +156,7 @@ fn excited_group_processing(
 				if turfs.is_empty() {
 					continue;
 				}
-				fully_mixed.multiply(1.0 / turfs.len() as f32);
+				let fully_mixed = fully_mixed.scaled(1.0 / turfs.len() as f64)?;
 				if !fully_mixed.is_corrupt() {
 					turfs
 						.par_iter()
@@ -164,9 +164,10 @@ fn excited_group_processing(
 						.for_each(|mix_lock| mix_lock.write().copy_from_mutable(&fully_mixed));
 				}
 			}
-		});
-	});
-	(found_turfs.len(), is_cancelled)
+			Ok(())
+		})
+	})?;
+	Ok((found_turfs.len(), is_cancelled))
 }
 
 #[cfg(all(test, feature = "katmos", feature = "superconductivity"))]
@@ -208,7 +209,8 @@ mod tests {
 			0.5,
 			BTreeSet::from([10, 11]),
 			(&Instant::now(), Duration::from_secs(10)),
-		);
+		)
+		.unwrap();
 		let temperatures = GasArena::with_all_mixtures(|mixes| {
 			[
 				mixes[0].read().get_temperature(),
@@ -227,9 +229,26 @@ mod tests {
 			0.5,
 			BTreeSet::from([10, 11]),
 			(&Instant::now(), Duration::from_secs(10)),
-		);
+		)
+		.unwrap();
 		let settled_moles = GasArena::with_all_mixtures(|mixes| {
 			[mixes[0].read().total_moles(), mixes[1].read().total_moles()]
+		});
+		GasArena::with_all_mixtures(|mixes| {
+			for (index, amount) in [2.0e38, 3.0e38].into_iter().enumerate() {
+				let mut mix = mixes[index].write();
+				mix.set_moles(0, amount).unwrap();
+				mix.set_volume(f32::MAX).unwrap();
+			}
+		});
+		excited_group_processing(
+			f32::MAX,
+			BTreeSet::from([10, 11]),
+			(&Instant::now(), Duration::from_secs(10)),
+		)
+		.unwrap();
+		let large_moles = GasArena::with_all_mixtures(|mixes| {
+			[mixes[0].read().get_moles(0), mixes[1].read().get_moles(0)]
 		});
 		shutdown_turfs();
 		crate::gas::shut_down_gases();
@@ -237,5 +256,8 @@ mod tests {
 		drop(guard);
 		assert_eq!(temperatures, [1200.0, 300.0]);
 		assert_eq!(settled_moles, [10.05, 10.05]);
+		for amount in large_moles {
+			assert!((amount / 2.5e38 - 1.0).abs() < 2.0e-6);
+		}
 	}
 }

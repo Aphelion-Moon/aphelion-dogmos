@@ -100,6 +100,14 @@ fn validate_finite(value: f32, quantity: &'static str) -> Result<f32, MixtureVal
 	Ok(value)
 }
 
+fn checked_moles(amount: f64, index: GasIDX) -> Result<f32, MixtureValueError> {
+	if amount > f64::from(f32::MAX) {
+		Err(MixtureValueError::MoleOverflow { index })
+	} else {
+		Ok(amount as f32)
+	}
+}
+
 #[derive(Debug)]
 struct GasCache(AtomicF32);
 
@@ -410,7 +418,16 @@ impl Mixture {
 		self.moles.iter().copied().map(f64::from).sum()
 	}
 	pub(crate) fn ratio_for_amount(&self, amount: f32) -> f32 {
+		if !amount.is_finite() {
+			return f32::NAN;
+		}
 		let total = self.total_moles();
+		if amount <= 0.0 || total <= 0.0 {
+			return 0.0;
+		}
+		if amount >= total {
+			return 1.0;
+		}
 		if total.is_finite() {
 			amount / total
 		} else {
@@ -467,17 +484,24 @@ impl Mixture {
 		(temperature, combined)
 	}
 	/// Merges one gas mixture into another.
-	pub fn merge(&mut self, giver: &Self) {
+	pub fn merge(&mut self, giver: &Self) -> Result<(), MixtureValueError> {
 		if self.immutable {
-			return;
+			return Ok(());
 		}
+		for (index, &added) in giver.moles.iter().enumerate() {
+			checked_moles(f64::from(self.get_moles(index)) + f64::from(added), index)?;
+		}
+		self.merge_unchecked(giver);
+		Ok(())
+	}
+	fn merge_unchecked(&mut self, giver: &Self) {
 		let (temperature, combined_heat_capacity) = self.blend_temperature_and_capacity(giver, 1.0);
 		self.maybe_expand(giver.moles.len());
 		self.moles
 			.iter_mut()
 			.zip(giver.moles.iter())
 			.for_each(|(amount, added)| {
-				*amount = (f64::from(*amount) + f64::from(*added)).min(f64::from(f32::MAX)) as f32;
+				*amount = (f64::from(*amount) + f64::from(*added)) as f32;
 			});
 		self.set_temperature(temperature);
 		// Minimum capacities belong to their mixtures and do not add with the gas.
@@ -487,13 +511,44 @@ impl Mixture {
 			self.cached_heat_capacity.invalidate();
 		}
 	}
+	/// Validates the complete diffusion update before removing any of this cell's gas.
+	#[cfg(feature = "turf_processing")]
+	pub(crate) fn scale_and_merge(
+		&mut self,
+		factor: f32,
+		giver: &Self,
+	) -> Result<(), MixtureValueError> {
+		self.check_scale_and_merge(factor, giver)?;
+		if !self.immutable {
+			self.multiply_unchecked(f64::from(factor));
+			self.merge_unchecked(giver);
+		}
+		Ok(())
+	}
+	#[cfg(feature = "turf_processing")]
+	pub(crate) fn check_scale_and_merge(
+		&self,
+		factor: f32,
+		giver: &Self,
+	) -> Result<(), MixtureValueError> {
+		self.check_multiplier(f64::from(factor))?;
+		if self.immutable {
+			return Ok(());
+		}
+		for index in 0..self.moles.len().max(giver.moles.len()) {
+			let scaled = (f64::from(self.get_moles(index)) * f64::from(factor)) as f32;
+			let scaled = if scaled <= GAS_MIN_MOLES { 0.0 } else { scaled };
+			checked_moles(f64::from(scaled) + f64::from(giver.get_moles(index)), index)?;
+		}
+		Ok(())
+	}
 	/// Turns a gas mixture into the weighted average of us and the giver, with the weights being (1-ratio, ratio), for self and the giver respectively.
 	pub fn share_ratio(&mut self, giver: &Self, r: f32) {
 		if self.immutable || !r.is_finite() {
 			return;
 		}
 		let ratio = r.clamp(0.0, 1.0);
-		self.multiply(1.0 - ratio);
+		self.multiply_unchecked(f64::from(1.0 - ratio));
 		let (temperature, combined_heat_capacity) =
 			self.blend_temperature_and_capacity(giver, ratio);
 		self.maybe_expand(giver.moles.len());
@@ -622,6 +677,26 @@ impl Mixture {
 	#[must_use]
 	pub fn remove(&mut self, amount: f32) -> Self {
 		self.remove_ratio(self.ratio_for_amount(amount))
+	}
+	/// Preflights the destination before the legacy quantized removal mutates the source.
+	pub fn transfer_ratio_to(
+		&mut self,
+		ratio: f32,
+		into: &mut Self,
+	) -> Result<(), MixtureValueError> {
+		validate_finite(ratio, "transfer ratio")?;
+		let ratio = ratio.clamp(0.0, 1.0);
+		if !into.immutable {
+			for (index, &amount) in self.moles.iter().enumerate() {
+				let removed = quantize(amount * ratio);
+				checked_moles(f64::from(into.get_moles(index)) + f64::from(removed), index)?;
+			}
+		}
+		into.merge(&self.remove_ratio(ratio))
+	}
+	pub fn transfer_to(&mut self, amount: f32, into: &mut Self) -> Result<(), MixtureValueError> {
+		validate_finite(amount, "transfer amount")?;
+		self.transfer_ratio_to(self.ratio_for_amount(amount), into)
 	}
 	/// Copies from a given gas mixture, if we're mutable.
 	pub fn copy_from_mutable(&mut self, sample: &Self) {
@@ -786,25 +861,65 @@ impl Mixture {
 		self.clear();
 	}
 	/// Multiplies every gas molage with this value.
-	pub fn multiply(&mut self, multiplier: f32) {
-		if !self.immutable && multiplier.is_finite() && multiplier >= 0.0 {
-			self.moles.iter_mut().for_each(|amount| {
-				*amount =
-					(f64::from(*amount) * f64::from(multiplier)).min(f64::from(f32::MAX)) as f32;
-			});
-			self.cached_heat_capacity.invalidate();
-			self.garbage_collect();
-		}
+	pub fn multiply(&mut self, multiplier: f32) -> Result<(), MixtureValueError> {
+		self.multiply_wide(f64::from(multiplier))
 	}
-	pub fn add(&mut self, num: f32) {
-		if !self.immutable && num.is_finite() {
+	pub(crate) fn multiply_wide(&mut self, multiplier: f64) -> Result<(), MixtureValueError> {
+		self.check_multiplier(multiplier)?;
+		if !self.immutable {
+			self.check_scaled_moles(multiplier)?;
+			self.multiply_unchecked(multiplier);
+		}
+		Ok(())
+	}
+	fn check_multiplier(&self, multiplier: f64) -> Result<(), MixtureValueError> {
+		if !multiplier.is_finite() || multiplier < 0.0 {
+			return Err(MixtureValueError::InvalidValue {
+				quantity: "mole multiplier",
+				class: invalid_numeric_class(multiplier as f32),
+			});
+		}
+		Ok(())
+	}
+	fn check_scaled_moles(&self, multiplier: f64) -> Result<(), MixtureValueError> {
+		for (index, &amount) in self.moles.iter().enumerate() {
+			checked_moles(f64::from(amount) * multiplier, index)?;
+		}
+		Ok(())
+	}
+	fn multiply_unchecked(&mut self, multiplier: f64) {
+		for amount in &mut self.moles {
+			*amount = (f64::from(*amount) * multiplier) as f32;
+		}
+		self.cached_heat_capacity.invalidate();
+		self.garbage_collect();
+	}
+	pub(crate) fn copy_scaled_from(
+		&mut self,
+		sample: &Self,
+		multiplier: f64,
+	) -> Result<(), MixtureValueError> {
+		self.check_multiplier(multiplier)?;
+		if !self.immutable {
+			sample.check_scaled_moles(multiplier)?;
+			self.copy_from_mutable(sample);
+			self.multiply_unchecked(multiplier);
+		}
+		Ok(())
+	}
+	pub fn add(&mut self, num: f32) -> Result<(), MixtureValueError> {
+		validate_mole_delta(num)?;
+		if !self.immutable {
+			for (index, &amount) in self.moles.iter().enumerate() {
+				checked_moles(f64::from(amount) + f64::from(num), index)?;
+			}
 			self.moles.iter_mut().for_each(|amount| {
-				*amount =
-					(f64::from(*amount) + f64::from(num)).clamp(0.0, f64::from(f32::MAX)) as f32;
+				*amount = (f64::from(*amount) + f64::from(num)).max(0.0) as f32;
 			});
 			self.cached_heat_capacity.invalidate();
 			self.garbage_collect();
 		}
+		Ok(())
 	}
 	pub fn can_react_with_reactions(
 		&self,
@@ -989,49 +1104,105 @@ impl Mixture {
 	}
 }
 
-use std::ops::{Add, Mul};
+/// Temporary sums may exceed a stored mixture's range before averaging or diffusion.
+/// Keep ordinary merge order and allocate wide species storage only after an overflow.
+#[derive(Default)]
+pub(crate) struct MixtureSum {
+	mixture: Mixture,
+	wide_moles: Option<Vec<f64>>,
+}
 
-/// Takes a copy of the mix, merges the right hand side, then returns the copy.
-impl Add<&Mixture> for Mixture {
-	type Output = Self;
-
-	fn add(self, rhs: &Mixture) -> Self {
-		let mut ret = self.copy_to_mutable();
-		ret.merge(rhs);
-		ret
+impl From<Mixture> for MixtureSum {
+	fn from(mixture: Mixture) -> Self {
+		Self {
+			mixture,
+			wide_moles: None,
+		}
 	}
 }
 
-/// Takes a copy of the mix, merges the right hand side, then returns the copy.
-impl Add<&Mixture> for &Mixture {
-	type Output = Mixture;
-
-	fn add(self, rhs: &Mixture) -> Mixture {
-		let mut ret = self.copy_to_mutable();
-		ret.merge(rhs);
-		ret
+impl MixtureSum {
+	pub(crate) fn merge(&mut self, giver: &Mixture) {
+		if self.wide_moles.is_none() && self.mixture.merge(giver).is_ok() {
+			return;
+		}
+		let moles = self
+			.wide_moles
+			.get_or_insert_with(|| self.mixture.moles.iter().copied().map(f64::from).collect());
+		let capacity = with_specific_heats(|heats| {
+			moles.iter().zip(heats).fold(0.0, |sum, (&amount, &heat)| {
+				amount.mul_add(f64::from(heat), sum)
+			})
+		});
+		let giver_capacity = giver.heat_capacity_wide();
+		if capacity + giver_capacity > f64::from(MINIMUM_HEAT_CAPACITY) {
+			self.mixture.set_temperature(weighted_temperature_wide(
+				capacity,
+				self.mixture.temperature,
+				giver_capacity,
+				giver.temperature,
+			));
+		}
+		moles.resize(moles.len().max(giver.moles.len()), 0.0);
+		for (amount, &added) in moles.iter_mut().zip(&giver.moles) {
+			*amount += f64::from(added);
+		}
 	}
-}
-
-/// Makes a copy of the given mix, multiplied by a scalar.
-impl Mul<f32> for Mixture {
-	type Output = Self;
-
-	fn mul(self, rhs: f32) -> Self {
-		let mut ret = self.copy_to_mutable();
-		ret.multiply(rhs);
-		ret
+	fn factor(&self, factor: f64) -> f64 {
+		let narrow = factor as f32;
+		if self.wide_moles.is_none() && narrow.is_finite() && (narrow != 0.0 || factor == 0.0) {
+			f64::from(narrow)
+		} else {
+			factor
+		}
 	}
-}
-
-/// Makes a copy of the given mix, multiplied by a scalar.
-impl Mul<f32> for &Mixture {
-	type Output = Mixture;
-
-	fn mul(self, rhs: f32) -> Mixture {
-		let mut ret = self.copy_to_mutable();
-		ret.multiply(rhs);
-		ret
+	pub(crate) fn check_scaled(&self, factor: f64) -> Result<(), MixtureValueError> {
+		self.mixture.check_multiplier(factor)?;
+		if let Some(moles) = &self.wide_moles {
+			for (index, &amount) in moles.iter().enumerate() {
+				checked_moles(amount * factor, index)?;
+			}
+			Ok(())
+		} else {
+			self.mixture.check_scaled_moles(self.factor(factor))
+		}
+	}
+	pub(crate) fn copy_scaled_into(
+		&self,
+		factor: f64,
+		into: &mut Mixture,
+	) -> Result<(), MixtureValueError> {
+		if into.immutable {
+			return Ok(());
+		}
+		if let Some(moles) = &self.wide_moles {
+			self.check_scaled(factor)?;
+			into.moles.resize(moles.len(), 0.0);
+			for (destination, &amount) in into.moles.iter_mut().zip(moles) {
+				*destination = (amount * factor) as f32;
+			}
+			into.set_temperature(self.mixture.temperature);
+			into.cached_heat_capacity.invalidate();
+			into.garbage_collect();
+			Ok(())
+		} else {
+			into.copy_scaled_from(&self.mixture, self.factor(factor))
+		}
+	}
+	#[cfg(any(feature = "turf_processing", feature = "zas_hooks", test))]
+	pub(crate) fn scaled(mut self, factor: f64) -> Result<Mixture, MixtureValueError> {
+		self.check_scaled(factor)?;
+		if let Some(moles) = self.wide_moles {
+			self.mixture.moles.resize(moles.len(), 0.0);
+			for (destination, amount) in self.mixture.moles.iter_mut().zip(moles) {
+				*destination = (amount * factor) as f32;
+			}
+			self.mixture.cached_heat_capacity.invalidate();
+			self.mixture.garbage_collect();
+		} else {
+			self.mixture.multiply_unchecked(self.factor(factor));
+		}
+		Ok(self.mixture)
 	}
 }
 
@@ -1056,6 +1227,146 @@ mod tests {
 		register_gas_manually("n2", 20.0);
 		register_gas_manually("n2o", 20.0);
 		register_gas_manually("co2", 20.0);
+	}
+
+	#[test]
+	fn species_overflow_leaves_all_moles_temperature_and_cache_unchanged() {
+		let guard = GAS_TEST_LOCK.lock().unwrap();
+		destroy_gas_statics();
+		set_gas_statics_manually();
+		register_gas_manually("o2", 0.25);
+		register_gas_manually("n2", 0.25);
+		let mut original = Mixture::new();
+		original.set_moles(0, 1.0).unwrap();
+		original.set_moles(1, 2.0e38).unwrap();
+		original.set_temperature(300.0);
+		let original_capacity = original.heat_capacity();
+		let mut giver = original.clone();
+		giver.set_temperature(600.0);
+		let mut merged = original.clone();
+		let merge_error = merged.merge(&giver);
+		let mut multiplied = original.clone();
+		let multiply_error = multiplied.multiply(2.0);
+		let mut added = original.clone();
+		let add_error = added.add(2.0e38);
+		let results = [merged, multiplied, added]
+			.map(|mix| (mix.moles.to_vec(), mix.temperature, mix.heat_capacity()));
+		destroy_gas_statics();
+		drop(guard);
+		for error in [merge_error, multiply_error, add_error] {
+			assert_eq!(error, Err(MixtureValueError::MoleOverflow { index: 1 }));
+		}
+		for (moles, temperature, capacity) in results {
+			assert_eq!(moles, [1.0, 2.0e38]);
+			assert_eq!(temperature, 300.0);
+			assert_eq!(capacity, original_capacity);
+		}
+	}
+
+	#[test]
+	fn species_transfer_and_scaled_copy_reject_before_mutating_either_mixture() {
+		let guard = GAS_TEST_LOCK.lock().unwrap();
+		destroy_gas_statics();
+		initialize_gases();
+		let mut source = mixture_at(1.0, 300.0);
+		source.set_moles(1, 2.0e38).unwrap();
+		let mut destination = source.clone();
+		destination.set_temperature(600.0);
+		let original = [source.clone(), destination.clone()];
+		let transfer_error = source.transfer_ratio_to(1.0, &mut destination);
+		let copy_error = destination.copy_scaled_from(&source, 2.0);
+		let unchanged =
+			source.approx_eq(&original[0], 0.0) && destination.approx_eq(&original[1], 0.0);
+		let mut immutable = source.clone();
+		immutable.mark_immutable();
+		let original_immutable = immutable.clone();
+		let immutable_error = immutable.transfer_ratio_to(1.0, &mut destination);
+		let immutable_unchanged = immutable.approx_eq(&original_immutable, 0.0)
+			&& destination.approx_eq(&original[1], 0.0);
+		let mut small_source = mixture_at(8.0, 300.0);
+		let mut small_destination = mixture_at(4.0, 600.0);
+		small_source
+			.transfer_ratio_to(0.5, &mut small_destination)
+			.unwrap();
+		let successful = (
+			small_source.get_moles(0),
+			small_destination.get_moles(0),
+			small_destination.temperature,
+		);
+		let mut empty = Mixture::new();
+		let empty_result = empty.transfer_to(1.0, &mut small_destination);
+		let mut tiny = mixture_at(0.0002, 300.0);
+		let tiny_result = tiny.transfer_to(f32::MAX, &mut empty);
+		let tiny_amounts = (tiny.get_moles(0), empty.get_moles(0));
+		destroy_gas_statics();
+		drop(guard);
+		for error in [transfer_error, copy_error, immutable_error] {
+			assert_eq!(error, Err(MixtureValueError::MoleOverflow { index: 1 }));
+		}
+		assert!(unchanged && immutable_unchanged);
+		assert_eq!(successful, (4.0, 8.0, 450.0));
+		assert!(empty_result.is_ok() && tiny_result.is_ok());
+		assert_eq!(tiny_amounts, (0.0, 0.0002));
+	}
+
+	#[test]
+	fn wide_species_sum_normalizes_before_narrowing() {
+		let guard = GAS_TEST_LOCK.lock().unwrap();
+		destroy_gas_statics();
+		initialize_gases();
+		let mut thirds = MixtureSum::default();
+		for _ in 0..3 {
+			thirds.merge(&mixture_at(f32::MAX, 300.0));
+		}
+		let averaged = thirds.scaled(1.0 / 3.0).unwrap();
+		let mut neighbors = MixtureSum::default();
+		for temperature in [300.0, 600.0, 300.0, 600.0, 300.0, 600.0] {
+			neighbors.merge(&mixture_at(1.0e38, temperature));
+		}
+		let diffused = neighbors.scaled(0.125).unwrap();
+		let results = [averaged, diffused].map(|mix| (mix.get_moles(0), mix.temperature));
+		destroy_gas_statics();
+		drop(guard);
+		for ((amount, temperature), (expected_amount, expected_temperature)) in results
+			.into_iter()
+			.zip([(f32::MAX, 300.0), (7.5e37, 450.0)])
+		{
+			assert!((amount / expected_amount - 1.0).abs() < 2.0e-6);
+			assert!((temperature - expected_temperature).abs() < 0.0001);
+		}
+	}
+
+	#[test]
+	fn bulk_mole_scalars_preserve_immutability_and_legacy_floor() {
+		let guard = GAS_TEST_LOCK.lock().unwrap();
+		destroy_gas_statics();
+		initialize_gases();
+		let original = mixture_at(4.0, 300.0);
+		let mut mix = original.clone();
+		let rejected = [f32::NAN, f32::INFINITY, f32::NEG_INFINITY]
+			.into_iter()
+			.all(|value| mix.multiply(value).is_err() && mix.add(value).is_err());
+		let negative_rejected = mix.multiply(-1.0).is_err();
+		let unchanged = mix.approx_eq(&original, 0.0);
+		mix.add(-5.0).unwrap();
+		let removed = mix.total_moles();
+		mix.copy_from_mutable(&original);
+		mix.multiply(0.0).unwrap();
+		let cleared = mix.total_moles();
+		mix.copy_from_mutable(&original);
+		mix.mark_immutable();
+		let original_immutable = mix.clone();
+		mix.multiply(f32::MAX).unwrap();
+		mix.add(f32::MAX).unwrap();
+		mix.merge(&mixture_at(f32::MAX, 900.0)).unwrap();
+		let immutable_unchanged = mix.approx_eq(&original_immutable, 0.0);
+		let mut floor = mixture_at(0.0002, 300.0);
+		floor.multiply(0.5).unwrap();
+		let floored = floor.total_moles();
+		destroy_gas_statics();
+		drop(guard);
+		assert!(rejected && negative_rejected && unchanged && immutable_unchanged);
+		assert_eq!([removed, cleared, floored], [0.0; 3]);
 	}
 
 	#[test]
@@ -1110,7 +1421,7 @@ mod tests {
 		let mut hot = cold.clone();
 		hot.set_temperature(600.0);
 		let mut merged = cold.clone();
-		merged.merge(&hot);
+		merged.merge(&hot).unwrap();
 		let mut shared = cold.clone();
 		shared.share_ratio(&hot, 0.5);
 		let mut transferred = cold.clone();
@@ -1174,7 +1485,7 @@ mod tests {
 		let cold = mixture_at(1.0e38, 300.0);
 		let hot = mixture_at(1.0e38, 600.0);
 		let mut merged = cold.clone();
-		merged.merge(&hot);
+		merged.merge(&hot).unwrap();
 		let mut shared = cold.clone();
 		shared.share_ratio(&hot, 0.5);
 		let mut source = hot.clone();
@@ -1344,7 +1655,7 @@ mod tests {
 		type Operation = fn(&mut Mixture, &Mixture);
 		let operations: [(&str, Operation, f32, f32); 3] = [
 			("copy", Mixture::copy_from_mutable, 1.0, 20.0),
-			("merge", Mixture::merge, 2.0, 40.0),
+			("merge", |src, giver| src.merge(giver).unwrap(), 2.0, 40.0),
 			("share", |src, giver| src.share_ratio(giver, 0.5), 1.0, 20.0),
 		];
 		let mut mismatches = Vec::new();
@@ -1472,7 +1783,7 @@ mod tests {
 		let mut source = Mixture::new();
 		source.set_moles(2, 100.0).unwrap();
 		source.set_temperature(313.15);
-		into.merge(&source);
+		into.merge(&source).unwrap();
 		// make sure that the merge successfuly moved the moles
 		assert_eq!(into.get_moles(2), 100.0);
 		assert_eq!(source.get_moles(2), 100.0); // source is not modified by merge
@@ -1563,7 +1874,7 @@ mod tests {
 		first.set_moles(0, 0.005).unwrap();
 		let mut second = Mixture::new();
 		second.set_moles(0, 0.005).unwrap();
-		first.merge(&second);
+		first.merge(&second).unwrap();
 		assert!((first.get_moles(0) - 0.01).abs() < 1e-6);
 
 		let mut trace = Mixture::new();
@@ -1675,7 +1986,7 @@ mod tests {
 			let before = source.total_moles() + target.total_moles();
 			let ratio = (case % 101) as f32 / 100.0;
 			let removed = source.remove_ratio(ratio);
-			target.merge(&removed);
+			target.merge(&removed).unwrap();
 			let after = source.total_moles() + target.total_moles();
 			let tolerance = 1e-5_f32.max(before * 1e-5);
 			assert!((before - after).abs() <= tolerance, "case {case}");

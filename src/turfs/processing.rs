@@ -1,4 +1,5 @@
 use super::*;
+use crate::gas::mixture::MixtureSum;
 use crate::GasArena;
 use auxcallback::process_callbacks_for_millis;
 use byondapi::{byond_string, prelude::*};
@@ -88,7 +89,7 @@ fn process_turf(
 	let (low_pressure_turfs, _high_pressure_turfs) = {
 		let start_time = Instant::now();
 		let (low_pressure_turfs, high_pressure_turfs) =
-			fdm((&start_time, remaining), fdm_max_steps, equalize_enabled);
+			fdm((&start_time, remaining), fdm_max_steps, equalize_enabled)?;
 		let (lpt, hpt) = (low_pressure_turfs.len(), high_pressure_turfs.len());
 		// DM owns cost_turfs for the complete resumable active-turf phase. Mixing
 		// this FDM-only duration into the same EMA understates that phase's cost.
@@ -257,14 +258,14 @@ fn process_cell(
 	index: NodeIndex,
 	all_mixtures: &[RwLock<Mixture>],
 	arena: &TurfGases,
-) -> Option<(NodeIndex, Mixture, TinyVec<[(TurfID, u32, f32); 6]>, i32)> {
+) -> Option<Result<(NodeIndex, Mixture, TinyVec<[(TurfID, u32, f32); 6]>, i32)>> {
 	let mut adj_amount = 0;
 	/*
 		Getting write locks is potential danger zone,
 		so we make sure we don't do that unless we
 		absolutely need to. Saving is fast enough.
 	*/
-	let mut end_gas = Mixture::from_vol(crate::constants::CELL_VOLUME);
+	let mut end_gas = MixtureSum::default();
 	let mut pressure_diffs: TinyVec<[(TurfID, u32, f32); 6]> = Default::default();
 	/*
 		The pressure here is negative
@@ -306,8 +307,12 @@ fn process_cell(
 		(Technically up to 2,097,152,
 		but I digress.)
 	*/
-	end_gas.multiply(CORE_GAS_DIFFUSION_CONSTANT);
-	Some((index, end_gas, pressure_diffs, adj_amount))
+	let own = all_mixtures.get(arena.get(index)?.mix)?.try_read()?;
+	Some((|| {
+		let end_gas = end_gas.scaled(f64::from(CORE_GAS_DIFFUSION_CONSTANT))?;
+		own.check_scale_and_merge(diffusion_self_weight(adj_amount as u32)?, &end_gas)?;
+		Ok((index, end_gas, pressure_diffs, adj_amount))
+	})())
 }
 
 #[cfg(all(test, feature = "katmos", feature = "superconductivity"))]
@@ -353,13 +358,16 @@ pub(crate) fn capture_two_turf_diffusion_trace() -> super::katmos::LegacyStageTr
 	arena.graph.add_edge(right, left, AdjacentFlags::empty());
 	let staged = [left, right]
 		.into_iter()
-		.map(|index| process_cell(index, &mixtures, &arena).unwrap())
+		.map(|index| process_cell(index, &mixtures, &arena).unwrap().unwrap())
 		.collect::<Vec<_>>();
 	for (index, end_gas, _, adjacent_count) in staged {
 		let mixture = arena.get(index).unwrap();
 		let mut gas = mixtures[mixture.mix].write();
-		gas.multiply(diffusion_self_weight(adjacent_count as u32).unwrap());
-		gas.merge(&end_gas);
+		gas.scale_and_merge(
+			diffusion_self_weight(adjacent_count as u32).unwrap(),
+			&end_gas,
+		)
+		.unwrap();
 	}
 
 	let left_value = mixtures[0].read().total_moles();
@@ -372,6 +380,80 @@ pub(crate) fn capture_two_turf_diffusion_trace() -> super::katmos::LegacyStageTr
 	}
 }
 
+#[cfg(test)]
+#[test]
+fn diffusion_preserves_species_when_neighbor_totals_exceed_f32() {
+	use crate::gas::{types::*, GAS_TEST_LOCK};
+	let guard = GAS_TEST_LOCK.lock().unwrap();
+	destroy_gas_statics();
+	set_gas_statics_manually();
+	register_gas_manually("o2", 0.25);
+	let mut results = Vec::new();
+	for uniform_max in [false, true] {
+		let mixtures = (0..7)
+			.map(|index| {
+				let mut mix = Mixture::new();
+				let (amount, temperature) = if uniform_max {
+					(f32::MAX, 300.0)
+				} else if index == 0 {
+					(4.0e37, 900.0)
+				} else {
+					(1.0e38, if index % 2 == 0 { 600.0 } else { 300.0 })
+				};
+				mix.set_moles(0, amount).unwrap();
+				mix.set_temperature(temperature);
+				RwLock::new(mix)
+			})
+			.collect::<Vec<_>>();
+		let mut arena = TurfGases::with_capacity(0, 0);
+		for mix in 0..7 {
+			arena.insert_turf(TurfMixture {
+				mix,
+				id: mix as TurfID + 10,
+				generation: 1,
+				flags: SimulationFlags::SIMULATION_ALL,
+				..Default::default()
+			});
+		}
+		let center = arena.get_id(10).unwrap();
+		for id in 11..17 {
+			let adjacent = arena.get_id(id).unwrap();
+			arena
+				.graph
+				.add_edge(center, adjacent, AdjacentFlags::empty());
+			arena
+				.graph
+				.add_edge(adjacent, center, AdjacentFlags::empty());
+		}
+		let staged = (10..17)
+			.map(|id| process_cell(arena.get_id(id).unwrap(), &mixtures, &arena).unwrap())
+			.collect::<Result<Vec<_>>>();
+		let result = staged.and_then(|staged| {
+			for (index, incoming, _, count) in staged {
+				mixtures[arena.get(index).unwrap().mix]
+					.write()
+					.scale_and_merge(diffusion_self_weight(count as u32)?, &incoming)?;
+			}
+			let center = mixtures[0].read();
+			let total = mixtures
+				.iter()
+				.map(|mix| f64::from(mix.read().get_moles(0)))
+				.sum::<f64>();
+			Ok((center.get_moles(0), center.get_temperature(), total))
+		});
+		results.push(result);
+	}
+	destroy_gas_statics();
+	drop(guard);
+	let first = results.remove(0).unwrap();
+	assert!((first.0 / 8.5e37 - 1.0).abs() < 2.0e-6);
+	assert!((first.1 - 502.9412).abs() < 0.001);
+	assert!((first.2 / 6.4e38 - 1.0).abs() < 2.0e-6);
+	let maximum = results.remove(0).unwrap();
+	assert_eq!((maximum.0, maximum.1), (f32::MAX, 300.0));
+	assert!((maximum.2 / (7.0 * f64::from(f32::MAX)) - 1.0).abs() < 2.0e-6);
+}
+
 // Solving the heat equation using a Finite Difference Method, an iterative stencil loop.
 #[cfg_attr(not(target_feature = "avx2"), auxmacros::generate_simd_functions)]
 #[cfg_attr(feature = "tracy", tracing::instrument(skip_all))]
@@ -379,7 +461,7 @@ fn fdm(
 	(start_time, remaining_time): (&Instant, Duration),
 	fdm_max_steps: i32,
 	equalize_enabled: bool,
-) -> (BTreeSet<TurfID>, BTreeSet<TurfID>) {
+) -> Result<(BTreeSet<TurfID>, BTreeSet<TurfID>)> {
 	/*
 		This is the replacement system for LINDA. LINDA requires a lot of bookkeeping,
 		which, when coefficient-wise operations are this fast, is all just unnecessary overhead.
@@ -389,12 +471,12 @@ fn fdm(
 	let mut low_pressure_turfs: BTreeSet<TurfID> = Default::default();
 	let mut high_pressure_turfs: BTreeSet<TurfID> = Default::default();
 	let mut cur_count = 1;
-	with_turf_gases_read(|arena| {
+	with_turf_gases_read(|arena| -> Result<()> {
 		loop {
 			if cur_count > fdm_max_steps || start_time.elapsed() >= remaining_time {
 				break;
 			}
-			GasArena::with_all_mixtures(|all_mixtures| {
+			GasArena::with_all_mixtures(|all_mixtures| -> Result<()> {
 				let nodes_scanned = arena.map.len();
 				let turfs_to_save = arena
 					.map
@@ -412,7 +494,7 @@ fn fdm(
 					.map(|&idx| (idx, arena.get(idx).unwrap()))
 					.filter(|(index, mixture)| should_process(*index, mixture, all_mixtures, arena))
 					.filter_map(|(index, _)| process_cell(index, all_mixtures, arena))
-					.collect::<Vec<_>>();
+					.collect::<Result<Vec<_>>>()?;
 				record_fdm_metrics(&crate::DOGMOS_TELEMETRY, nodes_scanned, turfs_to_save.len());
 				/*
 					For the optimization-heads reading this: this is not an unnecessary collect().
@@ -422,12 +504,13 @@ fn fdm(
 					In short: the above actually needs to finish before the below starts
 					for consistency, so collect() is desired. This has been tested, by the way.
 				*/
+				let mutation_error = std::sync::OnceLock::new();
 				let (low_pressure, high_pressure): (Vec<_>, Vec<_>) = turfs_to_save
 					.into_par_iter()
 					.filter_map(|(i, end_gas, mut pressure_diffs, adj_amount)| {
 						let m = arena.get(i).unwrap();
 						let self_weight = diffusion_self_weight(adj_amount as u32).ok()?;
-						all_mixtures.get(m.mix).map(|entry| {
+						all_mixtures.get(m.mix).and_then(|entry| {
 							let mut max_diff = 0.0_f32;
 							let moved_pressure = {
 								let gas = entry.read();
@@ -452,8 +535,10 @@ fn fdm(
 							*/
 							{
 								let gas: &mut Mixture = &mut entry.write();
-								gas.multiply(self_weight);
-								gas.merge(&end_gas);
+								if let Err(error) = gas.scale_and_merge(self_weight, &end_gas) {
+									let _ = mutation_error.set(error);
+									return None;
+								}
 							}
 							/*
 								If there is neither a major pressure difference
@@ -462,10 +547,13 @@ fn fdm(
 								to do any more and we don't need to send the
 								value to byond, so we don't. However, if we do...
 							*/
-							(m.id, m.generation, pressure_diffs, max_diff, i)
+							Some((m.id, m.generation, pressure_diffs, max_diff, i))
 						})
 					})
 					.partition(|&(_, _, _, max_diff, _)| max_diff <= 5.0);
+				if let Some(error) = mutation_error.into_inner() {
+					return Err(error.into());
+				}
 
 				high_pressure_turfs.par_extend(high_pressure.par_iter().map(|(i, _, _, _, _)| i));
 				low_pressure_turfs.par_extend(low_pressure.par_iter().map(|(i, _, _, _, _)| i));
@@ -545,12 +633,14 @@ fn fdm(
 						);
 					}
 				}
-			});
+				Ok(())
+			})?;
 
 			cur_count += 1;
 		}
-	});
-	(low_pressure_turfs, high_pressure_turfs)
+		Ok(())
+	})?;
+	Ok((low_pressure_turfs, high_pressure_turfs))
 }
 
 // Checks if the gas can react or can update visuals, returns None if not.
