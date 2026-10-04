@@ -559,15 +559,19 @@ fn fdm(
 				low_pressure_turfs.par_extend(low_pressure.par_iter().map(|(i, _, _, _, _)| i));
 				//tossing things around is already handled by katmos, so we don't need to do it here.
 				if !equalize_enabled {
-					let mut pressure_callbacks = high_pressure
+					let pressure_callbacks = high_pressure
 						.into_par_iter()
 						.filter_map(|(_, generation, pressures, _, node_id)| {
 							Some((arena.get(node_id)?.id, generation, pressures))
 						})
 						.collect::<Vec<_>>();
-					while !pressure_callbacks.is_empty() {
-						let batch_len = PRESSURE_CALLBACK_BATCH_SIZE.min(pressure_callbacks.len());
-						let batch = pressure_callbacks.drain(..batch_len).collect::<Vec<_>>();
+					// Consume the allocation without shifting its remaining tail for every batch.
+					let mut pressure_callbacks = pressure_callbacks.into_iter();
+					while pressure_callbacks.len() != 0 {
+						let batch = pressure_callbacks
+							.by_ref()
+							.take(PRESSURE_CALLBACK_BATCH_SIZE)
+							.collect::<Vec<_>>();
 						let owned_bytes = batch
 							.capacity()
 							.saturating_mul(std::mem::size_of_val(&batch[0]))
@@ -757,12 +761,16 @@ fn post_process() {
 /// Queues `turfs` as bounded batches so a busy cycle costs one boxed callback per batch instead
 /// of one per turf.
 fn queue_turf_callback_batches(
-	mut turfs: Vec<(TurfID, u32)>,
+	turfs: Vec<(TurfID, u32)>,
 	mut wrap: impl FnMut(Vec<(TurfID, u32)>) -> Box<dyn FnOnce() -> Result<()> + Send + Sync>,
 ) {
-	while !turfs.is_empty() {
-		let batch_len = POST_PROCESS_CALLBACK_BATCH_SIZE.min(turfs.len());
-		let batch = turfs.drain(..batch_len).collect::<Vec<_>>();
+	// Prefix drains repeatedly copy the tail, becoming quadratic on a busy map.
+	let mut turfs = turfs.into_iter();
+	while turfs.len() != 0 {
+		let batch = turfs
+			.by_ref()
+			.take(POST_PROCESS_CALLBACK_BATCH_SIZE)
+			.collect::<Vec<_>>();
 		let owned_bytes = batch
 			.capacity()
 			.saturating_mul(std::mem::size_of::<(TurfID, u32)>());

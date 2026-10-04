@@ -94,7 +94,7 @@ fn dogmos_in_process_metrics() -> Result<ByondValue> {
 	).into_bytes()).map_err(Into::into)
 }
 
-fn refresh_runtime_metrics() {
+fn refresh_runtime_metrics(gas: &gas::GasRuntimeMetrics) {
 	use dogmos_perf::RuntimeMetric;
 
 	let callbacks = auxcallback::callback_metrics();
@@ -127,7 +127,6 @@ fn refresh_runtime_metrics() {
 		callbacks.enqueue_failures as u64,
 	);
 
-	let gas = gas::gas_runtime_metrics();
 	DOGMOS_TELEMETRY.set_metric(RuntimeMetric::MixtureSlots, gas.active_slots as u64);
 	DOGMOS_TELEMETRY.set_metric(
 		RuntimeMetric::MixtureSlotHighWater,
@@ -187,19 +186,22 @@ fn refresh_runtime_metrics() {
 }
 
 fn collect_performance_snapshot_json() -> String {
-	refresh_runtime_metrics();
+	// The histogram locks every mixture; share one capture across both diagnostic views.
+	let gas = gas::gas_runtime_metrics();
+	refresh_runtime_metrics(&gas);
 	dogmos_perf::snapshot_to_json_with_diagnostics(
 		&DOGMOS_TELEMETRY.snapshot(512),
 		0,
 		0,
 		0,
 		0,
-		current_allocator_diagnostics(),
+		current_allocator_diagnostics(&gas),
 	)
 }
 
-fn current_allocator_diagnostics() -> dogmos_perf::AllocatorProcessDiagnostics {
-	let gas = gas::gas_runtime_metrics();
+fn current_allocator_diagnostics(
+	gas: &gas::GasRuntimeMetrics,
+) -> dogmos_perf::AllocatorProcessDiagnostics {
 	let audited = dogmos_perf::AllocationFloorLayout::audited_i686();
 	#[cfg(feature = "turf_processing")]
 	let (turf_mixture_bytes, turf_capacity, turf_edge_capacity) = {
