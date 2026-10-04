@@ -614,24 +614,102 @@ mod tests {
 	use crate::reaction::{install_test_reaction_value, reaction_name_by_id};
 
 	#[test]
-	fn immutable_oxidizer_query_uses_requested_temperature() {
+	fn burnability_queries_preserve_source_and_temperature_contract() {
 		let _guard = GAS_TEST_LOCK.lock().unwrap();
 		set_gas_statics_manually();
-		register_gas_manually("oxidizer", 20.0);
-		GAS_INFO_BY_IDX.write().as_mut().unwrap()[0].fire_info =
-			FireInfo::Oxidation(OxidationInfo {
+		for name in [
+			"oxidizer", "fuel", "inert2", "inert3", "inert4", "inert5", "inert6", "inert7", "fuel8",
+		] {
+			register_gas_manually(name, 20.0);
+		}
+		{
+			let mut registry = GAS_INFO_BY_IDX.write();
+			let gases = registry.as_mut().unwrap();
+			gases[0].fire_info = FireInfo::Oxidation(OxidationInfo {
 				temperature: 500.0,
 				power: 2.0,
 			});
+			gases[1].fire_info = FireInfo::Fuel(FuelInfo {
+				temperature: 250.0,
+				burn_rate: 2.0,
+			});
+			gases[8].fire_info = FireInfo::Fuel(FuelInfo {
+				temperature: 250.0,
+				burn_rate: 4.0,
+			});
+		}
 		let mut mixture = crate::gas::Mixture::new();
 		mixture.set_moles(0, 10.0).unwrap();
-		mixture.set_temperature(300.0);
-		mixture.mark_immutable();
-		assert_eq!(mixture.get_oxidation_power_at_temperature(1000.0), 10.0);
-		assert_eq!(mixture.get_oxidation_power(), 0.0);
-		assert_eq!(mixture.get_temperature(), 300.0);
-		assert_eq!(mixture.get_moles(0), 10.0);
-		assert!(mixture.is_immutable());
+		mixture.set_moles(1, 8.0).unwrap();
+		mixture.set_moles(8, 8.0).unwrap();
+		mixture.set_temperature(1000.0);
+		assert!(mixture.moles_spilled());
+		let original_moles: Vec<_> = mixture.enumerate().collect();
+		let original_heat_capacity = mixture.heat_capacity();
+		for immutable in [false, true] {
+			if immutable {
+				mixture.mark_immutable();
+			}
+			for (temperature, expected) in [
+				(None, (10.0, 4.5)),
+				(Some(2000.0), (15.0, 5.25)),
+				(Some(500.0), (0.0, 3.0)),
+				(Some(250.0), (0.0, 0.0)),
+				(Some(-1.0), (0.0, 0.0)),
+				(Some(f32::NAN), (10.0, 4.5)),
+				(Some(f32::INFINITY), (10.0, 4.5)),
+				(Some(f32::NEG_INFINITY), (10.0, 4.5)),
+			] {
+				assert_eq!(
+					mixture.get_burnability_at_temperature(temperature),
+					expected
+				);
+				if let Some(temperature) = temperature {
+					assert_eq!(
+						mixture.get_oxidation_power_at_temperature(temperature),
+						expected.0
+					);
+				}
+			}
+			assert_eq!(mixture.get_burnability(), (10.0, 4.5));
+			assert_eq!(mixture.get_oxidation_power(), 10.0);
+			assert_eq!(mixture.get_fuel_amount(), 4.5);
+			assert_eq!(mixture.get_temperature(), 1000.0);
+			assert_eq!(mixture.enumerate().collect::<Vec<_>>(), original_moles);
+			assert_eq!(mixture.heat_capacity(), original_heat_capacity);
+			assert_eq!(mixture.is_immutable(), immutable);
+		}
+		destroy_gas_statics();
+	}
+
+	#[test]
+	fn hypothetical_burnability_clamps_finite_temperature_to_tcmb() {
+		let _guard = GAS_TEST_LOCK.lock().unwrap();
+		set_gas_statics_manually();
+		register_gas_manually("oxidizer", 20.0);
+		register_gas_manually("fuel", 20.0);
+		{
+			let mut registry = GAS_INFO_BY_IDX.write();
+			let gases = registry.as_mut().unwrap();
+			gases[0].fire_info = FireInfo::Oxidation(OxidationInfo {
+				temperature: crate::constants::TCMB / 2.0,
+				power: 2.0,
+			});
+			gases[1].fire_info = FireInfo::Fuel(FuelInfo {
+				temperature: crate::constants::TCMB / 4.0,
+				burn_rate: 2.0,
+			});
+		}
+		let mut mixture = crate::gas::Mixture::new();
+		mixture.set_moles(0, 10.0).unwrap();
+		mixture.set_moles(1, 8.0).unwrap();
+		for temperature in [-100.0, 0.0, crate::constants::TCMB] {
+			assert_eq!(
+				mixture.get_burnability_at_temperature(Some(temperature)),
+				(10.0, 3.0)
+			);
+		}
+		destroy_gas_statics();
 	}
 
 	#[test]

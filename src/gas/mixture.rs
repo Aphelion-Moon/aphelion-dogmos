@@ -953,7 +953,15 @@ impl Mixture {
 	}
 	/// Returns a tuple with oxidation power and fuel amount of this gas mixture.
 	pub fn get_burnability(&self) -> (f32, f32) {
+		self.get_burnability_at_temperature(None)
+	}
+	/// Evaluates current or hypothetical burnability without copying or changing the mixture.
+	/// Finite overrides follow `set_temperature`; absent/non-finite overrides retain stored temperature.
+	pub fn get_burnability_at_temperature(&self, temperature: Option<f32>) -> (f32, f32) {
 		use crate::types::FireInfo;
+		let temperature = temperature
+			.filter(|value| value.is_finite())
+			.map_or(self.temperature, |value| value.max(TCMB));
 		super::with_gas_info(|gas_info| {
 			self.moles
 				.iter()
@@ -962,17 +970,16 @@ impl Mixture {
 					if amt > GAS_MIN_MOLES {
 						match this_gas_info.fire_info {
 							FireInfo::Oxidation(oxidation) => {
-								if self.temperature > oxidation.temperature() {
+								if temperature > oxidation.temperature() {
 									let amount = amt
-										* (1.0 - oxidation.temperature() / self.temperature)
-											.max(0.0);
+										* (1.0 - oxidation.temperature() / temperature).max(0.0);
 									acc.0 += amount * oxidation.power();
 								}
 							}
 							FireInfo::Fuel(fire) => {
-								if self.temperature > fire.temperature() {
-									let amount = amt
-										* (1.0 - fire.temperature() / self.temperature).max(0.0);
+								if temperature > fire.temperature() {
+									let amount =
+										amt * (1.0 - fire.temperature() / temperature).max(0.0);
 									acc.1 += amount / fire.burn_rate();
 								}
 							}
@@ -989,9 +996,7 @@ impl Mixture {
 	}
 	/// Evaluates a hypothetical temperature without modifying an immutable reservoir.
 	pub fn get_oxidation_power_at_temperature(&self, temperature: f32) -> f32 {
-		let mut proposed = self.copy_to_mutable();
-		proposed.set_temperature(temperature);
-		proposed.get_oxidation_power()
+		self.get_burnability_at_temperature(Some(temperature)).0
 	}
 	/// Returns only fuel amount. Since this calculates burnability anyway, prefer `get_burnability`.
 	pub fn get_fuel_amount(&self) -> f32 {

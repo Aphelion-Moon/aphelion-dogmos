@@ -1072,17 +1072,9 @@ fn equalize_with_hook(src: ByondValue, total: ByondValue) -> Result<ByondValue> 
 #[auxmacros::bind("/datum/gas_mixture/proc/get_fuel_amount")]
 fn fuel_amount_hook(src: ByondValue, temp: ByondValue) -> Result<ByondValue> {
 	with_mix(&src, |air| {
-		Ok(temp
-			.get_number()
-			.ok()
-			.map_or_else(
-				|| air.get_fuel_amount(),
-				|new_temp| {
-					let mut test_air = air.copy_to_mutable();
-					test_air.set_temperature(new_temp);
-					test_air.get_fuel_amount()
-				},
-			)
+		Ok(air
+			.get_burnability_at_temperature(temp.get_number().ok())
+			.1
 			.into())
 	})
 }
@@ -1091,13 +1083,9 @@ fn fuel_amount_hook(src: ByondValue, temp: ByondValue) -> Result<ByondValue> {
 #[auxmacros::bind("/datum/gas_mixture/proc/get_oxidation_power")]
 fn oxidation_power_hook(src: ByondValue, temp: ByondValue) -> Result<ByondValue> {
 	with_mix(&src, |air| {
-		Ok(temp
-			.get_number()
-			.ok()
-			.map_or_else(
-				|| air.get_oxidation_power(),
-				|new_temp| air.get_oxidation_power_at_temperature(new_temp),
-			)
+		Ok(air
+			.get_burnability_at_temperature(temp.get_number().ok())
+			.0
 			.into())
 	})
 }
