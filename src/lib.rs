@@ -978,13 +978,12 @@ fn react_hook(src: ByondValue, holder: ByondValue) -> Result<ByondValue> {
 	let ssair = ffi::OwnedByondValue::adopt(
 		ByondValue::new_global_ref().read_var_id(byond_string!("SSair"))?,
 	);
-	let diagnostics = ffi::OwnedByondValue::adopt(ssair.read_var_id(byond_string!("diagnostics"))?);
-	let profile_reactions = diagnostics
+	let profile_reactions = ssair
 		.read_number_id(byond_string!("kennel_profile_reactions"))
 		.is_ok_and(|v| v != 0.0);
 	let cost_threshold_ms = if profile_reactions {
 		{
-			diagnostics
+			ssair
 				.read_number_id(byond_string!("kennel_high_cost_ms_threshold"))
 				.unwrap_or(4.0)
 		}
@@ -1000,7 +999,7 @@ fn react_hook(src: ByondValue, holder: ByondValue) -> Result<ByondValue> {
 			if elapsed_ms >= cost_threshold_ms {
 				let name = reaction_name_by_id(reaction).unwrap_or_else(|| "unknown".to_string());
 				if let Ok(name_val) = ByondValue::try_from(name) {
-					let _ = diagnostics.call_id(
+					let _ = ssair.call_id(
 						byond_string!("kennel_record_reaction_cost"),
 						&[name_val, holder, elapsed_ms.into()],
 					);

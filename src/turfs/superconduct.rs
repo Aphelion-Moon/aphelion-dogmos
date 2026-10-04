@@ -20,10 +20,11 @@ static TURF_HEAT: RwLock<Option<TurfHeat>> = const_rwlock(None);
 static HEAT_WORKER: Mutex<Option<std::thread::JoinHandle<()>>> = const_mutex(None);
 // The main-thread caller resumes this same interval if the worker queue is full.
 static PENDING_HEAT: Mutex<Option<SSheatInfo>> = const_mutex(None);
+static OUTSTANDING_HEAT: AtomicUsize = AtomicUsize::new(0);
 
 static HEAT_CHANNEL: LazyLock<(
-	flume::Sender<HeatWorkerMessage>,
-	flume::Receiver<HeatWorkerMessage>,
+	flume::Sender<HeatWorkerMessage<'static>>,
+	flume::Receiver<HeatWorkerMessage<'static>>,
 )> = LazyLock::new(|| flume::bounded(1));
 
 static HEAT_REGISTRATION_CHANGES: AtomicUsize = AtomicUsize::new(0);
@@ -67,6 +68,7 @@ pub fn shutdown_turf_heat() -> Result<()> {
 				"Heat worker is running without an owned thread handle"
 			));
 		}
+		HEAT_CHANNEL.1.try_iter().for_each(std::mem::drop);
 		TURF_HEAT.write().take();
 		return Ok(());
 	};
@@ -83,6 +85,7 @@ pub fn shutdown_turf_heat() -> Result<()> {
 	worker
 		.join()
 		.map_err(|_| eyre::eyre!("Heat worker panicked during shutdown"))?;
+	HEAT_CHANNEL.1.try_iter().for_each(std::mem::drop);
 	TURF_HEAT.write().take();
 	Ok(())
 }
@@ -120,9 +123,29 @@ struct SSheatInfo {
 	blackbody_enabled: bool,
 }
 
-#[derive(Copy, Clone)]
-enum HeatWorkerMessage {
-	Process(SSheatInfo),
+// Ownership starts before publication and ends after the worker's last callback enqueue.
+// TASKS alone cannot cover a queued request or the gap between dequeue and its read guard.
+struct HeatWork<'a>(&'a AtomicUsize);
+
+impl<'a> HeatWork<'a> {
+	fn new(outstanding: &'a AtomicUsize) -> Self {
+		outstanding.fetch_add(1, Ordering::AcqRel);
+		Self(outstanding)
+	}
+}
+
+impl Drop for HeatWork<'_> {
+	fn drop(&mut self) {
+		self.0.fetch_sub(1, Ordering::Release);
+	}
+}
+
+pub(super) fn heat_work_pending() -> bool {
+	OUTSTANDING_HEAT.load(Ordering::Acquire) != 0 || PENDING_HEAT.lock().is_some()
+}
+
+enum HeatWorkerMessage<'a> {
+	Process(SSheatInfo, HeatWork<'a>),
 	Shutdown,
 }
 
@@ -139,16 +162,17 @@ struct ThermalInfo {
 }
 
 fn with_heat_processing_callback_receiver<T>(
-	f: impl Fn(&flume::Receiver<HeatWorkerMessage>) -> T,
+	f: impl Fn(&flume::Receiver<HeatWorkerMessage<'static>>) -> T,
 ) -> T {
 	f(&HEAT_CHANNEL.1)
 }
 
 // Only the main thread submits heat work. Capture DM values outside the pending lock,
 // and retry a rejected interval unchanged even if SSair's settings changed meanwhile.
-fn submit_heat_interval(
-	sender: &flume::Sender<HeatWorkerMessage>,
+fn submit_heat_interval<'a>(
+	sender: &flume::Sender<HeatWorkerMessage<'a>>,
 	pending: &Mutex<Option<SSheatInfo>>,
+	outstanding: &'a AtomicUsize,
 	capture: impl FnOnce() -> Result<SSheatInfo>,
 ) -> Result<bool> {
 	let previous = pending.lock().take();
@@ -156,7 +180,7 @@ fn submit_heat_interval(
 		Some(info) => info,
 		None => capture()?,
 	};
-	match sender.try_send(HeatWorkerMessage::Process(info)) {
+	match sender.try_send(HeatWorkerMessage::Process(info, HeatWork::new(outstanding))) {
 		Ok(()) => Ok(false),
 		Err(error) => {
 			*pending.lock() = Some(info);
@@ -440,31 +464,33 @@ fn process_heat_notify(src: ByondValue) -> Result<ByondValue> {
 		turf tiles are 1 meter^2 anyway--the atmos subsystem
 		does this in general, thus turf gas mixtures being 2.5 m^3.
 	*/
-	Ok(submit_heat_interval(&HEAT_CHANNEL.0, &PENDING_HEAT, || {
-		let wait = src.read_number_id(byond_string!("wait")).map_err(|_| {
-			eyre::eyre!(
-				"Attempt to interpret non-number value as number {} {}:{}",
-				std::file!(),
-				std::line!(),
-				std::column!()
-			)
-		})?;
-		if !wait.is_finite() || wait < 0.0 {
-			return Err(eyre::eyre!(
-				"Atmos heat budget must be finite and non-negative"
-			));
-		}
-		let time_delta = f64::from(wait) / 10.0;
-		// Preserve the physical model if the mode toggle cannot be read.
-		let blackbody_enabled = src
-			.read_number_id(byond_string!("realistic_space_radiation"))
-			.map_or(true, |v| v != 0.0);
-		Ok(SSheatInfo {
-			time_delta,
-			blackbody_enabled,
-		})
-	})?
-	.into())
+	Ok(
+		submit_heat_interval(&HEAT_CHANNEL.0, &PENDING_HEAT, &OUTSTANDING_HEAT, || {
+			let wait = src.read_number_id(byond_string!("wait")).map_err(|_| {
+				eyre::eyre!(
+					"Attempt to interpret non-number value as number {} {}:{}",
+					std::file!(),
+					std::line!(),
+					std::column!()
+				)
+			})?;
+			if !wait.is_finite() || wait < 0.0 {
+				return Err(eyre::eyre!(
+					"Atmos heat budget must be finite and non-negative"
+				));
+			}
+			let time_delta = f64::from(wait) / 10.0;
+			// Preserve the physical model if the mode toggle cannot be read.
+			let blackbody_enabled = src
+				.read_number_id(byond_string!("realistic_space_radiation"))
+				.map_or(true, |v| v != 0.0);
+			Ok(SSheatInfo {
+				time_delta,
+				blackbody_enabled,
+			})
+		})?
+		.into(),
+	)
 }
 
 /// Threshold for BYOND's finite representation of infinite heat capacity.
@@ -683,6 +709,7 @@ mod tests {
 
 	#[test]
 	fn heat_admission_retries_each_interval_once_with_its_original_settings() {
+		let outstanding = AtomicUsize::new(0);
 		let (sender, receiver) = flume::bounded(1);
 		let pending = Mutex::new(None);
 		let first = SSheatInfo {
@@ -698,11 +725,11 @@ mod tests {
 			blackbody_enabled: true,
 		};
 		let receive = || match receiver.try_recv().unwrap() {
-			HeatWorkerMessage::Process(info) => info,
+			HeatWorkerMessage::Process(info, _work) => info,
 			HeatWorkerMessage::Shutdown => panic!("unexpected shutdown"),
 		};
-		assert!(!submit_heat_interval(&sender, &pending, || Ok(first)).unwrap());
-		assert!(submit_heat_interval(&sender, &pending, || {
+		assert!(!submit_heat_interval(&sender, &pending, &outstanding, || Ok(first)).unwrap());
+		assert!(submit_heat_interval(&sender, &pending, &outstanding, || {
 			assert!(
 				pending.try_lock().is_some(),
 				"capture must not hold the pending lock"
@@ -711,19 +738,19 @@ mod tests {
 		})
 		.unwrap());
 		for _ in 0..3 {
-			assert!(submit_heat_interval(&sender, &pending, || {
+			assert!(submit_heat_interval(&sender, &pending, &outstanding, || {
 				panic!("a pending interval must not read newer settings")
 			})
 			.unwrap());
 		}
 		assert_eq!(receive(), first);
-		assert!(!submit_heat_interval(&sender, &pending, || {
+		assert!(!submit_heat_interval(&sender, &pending, &outstanding, || {
 			panic!("admission must keep the pending interval's settings")
 		})
 		.unwrap());
 		assert_eq!(receive(), second);
 		assert!(pending.lock().is_none());
-		assert!(!submit_heat_interval(&sender, &pending, || Ok(third)).unwrap());
+		assert!(!submit_heat_interval(&sender, &pending, &outstanding, || Ok(third)).unwrap());
 		assert_eq!(receive(), third);
 		assert!(matches!(
 			receiver.try_recv(),
@@ -732,7 +759,62 @@ mod tests {
 	}
 
 	#[test]
+	fn heat_completion_covers_queued_dequeued_and_discarded_work() {
+		let outstanding = AtomicUsize::new(0);
+		let (sender, receiver) = flume::bounded(1);
+		let pending = Mutex::new(None);
+		let info = SSheatInfo {
+			time_delta: 0.5,
+			blackbody_enabled: true,
+		};
+		assert!(!submit_heat_interval(&sender, &pending, &outstanding, || Ok(info)).unwrap());
+		assert_eq!(
+			outstanding.load(Ordering::Acquire),
+			1,
+			"queued work must be busy"
+		);
+		assert!(submit_heat_interval(&sender, &pending, &outstanding, || Ok(info)).unwrap());
+		assert_eq!(
+			outstanding.load(Ordering::Acquire),
+			1,
+			"rejected sends must release their token"
+		);
+		let work = receiver.try_recv().unwrap();
+		assert_eq!(
+			outstanding.load(Ordering::Acquire),
+			1,
+			"dequeue cannot declare completion before TASKS is acquired"
+		);
+		assert!(
+			!submit_heat_interval(&sender, &pending, &outstanding, || panic!(
+				"retry must reuse pending work"
+			))
+			.unwrap()
+		);
+		assert_eq!(outstanding.load(Ordering::Acquire), 2);
+		let (callbacks, callback_receiver) = flume::unbounded();
+		std::thread::scope(|scope| {
+			scope.spawn(move || {
+				callbacks.send(()).unwrap();
+				drop(work);
+			});
+		});
+		assert_eq!(outstanding.load(Ordering::Acquire), 1);
+		callback_receiver
+			.try_recv()
+			.expect("completion must follow callback publication");
+		receiver.try_iter().for_each(std::mem::drop);
+		assert_eq!(
+			outstanding.load(Ordering::Acquire),
+			0,
+			"discarding queued work releases its ownership"
+		);
+		assert!(pending.lock().is_none());
+	}
+
+	#[test]
 	fn heat_admission_reports_disconnection_without_forgetting_the_interval() {
+		let outstanding = AtomicUsize::new(0);
 		let (sender, receiver) = flume::bounded(1);
 		drop(receiver);
 		let pending = Mutex::new(None);
@@ -740,9 +822,10 @@ mod tests {
 			time_delta: 0.5,
 			blackbody_enabled: true,
 		};
-		let error = submit_heat_interval(&sender, &pending, || Ok(info)).unwrap_err();
+		let error = submit_heat_interval(&sender, &pending, &outstanding, || Ok(info)).unwrap_err();
 		assert!(error.to_string().contains("disconnected"));
 		assert_eq!(*pending.lock(), Some(info));
+		assert_eq!(outstanding.load(Ordering::Acquire), 0);
 	}
 
 	#[test]
@@ -880,6 +963,7 @@ mod tests {
 		*PENDING_HEAT.lock() = Some(old_interval);
 		shutdown_turf_heat().unwrap();
 		assert!(PENDING_HEAT.lock().is_none());
+		assert!(!heat_work_pending());
 		assert!(!HEAT_WORKER_RUNNING.load(Ordering::Acquire));
 		assert!(HEAT_WORKER.lock().is_none());
 		assert!(TURF_HEAT.read().is_none());
@@ -887,6 +971,7 @@ mod tests {
 		*PENDING_HEAT.lock() = Some(old_interval);
 		prepare_turf_heat_for_world().unwrap();
 		assert!(PENDING_HEAT.lock().is_none());
+		assert!(!heat_work_pending());
 		assert!(HEAT_WORKER_RUNNING.load(Ordering::Acquire));
 		assert!(HEAT_WORKER.lock().is_some());
 		assert!(TURF_HEAT.read().is_some());
@@ -988,7 +1073,7 @@ fn start_heat_worker() -> Result<()> {
 		.spawn(|| {
 			let _worker_guard = HeatWorkerGuard;
 			let mut scratch = HeatProcessingScratch::default();
-			while let Ok(HeatWorkerMessage::Process(info)) =
+			while let Ok(HeatWorkerMessage::Process(info, work)) =
 				with_heat_processing_callback_receiver(|receiver| receiver.recv())
 			{
 				if HEAT_SHUTDOWN.load(Ordering::Acquire) {
@@ -1322,6 +1407,7 @@ fn start_heat_worker() -> Result<()> {
 					owned_bytes,
 				);
 				drop(task_lock);
+				drop(work);
 			}
 		}) {
 		Ok(worker) => worker,

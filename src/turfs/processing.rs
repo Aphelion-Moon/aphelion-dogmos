@@ -16,9 +16,13 @@ const EQUALIZE_PROFILE_FAST_ZONE: i32 = 1;
 const PRESSURE_CALLBACK_BATCH_SIZE: usize = 256;
 const POST_PROCESS_CALLBACK_BATCH_SIZE: usize = 256;
 
-/// Returns: If a processing thread is running or not.
+/// Includes accepted heat work that has not yet acquired its task guard.
 #[auxmacros::bind("/datum/controller/subsystem/air/proc/thread_running")]
 fn thread_running_hook() -> Result<ByondValue> {
+	#[cfg(feature = "superconductivity")]
+	if super::superconduct::heat_work_pending() {
+		return Ok(true.into());
+	}
 	Ok(TASKS.try_write().is_none().into())
 }
 
