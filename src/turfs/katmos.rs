@@ -705,7 +705,7 @@ fn decompression_moles_per_turf(average_moles: f32, _space_turf_len: usize) -> f
 enum FloodFillResult {
 	ZoneIgnored,
 	Overtime,
-	Complete(DiGraphMap<NodeIndex, Cell<f32>>, f32),
+	Complete(DiGraphMap<NodeIndex, Cell<f32>>, f64),
 }
 
 #[cfg_attr(feature = "tracy", tracing::instrument(skip_all))]
@@ -720,6 +720,7 @@ fn flood_fill_zones(
 	let mut turf_graph: DiGraphMap<NodeIndex, Cell<f32>> = Default::default();
 	let mut border_turfs: std::collections::VecDeque<NodeIndex> = Default::default();
 	let mut total_moles = 0.0_f32;
+	let mut wide_total_moles = 0.0_f64;
 	let mut is_planet = false;
 	turf_graph.add_node(index_node);
 	border_turfs.push_back(index_node);
@@ -736,7 +737,16 @@ fn flood_fill_zones(
 		if is_planet && turf_graph.node_count() > equalize_hard_turf_limit {
 			break;
 		}
-		total_moles += cur_turf.total_moles_in(all_mixtures);
+		{
+			let mix = all_mixtures[cur_turf.mix].read();
+			let moles = mix.total_moles();
+			total_moles += moles;
+			wide_total_moles += if moles.is_finite() {
+				f64::from(moles)
+			} else {
+				mix.total_moles_wide()
+			};
+		}
 
 		//we are already overtime, bail NOW
 		if start_time.elapsed() >= remaining_time {
@@ -799,7 +809,14 @@ fn flood_fill_zones(
 		}
 	}
 	if !ignore_zone {
-		FloodFillResult::Complete(turf_graph, total_moles)
+		// Keep ordinary f32 rounding, but normalize overflowed sums before narrowing.
+		// The mean itself may exceed f32 while all required movement deltas still fit.
+		let average_moles = if total_moles.is_finite() {
+			f64::from(total_moles / turf_graph.node_count() as f32)
+		} else {
+			wide_total_moles / turf_graph.node_count() as f64
+		};
+		FloodFillResult::Complete(turf_graph, average_moles)
 	} else {
 		FloodFillResult::ZoneIgnored
 	}
@@ -865,6 +882,170 @@ fn planet_equalize(initial_index: TurfID, equalize_hard_turf_limit: usize) -> Re
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::gas::{types::*, GAS_TEST_LOCK};
+
+	fn zone_fixture(amounts: &[[f32; 2]]) -> (Vec<RwLock<Mixture>>, TurfGases) {
+		let mixtures = amounts
+			.iter()
+			.map(|amounts| {
+				let mut mix = Mixture::from_vol(1.0e8);
+				for (index, &amount) in amounts.iter().enumerate() {
+					mix.set_moles(index, amount).unwrap();
+				}
+				mix.set_temperature(300.0);
+				RwLock::new(mix)
+			})
+			.collect();
+		let mut arena = TurfGases::with_capacity(0, 0);
+		for mix in 0..amounts.len() {
+			arena.insert_turf(TurfMixture {
+				mix,
+				id: mix as TurfID + 10,
+				generation: 1,
+				flags: SimulationFlags::SIMULATION_ALL,
+				..Default::default()
+			});
+			if mix > 0 {
+				let current = arena.get_id(mix as TurfID + 10).unwrap();
+				let previous = arena.get_id(mix as TurfID + 9).unwrap();
+				arena
+					.graph
+					.add_edge(previous, current, AdjacentFlags::empty());
+				arena
+					.graph
+					.add_edge(current, previous, AdjacentFlags::empty());
+			}
+		}
+		(mixtures, arena)
+	}
+
+	#[test]
+	fn zone_overflow_preserves_representable_equalization() {
+		let guard = GAS_TEST_LOCK.lock().unwrap();
+		destroy_gas_statics();
+		set_gas_statics_manually();
+		register_gas_manually("o2", 20.0);
+		register_gas_manually("n2", 20.0);
+		type ZoneCase<'a> = (&'a [[f32; 2]], f64, [f64; 2]);
+		let cases: &[ZoneCase<'_>] = &[
+			(
+				&[[1.9375e38, 0.0], [1.5625e38, 0.0]],
+				1.75e38,
+				[3.5e38, 0.0],
+			),
+			(
+				&[[1.75e38, 1.75e38], [6.25e37, 2.5e37], [2.625e38, 0.0]],
+				2.333333333333333e38,
+				[5.0e38, 2.0e38],
+			),
+			(
+				&[[2.0e38, 2.0e38], [2.5e38, 2.5e38]],
+				4.5e38,
+				[4.5e38, 4.5e38],
+			),
+		];
+		let mut results = Vec::new();
+		for &(amounts, expected_mean, expected_species) in cases {
+			let (mixtures, arena) = zone_fixture(amounts);
+			let FloodFillResult::Complete(graph, mean) = flood_fill_zones(
+				(arena.get_id(10).unwrap(), 10),
+				100,
+				&mut HashSet::default(),
+				&arena,
+				&mixtures,
+				(&Instant::now(), Duration::from_secs(10)),
+			) else {
+				panic!("finite mutable connected turfs must form a zone")
+			};
+			let graph = process_zone(graph, mean, &arena, &mixtures, None).unwrap();
+			let error = std::sync::OnceLock::new();
+			let pressures = finalize_eq_zone(&arena, &mixtures, graph, &error).unwrap_or_default();
+			let rows = mixtures
+				.iter()
+				.map(|mix| {
+					let mix = mix.read();
+					[f64::from(mix.get_moles(0)), f64::from(mix.get_moles(1))]
+				})
+				.collect::<Vec<_>>();
+			results.push((
+				rows,
+				pressures,
+				error.into_inner(),
+				expected_mean,
+				expected_species,
+			));
+		}
+		destroy_gas_statics();
+		drop(guard);
+		for (rows, pressures, error, expected_mean, expected_species) in results {
+			assert!(error.is_none(), "{error:?}");
+			assert!(
+				!pressures.is_empty(),
+				"overflow must not turn a nonuniform zone into a no-op"
+			);
+			assert!(pressures
+				.iter()
+				.all(|event| event.0.is_finite() && event.0 > 0.0));
+			for row in &rows {
+				assert!(
+					((row[0] + row[1]) / expected_mean - 1.0).abs() < 2.0e-6,
+					"{rows:?}"
+				);
+			}
+			for (index, expected) in expected_species.into_iter().enumerate() {
+				let actual = rows.iter().map(|row| row[index]).sum::<f64>();
+				assert!((actual - expected).abs() <= expected * 2.0e-6, "{rows:?}");
+			}
+		}
+	}
+
+	#[test]
+	fn zone_overflow_rejects_unrepresentable_deltas_and_corridor_flows() {
+		let guard = GAS_TEST_LOCK.lock().unwrap();
+		destroy_gas_statics();
+		set_gas_statics_manually();
+		register_gas_manually("o2", 20.0);
+		register_gas_manually("n2", 20.0);
+		let cases: &[&[[f32; 2]]] = &[
+			&[[f32::MAX, f32::MAX], [0.0, 0.0], [0.0, 0.0]],
+			&[
+				[3.0e38, 0.0],
+				[3.0e38, 0.0],
+				[3.0e38, 0.0],
+				[0.0, 0.0],
+				[0.0, 0.0],
+				[0.0, 0.0],
+			],
+		];
+		let mut results = Vec::new();
+		for &amounts in cases {
+			let (mixtures, arena) = zone_fixture(amounts);
+			let FloodFillResult::Complete(graph, mean) = flood_fill_zones(
+				(arena.get_id(10).unwrap(), 10),
+				100,
+				&mut HashSet::default(),
+				&arena,
+				&mixtures,
+				(&Instant::now(), Duration::from_secs(10)),
+			) else {
+				panic!("finite mutable connected turfs must form a zone")
+			};
+			let result = process_zone(graph, mean, &arena, &mixtures, None);
+			let unchanged = mixtures.iter().zip(amounts).all(|(mix, amounts)| {
+				let mix = mix.read();
+				mix.get_moles(0) == amounts[0]
+					&& mix.get_moles(1) == amounts[1]
+					&& mix.get_temperature() == 300.0
+			});
+			results.push((result.err().map(|error| error.to_string()), unchanged));
+		}
+		destroy_gas_statics();
+		drop(guard);
+		for (error, unchanged) in results {
+			assert!(error.is_some_and(|message| message.contains("exceeds finite f32 movement")));
+			assert!(unchanged);
+		}
+	}
 
 	#[test]
 	fn only_hull_boundary_turfs_are_floor_rip_candidates() {
@@ -885,22 +1066,40 @@ mod tests {
 #[cfg_attr(feature = "tracy", tracing::instrument(skip_all))]
 fn process_zone(
 	graph: DiGraphMap<NodeIndex, Cell<f32>>,
-	average_moles: f32,
+	average_moles: f64,
 	arena: &TurfGases,
 	all_mixtures: &[RwLock<Mixture>],
 	turfs_processed: Option<&AtomicUsize>,
-) -> DiGraphMap<NodeIndex, Cell<f32>> {
+) -> Result<DiGraphMap<NodeIndex, Cell<f32>>> {
+	if !average_moles.is_finite() || average_moles < 0.0 {
+		return Err(eyre::eyre!(
+			"Katmos zone mean must be finite and non-negative"
+		));
+	}
 	let mut info = graph
 		.nodes()
 		.map(|index| {
 			let mixture = arena.get(index).unwrap();
+			let mix = all_mixtures[mixture.mix].read();
+			let narrow_delta = mix.total_moles() - average_moles as f32;
+			let mole_delta = if narrow_delta.is_finite() {
+				narrow_delta
+			} else {
+				(mix.total_moles_wide() - average_moles) as f32
+			};
+			if !mole_delta.is_finite() {
+				return Err(eyre::eyre!(
+					"Katmos mole delta at turf {} exceeds finite f32 movement",
+					mixture.id
+				));
+			}
 			let cur_info = MonstermosInfo {
-				mole_delta: mixture.total_moles_in(all_mixtures) - average_moles,
+				mole_delta,
 				..Default::default()
 			};
-			(index, cur_info)
+			Ok((index, cur_info))
 		})
-		.collect::<HashMap<_, _, FxBuildHasher>>();
+		.collect::<Result<HashMap<_, _, FxBuildHasher>>>()?;
 
 	let (mut giver_turfs, mut taker_turfs): (Vec<_>, Vec<_>) = graph
 		.nodes()
@@ -935,12 +1134,31 @@ fn process_zone(
 	} else {
 		take_from_givers(&taker_turfs, &mut info, &graph);
 	}
+	// Finite donor budgets can still overflow when several routes share a corridor.
+	// Reject the numerical plan before finalization changes any live mixture.
+	for (&index, state) in &info {
+		if !state.mole_delta.is_finite() || !state.curr_transfer_amount.is_finite() {
+			return Err(eyre::eyre!(
+				"Katmos flow at turf {} exceeds finite f32 movement",
+				arena.get(index).unwrap().id
+			));
+		}
+	}
+	for (source, destination, amount) in graph.all_edges() {
+		if !amount.get().is_finite() {
+			return Err(eyre::eyre!(
+				"Katmos movement from turf {} to {} exceeds finite f32 movement",
+				arena.get(source).unwrap().id,
+				arena.get(destination).unwrap().id
+			));
+		}
+	}
 
 	if let Some(ctr) = turfs_processed {
 		ctr.fetch_add(graph.node_count(), Ordering::Relaxed);
 	}
 
-	graph
+	Ok(graph)
 }
 
 #[cfg_attr(feature = "tracy", tracing::instrument(skip_all))]
@@ -1027,7 +1245,7 @@ pub(crate) fn capture_two_turf_equalize_trace() -> LegacyStageTrace {
 	zone.add_edge(right, left, Cell::new(0.0));
 	let work_items = zone.node_count() as u32;
 	let (pressure_events, left_value, right_value) = GasArena::with_all_mixtures(|all_mixtures| {
-		let zone = process_zone(zone, 50.0, &arena, all_mixtures, None);
+		let zone = process_zone(zone, 50.0, &arena, all_mixtures, None).unwrap();
 		let transfer_error = std::sync::OnceLock::new();
 		let pressure_events =
 			finalize_eq_zone(&arena, all_mixtures, zone, &transfer_error).unwrap_or_default();
@@ -1175,7 +1393,7 @@ fn equalize(
 	(start_time, remaining_time): (&Instant, Duration),
 ) -> (usize, bool) {
 	let turfs_processed: AtomicUsize = AtomicUsize::new(0);
-	let transfer_error = std::sync::OnceLock::new();
+	let equalization_error = std::sync::OnceLock::new();
 	let is_cancelled = with_turf_gases_read(|arena| {
 		/*
 			The arena slice is taken once for the whole equalize pass and threaded into the flood
@@ -1236,8 +1454,8 @@ fn equalize(
 					all_mixtures,
 					(start_time, remaining_time),
 				) {
-					FloodFillResult::Complete(zone, num) => {
-						zoned_turfs.push((zone, num));
+					FloodFillResult::Complete(zone, average) => {
+						zoned_turfs.push((zone, average));
 					}
 					FloodFillResult::Overtime => return true,
 					FloodFillResult::ZoneIgnored => (),
@@ -1250,15 +1468,20 @@ fn equalize(
 
 			let turfs = zoned_turfs
 				.into_par_iter()
-				.map(|(graph, total_moles)| {
-					let len = graph.node_count();
-					process_zone(
+				.filter_map(|(graph, average_moles)| {
+					match process_zone(
 						graph,
-						total_moles / len as f32,
+						average_moles,
 						arena,
 						all_mixtures,
 						Some(&turfs_processed),
-					)
+					) {
+						Ok(graph) => Some(graph),
+						Err(error) => {
+							equalization_error.get_or_init(|| error.to_string());
+							None
+						}
+					}
 				})
 				.collect::<Vec<_>>();
 
@@ -1268,7 +1491,9 @@ fn equalize(
 
 			let final_pressures = turfs
 				.into_par_iter()
-				.filter_map(|graph| finalize_eq_zone(arena, all_mixtures, graph, &transfer_error))
+				.filter_map(|graph| {
+					finalize_eq_zone(arena, all_mixtures, graph, &equalization_error)
+				})
 				.collect::<Vec<_>>();
 
 			final_pressures
@@ -1277,10 +1502,10 @@ fn equalize(
 			false
 		})
 	});
-	if let Some(error) = transfer_error.into_inner() {
+	if let Some(error) = equalization_error.into_inner() {
 		let owned_bytes = error.capacity();
 		let _ = auxcallback::queue_callback(
-			Box::new(move || Err(eyre::eyre!("Katmos transfer rejected: {error}"))),
+			Box::new(move || Err(eyre::eyre!("Katmos equalization rejected: {error}"))),
 			owned_bytes,
 		);
 	}

@@ -898,8 +898,8 @@ mod tests {
 		initialize_turfs, prepare_turfs_for_world, shutdown_turfs, turf_runtime_metrics,
 		SimulationFlags, TurfGases, TurfMixture, PLANETARY_ATMOS, TURF_GASES,
 	};
+	use crate::gas::GAS_TEST_LOCK;
 	use std::sync::atomic::AtomicU64;
-	static TURF_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 	fn turf(id: u32, mix: usize) -> TurfMixture {
 		TurfMixture {
@@ -1011,7 +1011,7 @@ mod tests {
 
 	#[test]
 	fn turf_runtime_metrics_report_source_layout_and_reserved_capacity() {
-		let _guard = TURF_TEST_LOCK.lock().unwrap();
+		let _guard = GAS_TEST_LOCK.lock().unwrap();
 		initialize_turfs();
 		let metrics = turf_runtime_metrics();
 		assert_eq!(metrics.turf_mixture_bytes, 32);
@@ -1022,7 +1022,7 @@ mod tests {
 
 	#[test]
 	fn turf_arenas_are_released_and_recreated_for_world_reuse() {
-		let _guard = TURF_TEST_LOCK.lock().unwrap();
+		let _guard = GAS_TEST_LOCK.lock().unwrap();
 		prepare_turfs_for_world();
 		shutdown_turfs();
 		assert!(TURF_GASES.read().is_none());

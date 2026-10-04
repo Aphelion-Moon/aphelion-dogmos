@@ -414,7 +414,7 @@ impl Mixture {
 	pub fn total_moles(&self) -> f32 {
 		self.moles.iter().sum()
 	}
-	fn total_moles_wide(&self) -> f64 {
+	pub(crate) fn total_moles_wide(&self) -> f64 {
 		self.moles.iter().copied().map(f64::from).sum()
 	}
 	pub(crate) fn ratio_for_amount(&self, amount: f32) -> f32 {
