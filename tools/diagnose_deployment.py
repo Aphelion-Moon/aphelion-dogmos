@@ -33,7 +33,9 @@ def diagnose(game: Path, native: Path, target: str, bundle: Path | None = None,
         spec = importlib.util.spec_from_file_location("dogmos_installed_contract", game / "tools/dogmos/verify_contract.py")
         verifier = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(verifier)
-        manifest = verifier.verify_installed(game, target=target)
+        manifest = verifier.verify_installed(game)
+        if manifest.get("backend") != "in-process":
+            raise ValueError("Installed contract does not describe an in-process Dogmos bundle.")
         report.update(installed_contract="verified", native_revision=revision(native),
                       game_revision=revision(game), target=manifest["target"],
                       toolchain=manifest["toolchain"], features=manifest["features"],
@@ -43,17 +45,22 @@ def diagnose(game: Path, native: Path, target: str, bundle: Path | None = None,
                       qualification={"kind": manifest["kind"], "tests_run": manifest["tests_run"],
                                      "runtime_qualified": manifest["runtime_qualified"]},
                       build_provenance=manifest.get("build_provenance", "not recorded"))
+        if manifest["target"] != target:
+            report["errors"].append(f"Installed target {manifest['target']} differs from requested target {target}.")
         current_digest = hashlib.sha256(canonical_bytes(capture_snapshot(native))).hexdigest()
         report["current_source_sha256"] = current_digest
         if current_digest != manifest["source_sha256"]:
             report["errors"].append("Installed bundle differs from current native source; build and synchronize a reviewed matching bundle.")
         if bundle is not None:
+            symbol_matches = []
             for name, digest in manifest["artifacts"].items():
                 path = bundle / name
-                if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+                matches = path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == digest
+                if not matches:
                     report["errors"].append(f"Bundle artifact missing or mismatched: {name}")
-            symbol = verifier.native_files(manifest)[1]
-            report["symbols"] = "matching" if (bundle / symbol).is_file() and hashlib.sha256((bundle / symbol).read_bytes()).hexdigest() == manifest["artifacts"][symbol] else "missing or mismatched"
+                if name.endswith((".pdb", ".debug")):
+                    symbol_matches.append(matches)
+            report["symbols"] = "matching" if symbol_matches and all(symbol_matches) else "missing or mismatched"
         if runtime_report is not None:
             if runtime_report.stat().st_size > 65536:
                 raise ValueError("Runtime report exceeds 64 KiB")
