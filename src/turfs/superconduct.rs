@@ -64,29 +64,27 @@ pub fn shutdown_turf_heat() -> Result<()> {
 	HEAT_SHUTDOWN.store(true, Ordering::Release);
 	*PENDING_HEAT.lock() = None;
 	let _ = HEAT_CHANNEL.0.try_send(HeatWorkerMessage::Shutdown);
-	let Some(worker) = HEAT_WORKER.lock().take() else {
-		if HEAT_WORKER_RUNNING.load(Ordering::Acquire) {
+	// Release the handle lock before waiting; a timeout must be able to restore it.
+	let worker = HEAT_WORKER.lock().take();
+	if let Some(worker) = worker {
+		let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+		while !worker.is_finished() && std::time::Instant::now() < deadline {
+			std::thread::sleep(std::time::Duration::from_millis(1));
+		}
+		if !worker.is_finished() {
+			*HEAT_WORKER.lock() = Some(worker);
 			return Err(eyre::eyre!(
-				"Heat worker is running without an owned thread handle"
+				"Heat worker failed to stop within 5 seconds, this may indicate a deadlock"
 			));
 		}
-		HEAT_CHANNEL.1.try_iter().for_each(std::mem::drop);
-		TURF_HEAT.write().take();
-		return Ok(());
-	};
-	let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-	while !worker.is_finished() && std::time::Instant::now() < deadline {
-		std::thread::sleep(std::time::Duration::from_millis(1));
-	}
-	if !worker.is_finished() {
-		*HEAT_WORKER.lock() = Some(worker);
+		worker
+			.join()
+			.map_err(|_| eyre::eyre!("Heat worker panicked during shutdown"))?;
+	} else if HEAT_WORKER_RUNNING.load(Ordering::Acquire) {
 		return Err(eyre::eyre!(
-			"Heat worker failed to stop within 5 seconds, this may indicate a deadlock"
+			"Heat worker is running without an owned thread handle"
 		));
 	}
-	worker
-		.join()
-		.map_err(|_| eyre::eyre!("Heat worker panicked during shutdown"))?;
 	HEAT_CHANNEL.1.try_iter().for_each(std::mem::drop);
 	TURF_HEAT.write().take();
 	Ok(())
@@ -969,6 +967,11 @@ mod tests {
 		assert!(!heat_work_pending());
 		assert!(!HEAT_WORKER_RUNNING.load(Ordering::Acquire));
 		assert!(HEAT_WORKER.lock().is_none());
+		assert!(TURF_HEAT.read().is_none());
+
+		shutdown_turf_heat().unwrap();
+		assert!(HEAT_CHANNEL.1.is_empty());
+		assert!(!heat_work_pending());
 		assert!(TURF_HEAT.read().is_none());
 
 		*PENDING_HEAT.lock() = Some(old_interval);
