@@ -703,7 +703,12 @@ impl Mixture {
 		if self.immutable {
 			return;
 		}
-		self.moles = sample.moles.clone();
+		if self.moles.is_heap() && sample.moles.is_heap() {
+			self.moles.clone_from(&sample.moles);
+		} else {
+			// Preserve heap release when the source fits back into inline storage.
+			self.moles = sample.moles.clone();
+		}
 		self.temperature = sample.temperature;
 		if self.min_heat_capacity == sample.min_heat_capacity {
 			self.cached_heat_capacity = sample.cached_heat_capacity.clone();
@@ -1232,6 +1237,62 @@ mod tests {
 		register_gas_manually("n2", 20.0);
 		register_gas_manually("n2o", 20.0);
 		register_gas_manually("co2", 20.0);
+	}
+
+	#[test]
+	fn mixture_copy_reuses_heap_storage_and_releases_it_for_inline_sources() {
+		let guard = GAS_TEST_LOCK.lock().unwrap();
+		set_gas_statics_manually();
+		for id in ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"] {
+			register_gas_manually(id, 20.0);
+		}
+		let mut source = Mixture::new();
+		source.set_moles(8, 2.0).unwrap();
+		source.set_temperature(600.0);
+		source.heat_capacity();
+		let mut target = Mixture::from_vol(100.0);
+		target.set_moles(9, 3.0).unwrap();
+		target.heat_capacity();
+		let allocation = target.moles.as_ptr();
+		let capacity = target.moles.capacity();
+		target.copy_from_mutable(&source);
+		let reused = target.moles.as_ptr() == allocation && target.moles.capacity() == capacity;
+		let copied = (
+			target.moles.to_vec(),
+			target.temperature,
+			target.heat_capacity(),
+			target.volume,
+		);
+		target.mark_immutable();
+		target.copy_from_mutable(&Mixture::new());
+		let immutable_unchanged = target.moles.as_ptr() == allocation
+			&& target.moles == source.moles
+			&& target.temperature == 600.0;
+		let mut inline = Mixture::new();
+		inline.set_moles(0, 1.0).unwrap();
+		let mut mutable = source.copy_to_mutable();
+		mutable.copy_from_mutable(&inline);
+		let released = mutable.moles.is_inline() && mutable.moles == inline.moles;
+		destroy_gas_statics();
+		drop(guard);
+		assert!(
+			reused,
+			"heap-backed copies should reuse sufficient destination storage"
+		);
+		assert_eq!(
+			copied,
+			(
+				vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0],
+				600.0,
+				40.0,
+				100.0
+			)
+		);
+		assert!(immutable_unchanged);
+		assert!(
+			released,
+			"inline copies should release the old heap storage"
+		);
 	}
 
 	#[test]

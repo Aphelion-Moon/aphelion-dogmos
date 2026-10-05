@@ -70,6 +70,9 @@ fn excited_group_processing(
 	*/
 	with_turf_gases_read(|arena| -> Result<()> {
 		GasArena::with_all_mixtures(|all_mixtures| -> Result<()> {
+			// Reuse scratch within this pass; release it when the pass ends.
+			let mut border_turfs: VecDeque<NodeIndex> = VecDeque::new();
+			let mut turfs: Vec<&TurfMixture> = Vec::new();
 			for initial_turf in low_pressure_turfs {
 				if found_turfs.contains(&initial_turf) {
 					continue;
@@ -93,20 +96,21 @@ fn excited_group_processing(
 					continue;
 				};
 
-				// Carry the node handle alongside the id so the walk below does not re-resolve
-				// each turf through the id map on every pop and on every neighbor.
-				let mut border_turfs: VecDeque<(TurfID, NodeIndex)> = VecDeque::with_capacity(40);
-				let mut turfs: Vec<&TurfMixture> = Vec::with_capacity(200);
-				let mut min_pressure = initial_lock.read().return_pressure();
+				// A capped walk can leave queued nodes; none belong to the next group.
+				border_turfs.clear();
+				turfs.clear();
+				let (mut min_pressure, mut min_temperature) = {
+					let initial_mix = initial_lock.read();
+					(initial_mix.return_pressure(), initial_mix.get_temperature())
+				};
 				let mut max_pressure = min_pressure;
-				let mut min_temperature = initial_lock.read().get_temperature();
 				let mut max_temperature = min_temperature;
 				let mut fully_mixed = MixtureSum::default();
 
-				border_turfs.push_back((initial_turf, initial_index));
+				border_turfs.push_back(initial_index);
 				found_turfs.insert(initial_turf);
 
-				while let Some((_, index)) = border_turfs.pop_front() {
+				while let Some(index) = border_turfs.pop_front() {
 					if turfs.len() >= 2500 {
 						break;
 					}
@@ -147,7 +151,7 @@ fn excited_group_processing(
 								continue;
 							}
 							if adjacent.enabled() {
-								border_turfs.push_back((adjacent.id, adjacent_index));
+								border_turfs.push_back(adjacent_index);
 							}
 						}
 					}
@@ -174,6 +178,74 @@ fn excited_group_processing(
 mod tests {
 	use super::*;
 	use crate::gas::{types::*, GAS_TEST_LOCK};
+
+	#[test]
+	fn capped_group_scratch_does_not_leak_into_the_next_component() {
+		let guard = GAS_TEST_LOCK.lock().unwrap();
+		set_gas_statics_manually();
+		register_gas_manually("o2", 20.0);
+		let mixtures = (0..2504)
+			.map(|index| {
+				let mut mix = Mixture::new();
+				mix.set_moles(
+					0,
+					if index < 2502 {
+						10.0
+					} else {
+						10.25 + (index - 2502) as f32 * 0.25
+					},
+				)
+				.unwrap();
+				mix.set_temperature(300.0);
+				mix
+			})
+			.collect();
+		crate::gas::install_mixtures_for_test(mixtures);
+		initialize_turfs();
+		with_turf_gases_write(|arena| {
+			for mix in 0..2504 {
+				arena.insert_turf(TurfMixture {
+					mix,
+					id: (mix + 1) as TurfID,
+					generation: 1,
+					flags: SimulationFlags::SIMULATION_ALL,
+					..Default::default()
+				});
+			}
+			// The first walk reaches its 2500-turf cap with two frontier nodes.
+			// The final pair is disconnected and must average only its own gas.
+			for (left, right) in (0..2500)
+				.map(|index| (index, index + 1))
+				.chain([(2499, 2501), (2502, 2503)])
+			{
+				let left = arena.get_id(left + 1).unwrap();
+				let right = arena.get_id(right + 1).unwrap();
+				arena.graph.add_edge(left, right, AdjacentFlags::empty());
+				arena.graph.add_edge(right, left, AdjacentFlags::empty());
+			}
+		});
+		excited_group_processing(
+			1.0,
+			BTreeSet::from([1, 2503]),
+			(&Instant::now(), Duration::from_secs(10)),
+		)
+		.unwrap();
+		let state = GasArena::with_all_mixtures(|mixes| {
+			mixes
+				.iter()
+				.map(|mix| {
+					let mix = mix.read();
+					(mix.get_moles(0), mix.get_temperature())
+				})
+				.collect::<Vec<_>>()
+		});
+		shutdown_turfs();
+		crate::gas::shut_down_gases();
+		destroy_gas_statics();
+		drop(guard);
+		assert!(state[..2502].iter().all(|&value| value == (10.0, 300.0)));
+		assert_eq!(&state[2502..], &[(10.375, 300.0); 2]);
+	}
 
 	#[test]
 	fn equal_pressure_group_does_not_flatten_a_thermal_front() {
