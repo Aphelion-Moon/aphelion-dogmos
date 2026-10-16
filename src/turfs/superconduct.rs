@@ -157,8 +157,60 @@ struct ThermalInfo {
 	pub thermal_conductivity: f32,
 	pub heat_capacity: f32,
 	pub adjacent_to_space: bool,
+	/// LINDA's active-superconductor membership, carried between heat passes for its hysteresis.
+	pub superconducting: AtomicBool,
 
 	pub temperature: RwLock<f32>,
+}
+
+/// Mirrors LINDA's `consider_superconductivity()` and `finish_superconduction()`. A turf starts
+/// conducting at `MINIMUM_TEMPERATURE_START_SUPERCONDUCTION`, a neighbour of a conducting turf joins
+/// at `MINIMUM_TEMPERATURE_FOR_SUPERCONDUCTION`, and either stops below that. Cold turfs, including
+/// infinite-capacity reservoirs such as 2.7 K mineral walls, therefore never pull heat from their
+/// neighbours, their air or the room around them.
+fn superconduction_active(was_active: bool, neighbor_active: bool, hottest: f32) -> bool {
+	if hottest >= MINIMUM_TEMPERATURE_START_SUPERCONDUCTION {
+		return true;
+	}
+	hottest >= MINIMUM_TEMPERATURE_FOR_SUPERCONDUCTION && (was_active || neighbor_active)
+}
+
+/// Advances every turf's superconduction membership by one heat pass and returns the turfs that
+/// conduct in it. Membership is decided from the previous pass's flags only, so the result does not
+/// depend on worker iteration order; the new flags are stored before any heat moves.
+fn update_superconduction_membership(
+	arena: &TurfHeat,
+	air_temperature: impl Fn(TurfID) -> Option<f32> + Sync,
+) -> Vec<(TurfID, NodeIndex<usize>)> {
+	let membership = arena
+		.map
+		.par_iter()
+		.filter_map(|(&turf_id, &heat_index)| {
+			let info = arena.get(heat_index).unwrap();
+			let was_active = info.superconducting.load(Ordering::Relaxed);
+			let neighbor_active = arena
+				.adjacent_heats(heat_index)
+				.any(|item| item.superconducting.load(Ordering::Relaxed));
+			// LINDA tests the air on open turfs and the turf itself on closed ones.
+			let mut hottest = *info.temperature.read();
+			if let Some(air_temp) = air_temperature(turf_id) {
+				hottest = hottest.max(air_temp);
+			}
+			let active = superconduction_active(was_active, neighbor_active, hottest);
+			(active || was_active).then_some((turf_id, heat_index, active))
+		})
+		.collect::<Vec<_>>();
+	membership
+		.into_iter()
+		.filter_map(|(turf_id, heat_index, active)| {
+			arena
+				.get(heat_index)
+				.unwrap()
+				.superconducting
+				.store(active, Ordering::Relaxed);
+			active.then_some((turf_id, heat_index))
+		})
+		.collect()
 }
 
 fn with_heat_processing_callback_receiver<T>(
@@ -340,6 +392,7 @@ pub fn supercond_update_ref(src: ByondValue) -> Result<()> {
 				> 0.0,
 			heat_capacity: therm_cap,
 			thermal_conductivity: therm_cond,
+			superconducting: AtomicBool::new(false),
 			temperature: RwLock::new(
 				src.read_number_id(byond_string!("initial_temperature"))
 					.unwrap_or(TCMB),
@@ -1106,64 +1159,22 @@ fn start_heat_worker() -> Result<()> {
 						// Per-mixture locks still protect concurrent gas mutation; only the slice lookup lock is shared.
 						GasArena::with_all_mixtures(|all_mixtures| {
 							let gas_exchange_error = std::sync::OnceLock::new();
-							let adjacencies_to_consider = arena
-								.map
+							let conducting = update_superconduction_membership(arena, |turf_id| {
+								air_arena
+									.get_id(turf_id)
+									.and_then(|node| air_arena.get(node))
+									.filter(|cur_mix| cur_mix.enabled())
+									.and_then(|cur_mix| all_mixtures.get(cur_mix.mix))
+									.and_then(|entry| {
+										entry.try_read().map(|gas| gas.get_temperature())
+									})
+							});
+							let adjacencies_to_consider = conducting
 								.par_iter()
-								.filter_map(|(&turf_id, &heat_index)| {
-									/*
-										If it has no thermal conductivity, low thermal capacity or has no adjacencies,
-										then it's not gonna interact, or at least shouldn't.
-									*/
-									let info = arena.get(heat_index).unwrap();
-									let temp = { *info.temperature.read() };
-									//can share w/ adjacents?
-									if arena.adjacent_heats(heat_index).any(|item| {
-										(temp - *item.temperature.read()).abs()
-											> MINIMUM_TEMPERATURE_DELTA_TO_CONSIDER
-									}) {
-										return Some((turf_id, heat_index, true));
-									}
-									if temp > MINIMUM_TEMPERATURE_FOR_SUPERCONDUCTION {
-										//can share w/ space/air?
-										if info.adjacent_to_space
-											|| air_arena
-												.get_id(turf_id)
-												.and_then(|nodeid| {
-													air_arena.get(nodeid)?.enabled().then_some(())
-												})
-												.is_some()
-										{
-											Some((turf_id, heat_index, false))
-										} else {
-											None
-										}
-									} else if let Some(node) = air_arena.get_id(turf_id) {
-										let cur_mix = air_arena.get(node).unwrap();
-										if !cur_mix.enabled() {
-											return None;
-										}
-										let air_temp = all_mixtures.get(cur_mix.mix)?.try_read();
-										air_temp.as_ref()?;
-										let air_temp = air_temp.unwrap().get_temperature();
-
-										if air_temp < MINIMUM_TEMPERATURE_FOR_SUPERCONDUCTION {
-											return None;
-										}
-										if (temp - air_temp).abs()
-											> MINIMUM_TEMPERATURE_DELTA_TO_CONSIDER
-										{
-											Some((turf_id, heat_index, false))
-										} else {
-											None
-										}
-									} else {
-										None
-									}
-								})
-								.filter_map(|(id, node_index, has_adjacents)| {
+								.map(|&(id, node_index)| {
 									let info = arena.get(node_index).unwrap();
 									let Some(mut temp_write) = info.temperature.try_write() else {
-										return has_adjacents.then_some(node_index);
+										return node_index;
 									};
 
 									if info.adjacent_to_space && *temp_write > T0C {
@@ -1246,7 +1257,7 @@ fn start_heat_worker() -> Result<()> {
 											0,
 										);
 									}
-									has_adjacents.then_some(node_index)
+									node_index
 								})
 								.collect::<Vec<_>>();
 							if let Some(error) = gas_exchange_error.into_inner() {
@@ -1431,4 +1442,118 @@ fn start_heat_worker() -> Result<()> {
 #[auxmacros::init]
 fn process_heat_start() {
 	let _ = start_heat_worker();
+}
+
+#[cfg(test)]
+mod superconduction_gate_tests {
+	use super::*;
+
+	fn heat_node(arena: &mut TurfHeat, id: TurfID, temperature: f32, heat_capacity: f32) {
+		arena.insert_turf(ThermalInfo {
+			id,
+			thermal_conductivity: 0.02,
+			heat_capacity,
+			temperature: RwLock::new(temperature),
+			..Default::default()
+		});
+	}
+
+	fn link(arena: &mut TurfHeat, first: TurfID, second: TurfID) {
+		let first = *arena.get_id(&first).unwrap();
+		let second = *arena.get_id(&second).unwrap();
+		arena.graph.add_edge(first, second, ());
+		arena.graph.add_edge(second, first, ());
+	}
+
+	fn conducting_ids(
+		arena: &TurfHeat,
+		air_temperature: impl Fn(TurfID) -> Option<f32> + Sync,
+	) -> Vec<TurfID> {
+		let mut ids = update_superconduction_membership(arena, air_temperature)
+			.into_iter()
+			.map(|(id, _)| id)
+			.collect::<Vec<_>>();
+		ids.sort_unstable();
+		ids
+	}
+
+	fn set_temperature(arena: &TurfHeat, id: TurfID, temperature: f32) {
+		*arena
+			.get(*arena.get_id(&id).unwrap())
+			.unwrap()
+			.temperature
+			.write() = temperature;
+	}
+
+	#[test]
+	fn superconduction_uses_linda_start_and_continue_thresholds() {
+		let start = MINIMUM_TEMPERATURE_START_SUPERCONDUCTION;
+		let keep = MINIMUM_TEMPERATURE_FOR_SUPERCONDUCTION;
+		assert!(superconduction_active(false, false, start));
+		assert!(!superconduction_active(false, false, start - 1.0));
+		assert!(superconduction_active(true, false, keep));
+		assert!(superconduction_active(false, true, keep));
+		assert!(!superconduction_active(true, true, keep - 1.0));
+		assert!(!superconduction_active(false, false, TCMB));
+	}
+
+	// Regression: 2.7 K mineral walls (infinite heat capacity) and space-facing turfs used to drain
+	// neighbouring floors and their air at any temperature, chilling rooms and tripping firelocks.
+	#[test]
+	fn cold_reservoir_never_starts_conduction_with_room_temperature_neighbours() {
+		let mut arena = new_turf_heat();
+		heat_node(&mut arena, 1, TCMB, 1.0e31);
+		heat_node(&mut arena, 2, T20C, 20_000.0);
+		heat_node(&mut arena, 3, ICEBOX_SURFACE_TEMPERATURE, 20_000.0);
+		link(&mut arena, 1, 2);
+		link(&mut arena, 2, 3);
+		for _ in 0..3 {
+			assert!(conducting_ids(&arena, |id| (id == 2).then_some(T20C)).is_empty());
+		}
+		assert!(arena.map.values().all(|&index| !arena
+			.get(index)
+			.unwrap()
+			.superconducting
+			.load(Ordering::Relaxed)));
+	}
+
+	#[test]
+	fn hot_turf_recruits_warm_neighbours_one_pass_at_a_time_until_it_cools() {
+		let mut arena = new_turf_heat();
+		let warm = MINIMUM_TEMPERATURE_FOR_SUPERCONDUCTION + 20.0;
+		heat_node(
+			&mut arena,
+			1,
+			MINIMUM_TEMPERATURE_START_SUPERCONDUCTION + 10.0,
+			20_000.0,
+		);
+		heat_node(&mut arena, 2, warm, 20_000.0);
+		heat_node(&mut arena, 3, warm, 20_000.0);
+		heat_node(&mut arena, 4, TCMB, 1.0e31);
+		link(&mut arena, 1, 2);
+		link(&mut arena, 2, 3);
+		link(&mut arena, 1, 4);
+		assert_eq!(conducting_ids(&arena, |_| None), vec![1]);
+		assert_eq!(conducting_ids(&arena, |_| None), vec![1, 2]);
+		assert_eq!(conducting_ids(&arena, |_| None), vec![1, 2, 3]);
+		// Below the start threshold, an active turf keeps conducting while it stays warm enough.
+		set_temperature(&arena, 1, warm);
+		assert_eq!(conducting_ids(&arena, |_| None), vec![1, 2, 3]);
+		for id in 1..=3 {
+			set_temperature(&arena, id, T20C);
+		}
+		assert!(conducting_ids(&arena, |_| None).is_empty());
+		assert!(conducting_ids(&arena, |_| None).is_empty());
+	}
+
+	#[test]
+	fn hot_air_starts_conduction_on_a_cool_turf() {
+		let mut arena = new_turf_heat();
+		heat_node(&mut arena, 1, T20C, 20_000.0);
+		let fire = MINIMUM_TEMPERATURE_START_SUPERCONDUCTION + 100.0;
+		assert_eq!(conducting_ids(&arena, |_| Some(fire)), vec![1]);
+		assert!(conducting_ids(&arena, |_| Some(T20C)).is_empty());
+	}
+
+	const ICEBOX_SURFACE_TEMPERATURE: f32 = 180.0;
 }
