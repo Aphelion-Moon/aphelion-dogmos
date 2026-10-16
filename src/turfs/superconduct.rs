@@ -1052,6 +1052,7 @@ mod tests {
 			heat_capacity: 1.0,
 			adjacent_to_space: false,
 			temperature: RwLock::new(300.0),
+			..Default::default()
 		};
 		assert!(arena.insert_turf(initial_info));
 
@@ -1062,6 +1063,7 @@ mod tests {
 			heat_capacity: 2.0,
 			adjacent_to_space: true,
 			temperature: RwLock::new(400.0),
+			..Default::default()
 		};
 		assert!(!arena.insert_turf(replacement_info));
 
